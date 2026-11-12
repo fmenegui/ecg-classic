@@ -29,6 +29,7 @@ Layout, velocidade, duração e ganho são **descobertos na imagem** (`Config()`
 | Deskew e escala | Maximização da variância das projeções; período por autocorrelação em blocos, com detecção de linha de 5 mm vs 1 mm e de múltiplos do período |
 | Retificação | Fase de Fourier local da grade em blocos + *unwrapping* 2D guiado por qualidade → correspondências → homografia (RANSAC) |
 | Papel curvo | Resíduo de fase da linha de 1 mm → campo de deslocamento polinomial cúbico → `remap` |
+| Vincos e dobras | Campo local numa malha de células de 5 mm (fase de 1 mm em blocos de 10 mm, desenrolada em 2D → passa de ±0,5 mm ao atravessar um vinco); maior região conexa de vértices confiáveis, vértices que destoam da mediana 3×3 descartados e faltantes preenchidos pelos vizinhos; encolhimento de Wiener pelo ruído do próprio campo (em papel plano vira zero); interpolação bilinear entre vértices = transformação de 4 cantos por célula, composta com o polinômio numa única reamostragem (`Config(nonrigid="cell")`, padrão) |
 | Remoção da grade | Modelo de transmitância (tinta × grade): molde periódico mod 5 mm por mediana **local** (vizinhança de 25 mm) + resíduo por linha/coluna reta (percentil 80) — qualquer cor de grade, foco/iluminação variáveis |
 | Binarização | Otsu calculado só sobre estruturas finas (tarjas, carimbos e blocos pretos > 2.5 mm excluídos, senão apagam traçado claro) + histerese com limiar baixo acima do vazamento medido da grade; remoção de componentes minúsculas |
 | Linhas | Picos de cobertura horizontal, filtrados por "parecer traçado": longo depois de juntar quebras **e** longo sem juntar (rodapé de texto só é longo dilatado); réguas retas (borda da área quadriculada) removidas por abertura de 60 mm; orientação 0/90/180/270° por alongamento + posição dos pulsos |
@@ -102,6 +103,19 @@ A foto sem rótulos agora sai com confiança 0,55 e o aviso "nenhum rótulo lido
 - **Tiras de ritmo** não repetem a mesma derivação (penalidade); sem nenhum rótulo legível no início das linhas, a confiança é limitada e há aviso.
 - Testado e descartado: filtro passa-baixa adaptativo à resolução (+0,3 dB só no SNR, achata QRS), suavização dependente da inclinação (piora), QT/RR para decidir 25 × 50 mm/s (não ganhou nada), teste de permutação para Goldberger (instável).
 
+### Vincos e dobras: campo local por células de 5 mm (12/11/2026)
+
+O sintético não tinha nenhuma deformação não rígida. O nível novo `fold` (`python -m ecgdig.synth data/x 15 fold 3x4+1 101`) adiciona curvatura cilíndrica suave e 1–2 vincos com sombra (quebra de inclinação de 0,8–2,5 %, cisalhamento ao longo do vinco). Conjuntos de teste novos, 15 imagens 3x4+1 cada (sementes 101–104):
+
+| Conjunto | Polinômio | Por célula | Pior imagem (dif.) |
+|---|---|---|---|
+| `fold` | 9,66 dB | **17,34 dB** | +1,3 dB (todas melhoram; até +15 dB) |
+| `medium` | 21,32 dB | 21,30 dB | −0,27 dB |
+| `heavy` | 17,52 dB | 17,52 dB | −0,06 dB |
+| misto (24, layouts/velocidade/ganho variados) | 21,79 dB | 21,77 dB | −0,10 dB |
+
+Em scans reais o campo encolhe a zero e a saída é idêntica. Nas fotos reais da internet ele mede 0,25–0,32 mm de deformação local e o resíduo de Einthoven cai de ~234 para ~215 µV. Sem o encolhimento de Wiener o modo por célula perdia até 2,5 dB em papel plano: o polinômio já deixa resíduo < 0,01 mm, e 0,03 mm de ruído horizontal num QRS íngreme custa ~0,06 mV. É a ideia do Undistortion da PMcardio (4 cantos por célula), mas com os vértices tirados da fase da grade, sem Dotter nem Gridder.
+
 Limite físico que continua: a 25 vs 50 mm/s com QRS estreito e FC ~110 bpm sem texto legível (uma imagem do misto) é ambíguo de verdade; derivações de baixa voltagem a 5 mm/mV ficam no piso de quantização.
 
 ### LITFL: 102 imagens reais sem gabarito (avaliação qualitativa)
@@ -124,7 +138,7 @@ Os números sintéticos não são comparáveis diretamente com o placar do Physi
 - Folha cortada pela borda da imagem: se as duas pontas de todas as linhas estiverem fora, a origem temporal fica sem referência.
 - Quando o traço começa colado à descida do pulso, o t = 0 depende da convenção do aparelho (pode haver ~±50 ms de deslocamento global, igual em todas as derivações).
 - Sem grade nenhuma, a escala vem de `--ppmm` ou de uma suposição de largura de página.
-- Papel muito amassado (dobras com sombra forte) e fotos com desfoque de movimento continuam sendo o ponto fraco de qualquer método clássico.
+- Vincos simples agora são corrigidos pelo campo local; papel muito amassado (muitas dobras em menos de 5 mm, sombra que apaga a grade) e fotos com desfoque de movimento continuam sendo o ponto fraco de qualquer método clássico.
 
 ## Validação
 
