@@ -1,0 +1,380 @@
+"""
+Geometria da página: segmentação do papel, mapa da grade, deskew, escala (px/mm),
+retificação por homografia via fase local da grade + unwrapping guiado por qualidade,
+e refinamento não-rígido (deslocamento polinomial) para papel curvado.
+
+Ideia central: a grade milimetrada é um padrão periódico conhecido (1 mm / 5 mm).
+Em cada bloco da imagem a fase do coeficiente de Fourier na frequência da grade dá
+a posição sub-pixel das linhas. Desenrolando essas fases (como em interferometria /
+InSAR) obtém-se correspondências imagem <-> coordenadas em mm, e daí a homografia.
+"""
+from __future__ import annotations
+
+import heapq
+import numpy as np
+import cv2
+
+
+# ----------------------------------------------------------------------------- utils
+
+def _bg_max(ch: np.ndarray, win_frac: float = 0.015, small: int = 900) -> np.ndarray:
+    """Fundo (brilho do papel) por filtro de máximo + mediana em baixa resolução."""
+    H, W = ch.shape
+    f = small / max(H, W)
+    s = cv2.resize(ch, (max(8, int(W * f)), max(8, int(H * f))), interpolation=cv2.INTER_AREA)
+    k = max(3, int(win_frac * max(H, W) * f) | 1)
+    s = cv2.dilate(s, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    s = cv2.medianBlur(s.astype(np.float32), 5)
+    s = cv2.GaussianBlur(s, (0, 0), k / 2)
+    return cv2.resize(s, (W, H), interpolation=cv2.INTER_LINEAR)
+
+
+def paper_mask(img: np.ndarray) -> np.ndarray:
+    """Máscara da folha. Se a borda da imagem tem a mesma cor do centro, é um scan
+    (tudo é papel). Senão: GrabCut (borda = fundo, centro = papel) + envoltória convexa
+    da maior componente — robusto a sombras fortes que quebram limiarização global."""
+    H, W = img.shape[:2]
+    f = 400 / max(H, W)
+    small = cv2.resize(img, (max(8, int(W * f)), max(8, int(H * f))), interpolation=cv2.INTER_AREA)
+    h, w = small.shape[:2]
+    lab = cv2.cvtColor(small, cv2.COLOR_BGR2LAB).astype(np.float32)
+    m = max(2, int(0.03 * min(h, w)))
+    border = np.concatenate([lab[:m].reshape(-1, 3), lab[-m:].reshape(-1, 3),
+                             lab[:, :m].reshape(-1, 3), lab[:, -m:].reshape(-1, 3)])
+    center = lab[h // 4:3 * h // 4, w // 4:3 * w // 4].reshape(-1, 3)
+    mb, mc = np.median(border, 0), np.median(center, 0)
+    dist = np.linalg.norm(mb - mc)
+    # scan: borda tão clara quanto o centro (margem branca / grade) -> tudo é papel
+    if dist < 20 or mb[0] >= mc[0] - 8:
+        return np.ones((H, W), np.uint8)
+    gc = np.full((h, w), cv2.GC_PR_FGD, np.uint8)
+    gc[:m] = gc[-m:] = cv2.GC_BGD
+    gc[:, :m] = gc[:, -m:] = cv2.GC_BGD
+    # pixels da borda parecidos com a mediana da borda -> fundo provável em toda a imagem
+    db = np.linalg.norm(lab - np.median(border, 0), axis=2)
+    gc[(db < 12) & (gc == cv2.GC_PR_FGD)] = cv2.GC_PR_BGD
+    gc[h // 3:2 * h // 3, w // 3:2 * w // 3] = cv2.GC_FGD
+    bgm = np.zeros((1, 65), np.float64); fgm = np.zeros((1, 65), np.float64)
+    try:
+        cv2.setRNGSeed(12345)  # GrabCut usa k-means aleatório: fixa para ser determinístico
+        cv2.grabCut(small, gc, None, bgm, fgm, 5, cv2.GC_INIT_WITH_MASK)
+    except cv2.error:
+        return np.ones((H, W), np.uint8)
+    fg = ((gc == cv2.GC_FGD) | (gc == cv2.GC_PR_FGD)).astype(np.uint8)
+    n, lab_, stats, _ = cv2.connectedComponentsWithStats(fg)
+    if n < 2:
+        return np.ones((H, W), np.uint8)
+    k = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    cnts, _ = cv2.findContours((lab_ == k).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    hull = cv2.convexHull(max(cnts, key=cv2.contourArea))
+    mm = np.zeros((h, w), np.uint8)
+    cv2.fillPoly(mm, [hull], 1)
+    if mm.mean() < 0.15:  # segmentação implausível -> usa tudo
+        return np.ones((H, W), np.uint8)
+    mm = cv2.erode(mm, np.ones((3, 3), np.uint8))
+    return cv2.resize(mm, (W, H), interpolation=cv2.INTER_NEAREST)
+
+
+def grid_map(img: np.ndarray, paper: np.ndarray) -> np.ndarray:
+    """Mapa de 'estrutura escura' normalizado pela iluminação, com a tinta atenuada."""
+    f = img.astype(np.float32)
+    gray = f.mean(2)
+    mx = f.max(2)
+    S = 1.0 - gray / (_bg_max(gray) + 1e-3)
+    ink = 1.0 - mx / (_bg_max(mx) + 1e-3)
+    G = np.clip(S, 0, 1)
+    G = np.where(ink > 0.5, 0.25, np.minimum(G, 0.5))  # tinta vira constante (não periódica)
+    G[paper == 0] = 0
+    return G
+
+
+# ------------------------------------------------------------------- deskew + escala
+
+def estimate_rotation(G: np.ndarray) -> float:
+    """Ângulo (graus) que, aplicado com cv2.getRotationMatrix2D, alinha a grade.
+    Maximiza a variância das projeções (busca grossa e fina)."""
+    H, W = G.shape
+
+    def score_at(Gs, a):
+        h, w = Gs.shape
+        M = cv2.getRotationMatrix2D((w / 2, h / 2), a, 1.0)
+        R = cv2.warpAffine(Gs, M, (w, h), flags=cv2.INTER_LINEAR)
+        m = cv2.warpAffine(np.ones_like(Gs), M, (w, h), flags=cv2.INTER_NEAREST)
+        rs = R.sum(1) / (m.sum(1) + 1)
+        cs = R.sum(0) / (m.sum(0) + 1)
+        return np.var(np.diff(rs)) + np.var(np.diff(cs))
+
+    f1 = 700 / max(H, W)
+    G1 = cv2.resize(G, (int(W * f1), int(H * f1)), interpolation=cv2.INTER_AREA)
+    angs = np.arange(-45, 45, 0.5)
+    sc = [score_at(G1, a) for a in angs]
+    a0 = angs[int(np.argmax(sc))]
+    f2 = min(1.0, 1600 / max(H, W))
+    G2 = cv2.resize(G, (int(W * f2), int(H * f2)), interpolation=cv2.INTER_AREA)
+    angs = np.arange(a0 - 0.6, a0 + 0.6, 0.04)
+    sc = [score_at(G2, a) for a in angs]
+    i = int(np.argmax(sc))
+    if 0 < i < len(sc) - 1:  # interpolação parabólica
+        d = sc[i - 1] - 2 * sc[i] + sc[i + 1]
+        off = 0.5 * (sc[i - 1] - sc[i + 1]) / d if d != 0 else 0
+        return float(angs[i] + off * 0.04)
+    return float(angs[i])
+
+
+def _profile_period(p: np.ndarray, lo: int = 3, hi: int = 400):
+    """Autocorrelação normalizada de um perfil 1D."""
+    p = p - cv2.blur(p.reshape(1, -1).astype(np.float32), (101, 1)).ravel()
+    p = p - p.mean()
+    n = len(p)
+    F = np.fft.rfft(p, 2 * n)
+    ac = np.fft.irfft(F * np.conj(F))[:n]
+    ac /= ac[0] + 1e-9
+    return ac[: min(hi, n - 1)]
+
+
+def estimate_ppmm(G: np.ndarray, angle: float, paper: np.ndarray) -> tuple[float, bool]:
+    """Pixels por mm a partir do período da grade. Retorna (ppmm, tem_linhas_grossas)."""
+    H, W = G.shape
+    M = cv2.getRotationMatrix2D((W / 2, H / 2), angle, 1.0)
+    R = cv2.warpAffine(G, M, (W, H))
+    pm = cv2.warpAffine(paper.astype(np.float32), M, (W, H))
+    # autocorrelação média em blocos locais (robusta a perspectiva/rotação residual)
+    ts = max(64, min(H, W) // 4)
+    cands = []
+    for fy in (0.3, 0.5, 0.7):
+        for fx in (0.25, 0.5, 0.75):
+            y0, x0 = int(fy * H - ts / 2), int(fx * W - ts / 2)
+            if y0 < 0 or x0 < 0 or y0 + ts > H or x0 + ts > W:
+                continue
+            if pm[y0:y0 + ts, x0:x0 + ts].mean() < 0.95:
+                continue
+            blk = R[y0:y0 + ts, x0:x0 + ts]
+            for axis in (0, 1):
+                cands.append(_profile_period(blk.mean(axis).astype(np.float32), hi=ts // 2))
+    if not cands:
+        for axis in (0, 1):
+            prof = R.sum(axis) / (pm.sum(axis) + 1)
+            cands.append(_profile_period(prof.astype(np.float32)))
+    ac = np.mean([c[: min(len(c) for c in cands)] for c in cands], 0)
+    acs = cv2.GaussianBlur(ac.reshape(1, -1), (0, 0), 0.7).ravel()
+    n = len(acs)
+    z = np.nonzero(acs < 0)[0]
+    start = int(z[0]) if len(z) else 3
+    pk = [i for i in range(max(3, start), n - 1) if acs[i] > acs[i - 1] and acs[i] >= acs[i + 1]]
+    if not pk:
+        return float(max(H, W) / 280.0), False
+
+    def refine(i):
+        i = int(round(i))
+        i = max(1, min(i, n - 2))
+        j = i + int(np.argmax(ac[i - 1:i + 2])) - 1
+        j = max(1, min(j, n - 2))
+        d = ac[j - 1] - 2 * ac[j] + ac[j + 1]
+        return j + (0.5 * (ac[j - 1] - ac[j + 1]) / d if d != 0 else 0)
+
+    def prom(x, half):
+        """Proeminência de um pico local perto de x em relação aos vales a +-half."""
+        x = int(round(x)); h = max(1, int(round(half)))
+        if x - h < 0 or x + h >= n:
+            return -1.0
+        top = acs[max(0, x - 1):x + 2].max()
+        return float(top - 0.5 * (acs[x - h:x].min() + acs[x + 1:x + h + 1].min()))
+
+    # pico mais forte = período dominante L (normalmente a linha grossa de 5 mm)
+    L = refine(max(pk, key=lambda i: acs[i]))
+    # se há pico forte em L/2, L é múltiplo do período
+    # se há picos fortes em todos os m*L/k (k = 2, 3), L é múltiplo do período
+    changed = True
+    while changed:
+        changed = False
+        pL = prom(L, L / 4)
+        for k in (2, 3):
+            if L / k < 3:
+                continue
+            ok = all(prom(m * L / k, L / (2 * k)) > 0.4 * pL and
+                     acs[int(round(m * L / k))] > 0.3 * acs[int(round(L))] for m in range(1, k))
+            if ok:
+                L = refine(L / k)
+                changed = True
+                break
+    # linhas finas: picos em k*L/5 (k = 1..4) com proeminência
+    pr5 = np.mean([prom(k * L / 5, L / 10) for k in range(1, 5)]) if L / 5 >= 2.5 else -1
+    if pr5 > 0.04:
+        return float(L / 5.0), True
+    # grade uniforme: prior do tamanho da folha (80..600 mm visíveis)
+    width_mm_if_minor = max(H, W) / L
+    if 80 <= width_mm_if_minor <= 600:
+        return float(L), False
+    return float(L / 5.0), False
+
+
+# ------------------------------------------------------ fase local + unwrapping
+
+def _tile_phases(Gc: np.ndarray, T: float, tile: int, step: int):
+    """Para cada bloco: posição das linhas (mod T) em x e y + qualidade."""
+    H, W = Gc.shape
+    ys = list(range(0, max(1, H - tile + 1), step))
+    xs = list(range(0, max(1, W - tile + 1), step))
+    j = np.arange(tile)
+    e = np.exp(-2j * np.pi * j / T)
+    out = np.zeros((len(ys), len(xs), 6), np.float64)  # phx, phy, qx, qy, cx, cy
+    for a, y in enumerate(ys):
+        for b, x in enumerate(xs):
+            blk = Gc[y:y + tile, x:x + tile]
+            px = blk.mean(0); py = blk.mean(1)
+            px = px - px.mean(); py = py - py.mean()
+            cxp = (px * e).sum(); cyp = (py * e).sum()
+            nx = np.sqrt((px ** 2).sum() * tile) + 1e-9
+            ny = np.sqrt((py ** 2).sum() * tile) + 1e-9
+            # posição da linha: onde cos(2*pi*j/T - arg) é máximo -> j = arg*T/2pi
+            ox = (-np.angle(cxp) * T / (2 * np.pi)) % T
+            oy = (-np.angle(cyp) * T / (2 * np.pi)) % T
+            out[a, b] = [x + ox, y + oy, abs(cxp) / nx, abs(cyp) / ny, x + tile / 2, y + tile / 2]
+    return out
+
+
+def _unwrap_quality(ph: np.ndarray, q: np.ndarray, T: float, qmin: float) -> np.ndarray:
+    """Unwrapping 2D guiado por qualidade (flood fill priorizado)."""
+    h, w = ph.shape
+    out = np.full((h, w), np.nan)
+    ok = q >= qmin
+    if not ok.any():
+        return out
+    s = np.unravel_index(np.argmax(np.where(ok, q, -1)), q.shape)
+    out[s] = ph[s]
+    heap = []
+
+    def push(i, j):
+        for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            a, b = i + di, j + dj
+            if 0 <= a < h and 0 <= b < w and ok[a, b] and np.isnan(out[a, b]):
+                heapq.heappush(heap, (-q[a, b], a, b, i, j))
+
+    push(*s)
+    while heap:
+        _, a, b, i, j = heapq.heappop(heap)
+        if not np.isnan(out[a, b]):
+            continue
+        d = ph[a, b] - out[i, j]
+        d -= T * np.round(d / T)
+        out[a, b] = out[i, j] + d
+        push(a, b)
+    return out
+
+
+def _correspondences(Gc, T_major, T_minor, use_major, tile, step):
+    """Correspondências (pontos na imagem Gc) <-> (coordenadas ideais da grade)."""
+    T = T_major if use_major else T_minor
+    P = _tile_phases(Gc, T, tile, step)
+    phx, phy, qx, qy, cx, cy = [P[..., k] for k in range(6)]
+    qmin_x = max(0.08, np.percentile(qx, 40) * 0.6)
+    qmin_y = max(0.08, np.percentile(qy, 40) * 0.6)
+    ux = _unwrap_quality(phx, qx, T, qmin_x)
+    uy = _unwrap_quality(phy, qy, T, qmin_y)
+    if use_major:  # refina com a fase da linha fina (5x mais precisa)
+        Pm = _tile_phases(Gc, T_minor, tile, step)
+        fx, fy = Pm[..., 0], Pm[..., 1]
+        ux = ux + (((fx - ux) + T_minor / 2) % T_minor - T_minor / 2) * (Pm[..., 2] > 0.15)
+        uy = uy + (((fy - uy) + T_minor / 2) % T_minor - T_minor / 2) * (Pm[..., 3] > 0.15)
+    good = ~np.isnan(ux) & ~np.isnan(uy)
+    src = np.stack([cx[good], cy[good]], 1)              # pontos na imagem
+    dst = np.stack([cx[good] - ux[good], cy[good] - uy[good]], 1)  # coords onde a grade cai em k*T
+    w = np.minimum(qx[good], qy[good])
+    return src, dst, w
+
+
+def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None):
+    """Retorna (img_ret, paper_ret, info). img_ret tem R px/mm e linhas grossas em múltiplos de 5R."""
+    paper = paper_mask(img)
+    G = grid_map(img, paper)
+    ang = estimate_rotation(G)
+    ppmm, has_major = estimate_ppmm(G, ang, paper)
+    if ppmm_hint:  # escala conhecida (ex.: DPI do scanner / 25.4)
+        ppmm = float(ppmm_hint)
+
+    H, W = G.shape
+    s = 5.0  # px/mm do quadro grosso
+    M = cv2.getRotationMatrix2D((W / 2, H / 2), ang, s / ppmm)
+    corners = np.array([[0, 0, 1], [W, 0, 1], [W, H, 1], [0, H, 1]], np.float64)
+    pc = corners @ M.T
+    tx, ty = -pc[:, 0].min(), -pc[:, 1].min()
+    M[:, 2] += [tx, ty]
+    Wc, Hc = int(np.ceil(np.ptp(pc[:, 0]))), int(np.ceil(np.ptp(pc[:, 1])))
+    Gc = cv2.warpAffine(G, M, (Wc, Hc), flags=cv2.INTER_AREA if s < ppmm else cv2.INTER_LINEAR)
+
+    tile, step = int(25 * s), int(10 * s)
+    src, dst, w = _correspondences(Gc, 5 * s, s, has_major, tile, step)
+    A3 = np.vstack([M, [0, 0, 1]])
+    if len(src) >= 8:
+        Hm, inl = cv2.findHomography(dst, src, cv2.RANSAC, 0.6 * s)
+        if Hm is None:
+            Hm = np.eye(3)
+    else:
+        Hm = np.eye(3)
+    # quadro retificado: u,v em mm*R. coarse(x,y) = Hm @ (u/R*s, v/R*s)
+    Sc = np.diag([s / R, s / R, 1.0])
+    T_total = np.linalg.inv(A3) @ Hm @ Sc  # retificado -> original
+
+    # extensão: cantos do papel no quadro retificado
+    Tinv = np.linalg.inv(T_total)
+    ys, xs = np.nonzero(cv2.resize(paper, (W // 8 + 1, H // 8 + 1), interpolation=cv2.INTER_NEAREST))
+    pts = np.stack([xs * 8.0, ys * 8.0, np.ones_like(xs, dtype=float)], 1) @ Tinv.T
+    pts = pts[:, :2] / pts[:, 2:3]
+    u0, v0 = np.floor(pts.min(0) / (5 * R)) * 5 * R - 5 * R
+    u1, v1 = np.ceil(pts.max(0) / (5 * R)) * 5 * R + 5 * R
+    Wo, Ho = int(u1 - u0), int(v1 - v0)
+    Tsh = np.array([[1, 0, u0], [0, 1, v0], [0, 0, 1.0]])
+    T_total = T_total @ Tsh  # pixel de saída -> original (linhas grossas em múltiplos de 5R)
+
+    out = cv2.warpPerspective(img, T_total, (Wo, Ho), flags=cv2.INTER_CUBIC | cv2.WARP_INVERSE_MAP,
+                              borderValue=(255, 255, 255))
+    pap = cv2.warpPerspective(paper, T_total, (Wo, Ho), flags=cv2.INTER_NEAREST | cv2.WARP_INVERSE_MAP)
+
+    # refinamento não-rígido: resíduo de fase -> polinômio cúbico -> remap
+    out, pap, rms = _refine_nonrigid(out, pap, R)
+    info = dict(angle=ang, ppmm=ppmm, has_major=has_major, n_corr=int(len(src)),
+                residual_rms_mm=rms, T=T_total)
+    return out, pap, info
+
+
+def _poly_terms(u, v, deg=3):
+    return np.stack([u ** i * v ** j for i in range(deg + 1) for j in range(deg + 1 - i)], 1)
+
+
+def _refine_nonrigid(out, pap, R):
+    G = grid_map(out, pap)
+    tile, step = int(20 * R), int(8 * R)
+    P = _tile_phases(G, R, tile, step)  # período fino = 1 mm
+    phx, phy, qx, qy, cx, cy = [P[..., k].ravel() for k in range(6)]
+    # resíduo assinado em torno de 0 (as linhas deveriam estar em múltiplos de R)
+    dx = (phx + R / 2) % R - R / 2
+    dy = (phy + R / 2) % R - R / 2
+    good = (qx > 0.2) & (qy > 0.2)
+    if good.sum() < 15:
+        return out, pap, float("nan")
+    H, W = G.shape
+    un, vn = cx[good] / W - 0.5, cy[good] / H - 0.5
+    A = _poly_terms(un, vn)
+    wts = np.minimum(qx[good], qy[good])
+    sol = []
+    for d in (dx[good], dy[good]):
+        c = np.linalg.lstsq(A * wts[:, None], d * wts, rcond=None)[0]
+        # uma iteração robusta (descarta resíduos grandes)
+        r = d - A @ c
+        k = np.abs(r) < 3 * (np.median(np.abs(r)) * 1.4826 + 0.05)
+        c = np.linalg.lstsq(A[k] * wts[k, None], d[k] * wts[k], rcond=None)[0]
+        sol.append(c)
+    rms_before = float(np.sqrt(np.mean(dx[good] ** 2 + dy[good] ** 2)) / R)
+    yy, xx = np.mgrid[0:H:8, 0:W:8].astype(np.float32)
+    At = _poly_terms((xx / W - 0.5).ravel(), (yy / H - 0.5).ravel())
+    mx = (xx.ravel() + At @ sol[0]).reshape(xx.shape).astype(np.float32)
+    my = (yy.ravel() + At @ sol[1]).reshape(yy.shape).astype(np.float32)
+    mx = cv2.resize(mx, (W, H), interpolation=cv2.INTER_LINEAR) + 0  # aproximação densa
+    my = cv2.resize(my, (W, H), interpolation=cv2.INTER_LINEAR)
+    # corrige o deslocamento de meio passo do resize
+    gx, gy = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32))
+    mx = gx + (mx - cv2.resize(xx, (W, H), interpolation=cv2.INTER_LINEAR))
+    my = gy + (my - cv2.resize(yy, (W, H), interpolation=cv2.INTER_LINEAR))
+    out2 = cv2.remap(out, mx, my, cv2.INTER_CUBIC, borderValue=(255, 255, 255))
+    pap2 = cv2.remap(pap, mx, my, cv2.INTER_NEAREST)
+    return out2, pap2, rms_before

@@ -1,0 +1,742 @@
+"""
+Pipeline completo: imagem -> 12 derivações (mV, fs Hz).
+
+    from ecgdig import digitize
+    res = digitize("ecg.jpg")            # layout automático
+    res["signals"]  # (12, N) float32, NaN onde a derivação não aparece
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+import numpy as np
+import cv2
+
+from .geometry import rectify
+from .extract import (ink_map, binarize, find_rows, row_extent, detect_pulse,
+                      column_runs, viterbi_track, selected_envelopes, envelope_edges,
+                      centerline_from_envelopes, calibrate_pen, mark_occlusions, horizontal_halfwidth,
+                      trace_likeness)
+
+from .layouts import LEADS, LIBRARY as LAYOUTS, is_limb
+from .layout_engine import Ctx as _LayoutCtx
+
+
+@dataclass
+class Config:
+    R: float = 10.0            # px/mm do quadro retificado
+    fs: int = 500
+    duration: float | None = None  # s exibidos por linha; None = mede (pontas do traço)
+    speed: float | None = None     # mm/s; None = lê "NN mm/s" na página, senão QRS/RR
+    gain: float | None = None      # mm/mV para todas as derivações; None = mede nos pulsos
+    layout: str | list = "auto"    # "auto", nome da biblioteca ou lista de linhas de nomes
+    einthoven: bool = True     # fusão por restrições de Einthoven/Goldberger
+    fill_limb: bool = False    # reconstrói derivações dos membros onde possível
+    ppmm: float | None = None  # px/mm da imagem original, se conhecido (DPI/25.4)
+    pen: str = "measure"       # largura horizontal da pena: measure | calibrate | isotropic
+
+
+def _pick_rows(peaks, cov, n_expected):
+    if len(peaks) <= n_expected:
+        return list(peaks)
+    # mantém o subconjunto de n linhas com maior cobertura, depois ordena
+    best = sorted(peaks, key=lambda p: -cov[p])[:n_expected]
+    return sorted(best)
+
+
+def _row_quick_trace(B, D, rows, R, x0, span_px, full=False):
+    """Traço grosseiro (centróide do segmento escolhido pelo Viterbi) de cada linha inteira.
+    full=True devolve dicts com cen/top/bot absolutos e x0 da janela."""
+    H, W = B.shape
+    out = []
+    xa, xb = max(0, int(x0)), min(W, int(x0 + span_px) + 1)
+    for r, y in enumerate(rows):
+        up = (y - rows[r - 1]) if r > 0 else 40 * R
+        dn = (rows[r + 1] - y) if r + 1 < len(rows) else 40 * R
+        ya, yb = max(0, int(y - 0.9 * up)), min(H, int(y + 0.9 * dn))
+        runs = column_runs(B, D, ya, yb, xa, xb)
+        others = [float(v) for i2, v in enumerate(rows) if i2 != r]
+        sel = viterbi_track(runs, float(y), R, others=others)
+        if full:
+            cen = np.array([runs[i][k][2] if k is not None else np.nan for i, k in enumerate(sel)])
+            top = np.array([runs[i][k][0] if k is not None else np.nan for i, k in enumerate(sel)], float)
+            bot = np.array([runs[i][k][1] if k is not None else np.nan for i, k in enumerate(sel)], float)
+            out.append(dict(x0=xa, cen=cen, top=top, bot=bot))
+        else:
+            out.append(np.array([y - runs[i][k][2] if k is not None else np.nan for i, k in enumerate(sel)]))
+    return out
+
+
+def _corr(a, b, win=151):
+    """Correlação após remover a linha de base (mediana móvel ~0.6 s) e preencher falhas."""
+    from scipy.ndimage import median_filter
+    m = ~np.isnan(a) & ~np.isnan(b)
+    if m.sum() < 50:
+        return 0.0
+    x = np.arange(len(a))
+    out = []
+    for v in (a, b):
+        v = np.interp(x, x[~np.isnan(v)], v[~np.isnan(v)])
+        out.append((v - median_filter(v, size=win, mode="nearest"))[m])
+    a, b = out
+    if a.std() == 0 or b.std() == 0:
+        return 0.0
+    return float(np.corrcoef(a, b)[0, 1])
+
+
+def _rows_pulses(B, pap, R):
+    """Linhas de traçado candidatas (sem texto/bordas), extensões e pulsos."""
+    H, W = B.shape
+    peaks, cov = find_rows(B, R)
+    if len(peaks) == 0:
+        return peaks, cov, [], [], 40 * R
+    tl, raw = trace_likeness(B, peaks, R, return_raw=True)
+    if len(tl) and tl.max() > 0:
+        # longo depois de juntar quebras E longo cru (texto em linha só é longo dilatado)
+        ok = (tl >= 0.4 * tl.max()) & (raw >= 0.55 * np.maximum(tl, 1e-9))
+        peaks = peaks[ok]
+    ys = np.nonzero(pap.any(1))[0]
+    if len(ys):  # bordas da folha / moldura não são linhas de traçado
+        peaks = peaks[(peaks > ys[0] + 5 * R) & (peaks < ys[-1] - 5 * R)]
+    spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else 40 * R
+    half = 0.45 * spacing
+    ext = [row_extent(B, y, half, R) for y in peaks]
+    pulses = []
+    for i, (y, e) in enumerate(zip(peaks, ext)):
+        up_sp = (y - peaks[i - 1]) if i > 0 else spacing
+        pulses.append(detect_pulse(B, y, half, e[0], R, up=max(half, min(0.95 * up_sp, 25 * R))) if e else None)
+    return peaks, cov, ext, pulses, spacing
+
+
+def _orient(arrs, R):
+    """Escolhe a rotação (0/90/180/270) em que os traçados ficam horizontais e os
+    pulsos de calibração à esquerda."""
+    rect, pap, D, B = arrs
+    # traçados = estruturas longas (> 50 mm) numa direção; QRS altos não passam de ~40 mm.
+    # Fecha pequenas quebras (traço fino/fraco) antes de medir.
+    k = int(1.5 * R) | 1
+    Bc = cv2.dilate(B.astype(np.uint8), np.ones((k, k), np.uint8))
+    n, lab, st, _ = cv2.connectedComponentsWithStats(Bc, connectivity=8)
+    w, h = st[1:, cv2.CC_STAT_WIDTH], st[1:, cv2.CC_STAT_HEIGHT]
+    sh = w[(w >= 50 * R) & (w > 1.5 * h)].sum()
+    sv = h[(h >= 50 * R) & (h > 1.5 * w)].sum()
+    cands = [cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE] if sv > sh else [None, cv2.ROTATE_180]
+
+    def rot(a, c):
+        if c is None:
+            return a
+        if a.dtype == bool:
+            return cv2.rotate(a.astype(np.uint8), c) > 0
+        return cv2.rotate(np.ascontiguousarray(a), c)
+
+    best, best_score = None, -1
+    for c in cands:
+        Bc, pc = rot(B, c), rot(pap, c)
+        pk, _, _, pulses, _ = _rows_pulses(Bc, pc, R)
+        score = sum(p is not None for p in pulses)
+        if score > best_score:
+            best, best_score = c, score
+    return [rot(a, best) for a in arrs], best
+
+
+def _edge_cands(D, B, rows, ext, pulses, half, lev, R, rad=0.0):
+    """Bordas sub-pixel esquerda (início do traço) e direita (fim): listas sem NaN."""
+    xl, xe = _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad)
+    return [v for v in xl if not np.isnan(v)], [v for v in xe if not np.isnan(v)]
+
+
+def text_like_mask(B, R):
+    """Componentes pequenas e isoladas (rótulos, números, marcas): não pertencem ao traço,
+    que é uma componente longa. Usado para que bordas não sejam medidas em texto."""
+    n, lab, st, _ = cv2.connectedComponentsWithStats(B.astype(np.uint8), connectivity=8)
+    small = (st[:, cv2.CC_STAT_WIDTH] < 25 * R) & (st[:, cv2.CC_STAT_HEIGHT] < 9 * R)
+    small[0] = False
+    return small[lab]
+
+
+def _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad=0.0, return_weak=False):
+    """Bordas sub-pixel esquerda (início do traço) e direita (fim), uma por linha (NaN se falta)."""
+    tm = getattr(_edge_rows, "text_mask", None)
+    if tm is not None and tm.shape == D.shape:
+        D = np.where(tm, 0.0, D).astype(np.float32)
+    H, W = D.shape
+    lev_rad_hint = [rad]
+    weak = []
+    xl, xe = [], []
+    for y, e, p in zip(rows, ext, pulses):
+        xl.append(np.nan); xe.append(np.nan); weak.append(np.nan)
+        if not e:
+            continue
+        a_, b_ = max(0, int(y - half)), min(H, int(y + half))
+        # direita
+        x1 = max(0, e[1] - 12)
+        blk = D[a_:b_, x1:min(W, e[1] + 4)]
+        if blk.size:
+            prof = blk.max(0)
+            idx = np.nonzero(prof >= lev)[0]
+            if len(idx) and idx[-1] + 1 < len(prof):
+                k_ = idx[-1]
+                xe[-1] = x1 + k_ + (prof[k_] - lev) / max(prof[k_] - prof[k_ + 1], 1e-6)
+        # esquerda: depois da lacuna após o pulso; sem pulso, a primeira tinta da linha
+        if p is not None:
+            x_s = p["x_end"]
+            prof = D[a_:b_, x_s:min(W, x_s + int(6 * R))].max(0)
+            below = np.nonzero((prof < lev) & (np.r_[prof[1:], 0] < lev))[0]
+            after = np.nonzero(prof[below[0]:] >= lev)[0] if len(below) and below[0] <= 4 * R else []
+            if not len(after):
+                # traço colado ao pulso (sem lacuna): t = 0 provavelmente na descida do
+                # pulso — âncora FRACA (em outros formatos o pulso tem uma cauda plana antes
+                # do traço e a lacuna pode sumir com borrão)
+                weak[-1] = p.get("x_fall", p["x_end"]) - lev_rad_hint[0]
+                continue
+            k_ = below[0] + after[0]
+        else:
+            x_s = max(0, e[0] - 6)
+            prof = D[a_:b_, x_s:min(W, e[0] + 12)].max(0)
+            idx = np.nonzero(prof >= lev)[0]
+            if not len(idx) or idx[0] == 0:
+                continue
+            k_ = idx[0]
+        xl[-1] = x_s + k_ - 1 + (lev - prof[k_ - 1]) / max(prof[k_] - prof[k_ - 1], 1e-6)
+    if return_weak:
+        return np.array(xl), np.array(xe), np.array(weak)
+    return np.array(xl), np.array(xe)
+
+
+def _beats(trace, x_off, R):
+    """Posições (x, px) dos complexos QRS: picos da derivada absoluta suavizada (~80 ms)."""
+    from scipy.ndimage import uniform_filter1d
+    from scipy.signal import find_peaks
+    t = np.asarray(trace, float)
+    ok = ~np.isnan(t)
+    if ok.sum() < 50:
+        return np.array([])
+    x = np.arange(len(t))
+    t = np.interp(x, x[ok], t[ok])
+    a = uniform_filter1d(np.abs(np.gradient(t)), max(3, int(2 * R)))
+    pk, _ = find_peaks(a, height=0.35 * a.max(), distance=int(12 * R))  # >= 480 ms
+    # centróide da energia do QRS (+-60 ms): menos dependente da derivação que o pico
+    g = np.abs(np.gradient(t))
+    h = int(1.5 * R)
+    out = []
+    for k in pk:
+        lo, hi = max(0, k - h), min(len(g), k + h + 1)
+        w = g[lo:hi] ** 2
+        out.append(float((w * np.arange(lo, hi)).sum() / max(w.sum(), 1e-9)))
+    return np.array(out) + x_off
+
+
+def _register_rows(beats, R, width_px, tol_mm=2.5, min_shift_px=4.0, rows=None):
+    """Registro afim por linha contra a referência comum (mediana entre linhas) dos QRS.
+    Todas as derivações são simultâneas: o mesmo batimento tem o mesmo instante em
+    todas as linhas. Retorna (a_r, b_r) com x_linha = a_r + b_r * x_ref.
+    Só corrige quando o deslocamento previsto passa de min_shift_px (senão identidade:
+    o viés de fase do QRS entre derivações seria maior que a correção)."""
+    n = len(beats)
+    a = np.zeros(n); b = np.ones(n)
+    nonempty = [bb for bb in beats if len(bb)]
+    if n < 2 or not nonempty:
+        return a, b
+    order = np.sort(np.concatenate(nonempty))
+    if len(order) < 4:
+        return a, b
+    groups, cur = [], [order[0]]
+    for v in order[1:]:
+        if v - cur[-1] <= tol_mm * R:
+            cur.append(v)
+        else:
+            groups.append(cur); cur = [v]
+    groups.append(cur)
+    refs = np.array([np.median(g) for g in groups if len(g) >= max(2, n // 2)])
+    if len(refs) < 2:
+        return a, b
+    lo, hi = refs.min(), refs.max()
+    valid = np.zeros(n, bool)
+    for r, bb in enumerate(beats):
+        if len(bb) < 2:
+            continue
+        d = np.abs(bb[:, None] - refs[None, :])
+        j = np.argmin(d, 1)
+        m = d[np.arange(len(bb)), j] <= tol_mm * R
+        if m.sum() < 2:
+            continue
+        xo, xr = bb[m], refs[j[m]]
+        ar, br = float(np.median(xo - xr)), 1.0
+        if m.sum() >= 4 and np.ptp(xr) > 0.4 * width_px:
+            A = np.stack([np.ones_like(xr), xr], 1)
+            c = np.linalg.lstsq(A, xo, rcond=None)[0]
+            res = np.abs(xo - A @ c)
+            keep = res <= max(2.5 * np.median(res), 2.0)
+            if keep.sum() >= 3:
+                c = np.linalg.lstsq(A[keep], xo[keep], rcond=None)[0]
+            if 0.97 <= c[1] <= 1.03:
+                ar, br = float(c[0]), float(c[1])
+        a[r], b[r] = ar, br
+        valid[r] = True
+    # distorção de página varia suavemente: deslocamento e escala lineares na altura da
+    # linha (média o ruído do instante do QRS entre derivações, ~2-3 px)
+    if rows is None or valid.sum() < 4:
+        # com <= 3 linhas (ex.: 3x4 sem tira de ritmo) cada linha tem derivações diferentes e
+        # o ruído do instante do QRS entre derivações não se distingue de cisalhamento
+        return np.zeros(n), np.ones(n)
+    if True:
+        y = np.asarray(rows, float)
+        A = np.stack([np.ones(valid.sum()), y[valid]], 1)
+        ca = np.linalg.lstsq(A, a[valid], rcond=None)[0]
+        cb = np.linalg.lstsq(A, b[valid], rcond=None)[0]
+        a = ca[0] + ca[1] * y; b = cb[0] + cb[1] * y
+    shift = np.maximum(np.abs(a + (b - 1) * lo), np.abs(a + (b - 1) * hi))
+    if shift.max() < min_shift_px:
+        return np.zeros(n), np.ones(n)
+    return a, b
+
+
+def _row_time_maps(rows, xl, rad, x0g, R, reg, tol_mm=4.0, weak=None, both_sided=True):
+    """Eixo do tempo por linha: x(t) = x0_r + sc_r * t * v * R.
+    reg = (a_r, b_r) do registro por batimentos (geometria relativa entre linhas).
+    A origem absoluta vem das âncoras esquerdas (fim do pulso / início do traço),
+    levadas ao referencial comum; se discordam da votação global por > 0.8 mm, valem elas."""
+    a_r, b_r = reg
+    if weak is not None and not both_sided:
+        xl = np.where(np.isnan(xl), weak, xl)
+    Lref = (xl + rad - a_r) / b_r
+    ok = ~np.isnan(Lref) & (np.abs(Lref - x0g) < tol_mm * R)
+    x0_ref = x0g
+    # votação com bordas dos dois lados é a evidência mais forte: mantém. Só sem ela
+    # as âncoras esquerdas (inclusive as fracas) podem corrigir a origem.
+    if not both_sided and ok.sum() >= 1:
+        med = float(np.median(Lref[ok]))
+        if abs(med - x0g) > 0.8 * R:
+            x0_ref = med
+    return a_r + b_r * x0_ref, b_r.copy()
+
+
+def _estimate_speed(B, D, rows, R, x_left, width_px):
+    """25 ou 50 mm/s pela largura do QRS em mm (25 mm/s: ~1.5-4 mm; 50 mm/s: ~3-8 mm)
+    combinada com o intervalo RR (40-150 bpm)."""
+    q = _row_quick_trace(B, D, rows, R, max(0, int(x_left)), width_px)
+    widths, rrs = [], []
+    from scipy.ndimage import uniform_filter1d
+    for t in q:
+        ok = ~np.isnan(t)
+        if ok.sum() < 100:
+            continue
+        x = np.arange(len(t)); t = np.interp(x, x[ok], t[ok])
+        g = np.abs(np.gradient(t))
+        a = uniform_filter1d(g, max(3, int(1.5 * R)))
+        b = _beats(t, 0, R)
+        if len(b) >= 2:
+            rrs += list(np.diff(b) / R)
+        thr = 0.5 * np.percentile(g, 99.5)
+        act = a > 0.25 * a.max()
+        s_, e_ = np.nonzero(np.diff(np.r_[0, act.astype(int), 0]) == 1)[0], np.nonzero(np.diff(np.r_[0, act.astype(int), 0]) == -1)[0]
+        for i0, i1 in zip(s_, e_):
+            if g[i0:i1].max() > thr:
+                widths.append((i1 - i0) / R)
+    if not widths:
+        return 25.0
+    wq = float(np.median(widths))
+    rr = float(np.median(rrs)) if rrs else None
+    sc = {}
+    for v in (25.0, 50.0):
+        qrs_ms = wq / v * 1000
+        s_ = -((np.log(qrs_ms / 100.0)) / 0.35) ** 2
+        if rr:
+            hr = 60.0 / (rr / v)
+            s_ += -((np.log(hr / 75.0)) / 0.4) ** 2
+        sc[v] = s_
+    # 25 mm/s é o padrão esmagador: 50 só com evidência clara
+    return 50.0 if sc[50.0] - sc[25.0] > 1.0 else 25.0
+
+
+def _vote_x0(xl, xe, rad, span_px, R):
+    """Votação: cada borda propõe um x0; vence o grupo com mais apoio (+-0.8 mm).
+    Com bordas dos dois lados, a média cancela o viés da ponta do traço."""
+    c = [(v + rad, "L") for v in xl] + [(v - rad - span_px, "R") for v in xe]
+    _vote_x0.both_sided = False
+    if not c:
+        return None
+    vals = np.array([v for v, _ in c])
+    sup = [(np.abs(vals - v) < 0.8 * R).sum() + 0.1 * len({t for (u, t) in c if abs(u - v) < 0.8 * R})
+           for v in vals]
+    v0 = vals[int(np.argmax(sup))]
+    grp = [(v, t) for v, t in c if abs(v - v0) < 0.8 * R]
+    Ls = [v for v, t in grp if t == "L"]; Rs = [v for v, t in grp if t == "R"]
+    _vote_x0.both_sided = bool(Ls and Rs)
+    if Ls and Rs:
+        return 0.5 * (np.median(Ls) + np.median(Rs))
+    return float(np.median(Ls or Rs))
+
+
+def digitize(image, cfg: Config | None = None, return_debug: bool = False):
+    cfg = cfg or Config()
+    img = cv2.imread(image, cv2.IMREAD_COLOR) if isinstance(image, str) else image
+    if img is None:
+        raise FileNotFoundError(image)
+    R = cfg.R
+    rect, pap, ginfo = rectify(img, R, cfg.ppmm)
+    D, glev = ink_map(rect, pap, R, return_grid_level=True)
+    B = binarize(D, R, glev)
+    (rect, pap, D, B), rot = _orient([rect, pap, D, B], R)
+
+    rows_all, cov, ext_all, pulses_all, spacing = _rows_pulses(B, pap, R)
+    H, W = B.shape
+    if len(rows_all) == 0:
+        raise RuntimeError("nenhuma linha de traçado encontrada")
+
+    forced = None
+    if cfg.layout != "auto":
+        forced = LAYOUTS[cfg.layout] if isinstance(cfg.layout, str) else cfg.layout
+        idx = [list(rows_all).index(r) for r in _pick_rows(rows_all, cov, len(forced))]
+    else:
+        idx = list(range(len(rows_all)))
+    rows = [rows_all[i] for i in idx]
+    ext = [ext_all[i] for i in idx]
+    pulses = [pulses_all[i] for i in idx]
+    spacing = float(np.median(np.diff(rows))) if len(rows) > 1 else spacing
+    half = 0.45 * spacing
+
+    # espessura provisória (alturas de segmentos em colunas)
+    lw_guess = []
+    for y, e in zip(rows, ext):
+        if not e:
+            continue
+        mid = (e[0] + e[1]) // 2
+        sub = B[max(0, int(y - half)):int(y + half), max(0, mid - int(20 * R)):mid + int(20 * R)]
+        for j in range(0, sub.shape[1], 3):
+            d = np.diff(np.concatenate([[0], sub[:, j].astype(np.int8), [0]]))
+            lw_guess += list(np.nonzero(d == -1)[0] - np.nonzero(d == 1)[0])
+    lw0 = float(np.percentile(lw_guess, 30)) if lw_guess else 3.0
+    band_vals = np.concatenate([D[max(0, int(y - half)):int(y + half)].ravel() for y in rows])
+    lev0 = 0.5 * float(np.percentile(band_vals[band_vals > 0.1], 90)) if (band_vals > 0.1).any() else 0.35
+
+    _edge_rows.text_mask = text_like_mask(B, R)
+
+    # ---------------------------------------------------- velocidade e duração
+    xlr0, xer0 = _edge_rows(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2)
+    xl_ok = xlr0[~np.isnan(xlr0)]
+    xr_ok = xer0[~np.isnan(xer0)]
+    left = float(np.median(xl_ok)) if len(xl_ok) else float(np.median([e[0] for e in ext if e]))
+    right = float(np.median(xr_ok)) if len(xr_ok) else float(np.median([e[1] for e in ext if e]))
+    span_mm = (right - left - lw0) / R
+    speed = cfg.speed
+    speed_src = "config"
+    if speed is None:
+        from .ocr import read_speed
+        sp_ocr, sp_sc = read_speed(_edge_rows.text_mask, R)
+        if sp_ocr is not None:
+            speed, speed_src = sp_ocr, "texto"
+        else:
+            speed, speed_src = _estimate_speed(B, D, rows, R, left, right - left), "QRS/RR"
+    if cfg.duration:
+        duration = float(cfg.duration)
+    else:
+        duration = span_mm / speed
+        for d_ in (1.25, 2.5, 5.0, 10.0, 12.0, 15.0, 20.0):
+            if abs(duration - d_) / d_ < 0.06:
+                duration = d_
+                break
+        else:
+            duration = round(duration, 1)
+    N = int(round(duration * cfg.fs))
+    span_px = (N - 1) / cfg.fs * speed * R
+
+    # ------------------------------------------------------- origem temporal
+    xl, xe = _edge_cands(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2)
+    x0 = _vote_x0(xl, xe, lw0 / 2, span_px, R)
+    if x0 is None:
+        x0 = float(np.median([e[0] for e in ext if e])) if any(ext) else 0.0
+    # registro por batimentos: traço rápido de cada linha inteira -> QRS -> afim por linha
+    xq0 = max(0, int(x0 - 2 * R))
+    qfull = _row_quick_trace(B, D, rows, R, xq0, span_px + 4 * R, full=True)
+    qtr = [float(y) - q["cen"] for y, q in zip(rows, qfull)]
+    reg = _register_rows([_beats(t, xq0, R) for t in qtr], R, span_px, rows=rows)
+    xlr, _, wkr = _edge_rows(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2, return_weak=True)
+    x0_r, sc_r = _row_time_maps(rows, xlr, lw0 / 2, x0, R, reg, weak=wkr,
+                                both_sided=getattr(_vote_x0, "both_sided", True))
+
+    # ------------------------------------- ganhos por linha (1 ou 2 níveis) e linha de base
+    def _snap(g):
+        # ganhos são sempre padronizados; foto em perspectiva encurta o pulso em até ~20%
+        gg = min((2.5, 5.0, 10.0, 20.0, 40.0), key=lambda v: abs(np.log(g / v)))
+        return gg if abs(g - gg) / gg < 0.22 else float(g)
+    lv1, lv2 = [], []
+    for p in pulses:
+        if p is None:
+            lv1.append(None); lv2.append(None); continue
+        lv1.append((p["foot"] + 0.5 - (p["top"] - 0.5) - lw0) / R)
+        lv2.append((p["foot"] + 0.5 - (p["top2"] - 0.5) - lw0) / R if p.get("step") else None)
+    g1s = [g for g in lv1 if g is not None]
+    g1med = float(np.median(g1s)) if g1s else 10.0
+    # pulso incoerente (QRS confundido / pé encoberto) não define ganho
+    std_g = (2.5, 5.0, 10.0, 20.0, 40.0)
+    for r_, g in enumerate(lv1):
+        # linhas podem ter ganhos diferentes legitimamente (ganho dividido): só descarta
+        # nível que não é próximo de nenhum ganho padrão nem da mediana
+        if g is not None and min(abs(g - gg) / gg for gg in std_g) > 0.22 and abs(g - g1med) / g1med > 0.15:
+            lv1[r_] = None
+    g1s = [g for g in lv1 if g is not None]
+    g2s = [g for g in lv2 if g is not None]
+    g1def = _snap(float(np.median(g1s))) if g1s else 10.0
+    g2def = _snap(float(np.median(g2s))) if g2s else None
+    levels = []
+    for r_ in range(len(rows)):
+        g1 = _snap(lv1[r_]) if lv1[r_] is not None else g1def
+        g2 = _snap(lv2[r_]) if lv2[r_] is not None else (g2def if pulses[r_] is None else None)
+        if cfg.gain:
+            g1, g2 = float(cfg.gain), None
+        levels.append((g1, g2))
+    base_q = []
+    for r_, (y, p) in enumerate(zip(rows, pulses)):
+        if p is not None:
+            base_q.append(p["top"] - 0.5 + lw0 / 2 + levels[r_][0] * R)
+        else:
+            q = qfull[r_]["cen"]; q = q[~np.isnan(q)]
+            if len(q):
+                hist, edges = np.histogram(q, bins=np.arange(q.min() - 1, q.max() + 2, 1.0))
+                hist = cv2.GaussianBlur(hist.astype(np.float32).reshape(-1, 1), (0, 0), 2).ravel()
+                base_q.append(float(edges[int(np.argmax(hist))] + 0.5))
+            else:
+                base_q.append(float(y))
+
+    # ------------------------------------------------------------- layout
+    layout_info = None
+    if forced is not None:
+        rows_spec = [list(r) for r in forced]
+        layout = cfg.layout if isinstance(cfg.layout, str) else "custom"
+    else:
+        ctx = _LayoutCtx(B, D, rows, pulses, R, x0_r, sc_r, speed, duration, qfull, base_q, levels)
+        layout_info = ctx.choose()
+        if layout_info is None:
+            rows_spec = [[f"row{i + 1}"] for i in range(len(rows))]
+            layout = "rows"
+        else:
+            rows_spec, layout = layout_info["spec"], layout_info["name"]
+
+    def seg_gain(r_, name):
+        g1, g2 = levels[r_]
+        return g2 if (g2 is not None and not is_limb(name) and not name.startswith("row")) else g1
+
+    names = LEADS if all((nm in LEADS or nm == "-aVR") for row in rows_spec for nm in row) else \
+        [nm for row in rows_spec for nm in row]
+
+    # ------------------------------------------------------- extração por segmento
+    meas = {l: [] for l in names}  # lista de arrays (N) com NaN
+    wts = {l: [] for l in names}   # pesos de confiança correspondentes
+    traces_dbg = []
+    seg_jobs = []
+    for r, (y, spec) in enumerate(zip(rows, rows_spec)):
+        base0 = base_q[r]
+        up = (y - rows[r - 1]) if r > 0 else spacing
+        dn = (rows[r + 1] - y) if r + 1 < len(rows) else spacing
+        # faixa de busca generosa: ondas grandes (R de 3-5 mV) invadem a linha vizinha;
+        # a primeira/última linha pode ir até a borda. O Viterbi + prior de linha de base
+        # mantém o traço certo mesmo com os vizinhos dentro da faixa.
+        ya = 0 if r == 0 else max(0, int(y - 1.6 * up))
+        yb = H if r == len(rows) - 1 else min(H, int(y + 1.6 * dn))
+        k = len(spec)
+        for c, lead in enumerate(spec):
+            n0, n1 = c * N // k, (c + 1) * N // k
+            xa = int(np.floor(x0_r[r] + sc_r[r] * n0 / cfg.fs * speed * R)) - 1
+            xb = int(np.ceil(x0_r[r] + sc_r[r] * (n1 - 1) / cfg.fs * speed * R)) + 2
+            xa, xb = max(0, xa), min(W, xb)
+            if xb - xa < 10:
+                continue
+            runs = column_runs(B, D, ya, yb, xa, xb)
+            others = [float(v) for i2, v in enumerate(rows) if i2 != r]
+            sel = viterbi_track(runs, base0, R, others=others, lw=lw0)
+            seg_jobs.append(dict(lead=lead, row=r, n0=n0, n1=n1, xa=xa, runs=runs, sel=sel))
+
+    # nível de "tinta cheia" e raio do traço (meia espessura) em trechos planos
+    pks = []
+    for j in seg_jobs:
+        tb, pk = selected_envelopes(D, j["runs"], j["sel"], j["xa"])
+        h = tb[:, 1] - tb[:, 0]
+        flat = np.abs(np.diff(tb[:, 0], prepend=np.nan)) + np.abs(np.diff(tb[:, 1], append=np.nan)) < 1
+        pks.append(pk[flat & (h >= 1)])
+    pks = np.concatenate(pks) if pks else np.array([0.8])
+    dfull = float(np.nanpercentile(pks, 75)) if pks.size else 0.8
+    th = []
+    for j in seg_jobs:
+        top, bot = envelope_edges(D, j["runs"], j["sel"], j["xa"], dfull)
+        j["top"], j["bot"] = top, bot
+        dt = np.abs(np.gradient(top)) + np.abs(np.gradient(bot))
+        th.append((bot - top)[dt < 0.3])
+    th = np.concatenate(th)
+    mark_occlusions(seg_jobs, float(np.median(th)) if th.size else lw0)
+    th = th[~np.isnan(th)]
+    rad = float(np.percentile(th, 20)) / 2 if th.size else lw0 / 2
+    rad_h = horizontal_halfwidth(D, seg_jobs, 0.5 * dfull, rad) if cfg.pen == "measure" else (
+        calibrate_pen([(j["top"], j["bot"]) for j in seg_jobs], rad) if cfg.pen == "calibrate" else rad)
+
+    # confiança por coluna: o segmento escolhido é compartilhado com o traço de OUTRA linha
+    # (ondas grandes que se cruzam / se fundem) -> a forma ali é ambígua
+    for j in seg_jobs:
+        n_ = len(j["sel"])
+        tb = np.full((n_, 2), np.nan)
+        for i_, k_ in enumerate(j["sel"]):
+            if k_ is not None:
+                tb[i_] = j["runs"][i_][k_][0], j["runs"][i_][k_][1]
+        j["tb"] = tb
+        j["shared"] = np.zeros(n_, bool)
+    for j in seg_jobs:
+        for o in seg_jobs:
+            if o is j or o["row"] == j["row"]:
+                continue
+            lo, hi = max(j["xa"], o["xa"]), min(j["xa"] + len(j["sel"]), o["xa"] + len(o["sel"]))
+            if hi <= lo:
+                continue
+            a_ = j["tb"][lo - j["xa"]:hi - j["xa"]]; b_ = o["tb"][lo - o["xa"]:hi - o["xa"]]
+            with np.errstate(invalid="ignore"):
+                ov = (a_[:, 0] <= b_[:, 1]) & (b_[:, 0] <= a_[:, 1])
+            j["shared"][lo - j["xa"]:hi - j["xa"]] |= ov
+    for j in seg_jobs:  # dilata ~1 mm: o entorno de uma fusão também é suspeito
+        k_ = int(R) | 1
+        j["shared"] = cv2.dilate(j["shared"].astype(np.uint8).reshape(1, -1), np.ones((1, k_), np.uint8)).ravel() > 0
+
+    # origem temporal final com o nível de 50% e o raio medidos
+    lev = 0.5 * dfull
+    xl, xe = _edge_cands(D, B, rows, ext, pulses, half, lev, R, rad)
+    x0f = _vote_x0(xl, xe, rad, span_px, R)
+    if x0f is not None:
+        x0 = float(x0f)
+    xlr, _, wkr = _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad, return_weak=True)
+    x0_r, sc_r = _row_time_maps(rows, xlr, rad, x0, R, reg, weak=wkr,
+                                both_sided=getattr(_vote_x0, "both_sided", True))
+
+    # linha de base final com o raio medido: 0 mV = centro do platô 1 + ganho do nível 1
+    for r_, p in enumerate(pulses):
+        if p is not None:
+            base_q[r_] = p["top"] - 0.5 + rad + levels[r_][0] * R
+
+    for j in seg_jobs:
+        yc, valid = centerline_from_envelopes(j["top"], j["bot"], rad, rh=rad_h)
+        if valid.sum() < 5:
+            continue
+        p = pulses[j["row"]]
+        gain = seg_gain(j["row"], j["lead"])
+        if p is not None:
+            base = base_q[j["row"]]
+        else:  # sem pulso: moda (isoelétrica) da linha
+            vv = yc[valid]
+            vv = vv[np.isfinite(vv)]
+            if len(vv) < 5:
+                continue
+            hist, edges = np.histogram(vv, bins=np.arange(vv.min() - 1, vv.max() + 2, 1.0))
+            hist = cv2.GaussianBlur(hist.astype(np.float32).reshape(-1, 1), (0, 0), 2).ravel()
+            base = float(edges[int(np.argmax(hist))] + 0.5)
+            j["base_from_mode"] = True
+        xs = np.arange(j["xa"], j["xa"] + len(yc), dtype=np.float64)
+        # bordas do segmento: pontas do traço / marcas separadoras / fim do traço vizinho
+        # -> descarta ~raio+1 px e extrapola linearmente a partir do interior
+        tr = np.ceil(rad_h + 1.0)
+        rr = j["row"]
+        xs_s = x0_r[rr] + sc_r[rr] * j["n0"] / cfg.fs * speed * R
+        xs_e = x0_r[rr] + sc_r[rr] * (j["n1"] - 1) / cfg.fs * speed * R
+        lo_cut = xs_s + tr if j["n0"] > 0 else -np.inf          # fronteira interna à esquerda
+        hi_cut = xs_e - tr if j["n1"] < N else np.inf           # fronteira interna à direita
+        good = valid & (xs > lo_cut) & (xs < hi_cut)
+        if good.sum() < 10:
+            good = valid
+        xg, yg = xs[good], yc[good]
+        tn = np.arange(j["n0"], j["n1"]) / cfg.fs
+        xn = x0_r[rr] + sc_r[rr] * tn * speed * R
+        yn = np.interp(xn, xg, yg)
+        # extrapolação linear limitada (inclinação amortecida), senão mantém o valor
+        K = min(6, len(xg))
+        a0 = np.polyfit(xg[:K], yg[:K], 1); a1 = np.polyfit(xg[-K:], yg[-K:], 1)
+        yn = np.where(xn < xg[0], yg[0] + 0.5 * a0[0] * (xn - xg[0]), yn)
+        yn = np.where(xn > xg[-1], yg[-1] + 0.5 * a1[0] * (xn - xg[-1]), yn)
+        v = (base - yn) / (gain * R)
+        lead = j["lead"]
+        if lead == "-aVR":  # Cabrera: derivação invertida
+            lead, v = "aVR", -v
+        arr = np.full(N, np.nan, np.float32)
+        arr[j["n0"]:j["n1"]] = v
+        meas[lead].append(arr)
+        w = np.full(N, np.nan, np.float32)
+        sh = np.interp(xn, xs, j["shared"].astype(float)) > 0.5
+        w[j["n0"]:j["n1"]] = np.where(sh, 0.05, 1.0)
+        wts[lead].append(w)
+        traces_dbg.append((xs, yc, valid))
+    lw = 2 * rad
+
+    sig = np.full((len(names), N), np.nan, np.float32)
+    nmeas = np.zeros((len(names), N), np.float32)
+    for li, l in enumerate(names):
+        if meas[l]:
+            st = np.stack(meas[l])
+            wt = np.where(np.isnan(st), 0.0, np.nan_to_num(np.stack(wts[l]), nan=0.0))
+            sw = wt.sum(0)
+            sig[li] = np.where(sw > 0, np.nansum(st * wt, 0) / np.maximum(sw, 1e-9), np.nan)
+            nmeas[li] = sw  # "número efetivo de medidas" (peso total) -> variância na fusão
+    if cfg.einthoven and names is LEADS:
+        sig = einthoven_fuse(sig, nmeas, fill=cfg.fill_limb)
+
+    gains_seg = {f"{r_}:{nm}": seg_gain(r_, nm) for r_, row in enumerate(rows_spec) for nm in row}
+    res = dict(signals=sig, fs=cfg.fs, leads=list(names), layout=layout, layout_rows=rows_spec,
+               layout_info=layout_info, rotation=str(rot),
+               gain_mm_per_mv=levels[0][0] if levels else None, gains=gains_seg, duration_s=duration,
+               speed_mm_per_s=speed, speed_source=speed_src, ppmm=ginfo["ppmm"], angle=ginfo["angle"],
+               grid_residual_mm=ginfo["residual_rms_mm"], line_width_px=lw, line_width_h_px=2 * rad_h,
+               pulses_found=sum(p is not None for p in pulses))
+    if return_debug:
+        dbg = rect.copy()
+        for xs, yi, valid in traces_dbg:
+            pts = np.stack([xs, yi], 1).astype(np.int32)
+            cv2.polylines(dbg, [pts], False, (255, 120, 0), 1, cv2.LINE_AA)
+        for y in rows:
+            cv2.line(dbg, (0, int(y)), (W, int(y)), (0, 160, 0), 1)
+        cv2.line(dbg, (int(x0), 0), (int(x0), H), (0, 160, 0), 1)
+        res["debug_image"] = dbg
+        res["per_segment"] = {l: [m.copy() for m in v] for l, v in meas.items() if v}
+        res["per_segment_weight"] = {l: [m.copy() for m in v] for l, v in wts.items() if v}
+        res["internals"] = dict(x0=x0, x0_rows=list(map(float, x0_r)), scale_rows=list(map(float, sc_r)),
+                                reg_a=list(map(float, reg[0])), reg_b=list(map(float, reg[1])),
+                                xl=xl, xe=xe, ext=ext,
+                                rows=list(map(int, rows)), pulses=pulses, rad=rad, rad_h=rad_h)
+        res["rectified"] = rect
+        res["ink"] = D
+    return res
+
+
+def einthoven_fuse(sig, nmeas, fill=False):
+    """Projeção de mínimos quadrados nas restrições lineares exatas:
+       I - II + III = 0   e   aVR + aVL + aVF = 0   (e, com fill, as relações de Goldberger)."""
+    s = sig.copy()
+    I, II, III, aVR, aVL, aVF = range(6)
+    var = 1.0 / np.maximum(nmeas, 0.02)  # amostras ocluídas (peso baixo) absorvem a correção
+
+    def project(idx, coef):
+        idx = list(idx)
+        X = s[idx]
+        ok = ~np.isnan(X).any(0)
+        if not ok.any():
+            return
+        a = np.array(coef, np.float32)[:, None]
+        v = var[idx][:, ok]
+        e = (a * X[:, ok]).sum(0)
+        den = (a * a * v).sum(0)
+        for j, k in enumerate(idx):
+            s[k, ok] = X[j, ok] - a[j, 0] * v[j] * e / den
+
+    project([I, II, III], [1, -1, 1])
+    project([aVR, aVL, aVF], [1, 1, 1])
+    if fill:
+        # completa usando as definições de Goldberger quando I e II existem, etc.
+        has = ~np.isnan(s)
+        m = has[I] & has[II]
+        for k, f in ((III, lambda: s[II] - s[I]), (aVR, lambda: -(s[I] + s[II]) / 2),
+                     (aVL, lambda: s[I] - s[II] / 2), (aVF, lambda: s[II] - s[I] / 2)):
+            val = f()
+            fillm = m & ~has[k]
+            s[k, fillm] = val[fillm]
+        has = ~np.isnan(s)
+        m = has[aVR] & has[aVL] & ~has[I]
+        Iv = (s[aVL] - s[aVR]) / 1.5
+        IIv = -2 * s[aVR] - Iv
+        s[I, m] = Iv[m]
+        mm = m & ~has[II]
+        s[II, mm] = IIv[mm]
+        mm = m & ~has[III]
+        s[III, mm] = (IIv - Iv)[mm]
+    return s

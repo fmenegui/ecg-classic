@@ -1,0 +1,20 @@
+[project]
+name = "ecgdig"
+version = "0.1.0"
+description = "Digitalizador clássico de ECG em papel (visão computacional, sem deep learning)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.23", "opencv-python-headless>=4.7", "scipy>=1.9", "scikit-image>=0.20"]
+
+[project.optional-dependencies]
+dev = ["pytest", "matplotlib"]
+
+[project.scripts]
+ecgdig = "ecgdig.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["ecgdig"]
