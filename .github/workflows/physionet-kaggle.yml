@@ -1,0 +1,57 @@
+name: PhysioNet (Kaggle) benchmark
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'inspect = lista os arquivos; eval = baixa N registros e mede SNR'
+        required: true
+        default: 'inspect'
+        type: choice
+        options: [inspect, eval]
+      n:
+        description: 'Número de registros (eval)'
+        required: false
+        default: '40'
+        type: string
+      config:
+        description: 'Campos extras do Config, ex.: nonrigid=poly (opcional)'
+        required: false
+        default: ''
+        type: string
+permissions:
+  contents: read
+jobs:
+  physionet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ vars.KAGGLE_USERNAME }}
+      COMP: physionet-ecg-image-digitization
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e . kaggle==2.2.5 kagglesdk==0.1.38 pandas
+      - name: Credencial
+        run: |
+          if [ -z "$KAGGLE_API_TOKEN" ]; then
+            echo "Falta o secret KAGGLE_API_TOKEN neste repositório (Settings > Secrets and variables > Actions)." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - name: Inspecionar
+        if: inputs.mode == 'inspect'
+        run: python benchmarks/physionet/run.py inspect --out results/physionet
+      - name: Avaliar
+        if: inputs.mode == 'eval'
+        run: python benchmarks/physionet/run.py eval --n "${{ inputs.n }}" --out results/physionet ${{ inputs.config && format('--config {0}', inputs.config) || '' }}
+      - name: Resumo
+        if: always()
+        run: cat results/physionet/report.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: physionet-${{ inputs.mode }}-${{ github.run_id }}
+          path: results/physionet/
+          retention-days: 14
