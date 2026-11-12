@@ -134,6 +134,8 @@ def main():
     ap.add_argument("mode", choices=["inspect", "eval"])
     ap.add_argument("--out", type=Path, default=Path("results/physionet"))
     ap.add_argument("--n", type=int, default=40)
+    ap.add_argument("--jobs", type=int, default=2)
+    ap.add_argument("--keep-raw", type=int, default=5, help="registros cujas imagens brutas vão no artefato")
     ap.add_argument("--config", action="append", default=[])
     a = ap.parse_args()
     if a.mode == "inspect":

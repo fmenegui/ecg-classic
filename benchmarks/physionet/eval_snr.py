@@ -83,13 +83,85 @@ def _to_gt_grid(sig500, fs, n):
     return out
 
 
+TYPES = ("0001", "0003", "0004", "0005", "0006", "0009", "0010", "0011", "0012")
+
+
+def _load_gt(gt_p):
+    gt_rows = list(csv.reader(open(gt_p)))
+    hdr = gt_rows[0]
+    G = np.full((12, len(gt_rows) - 1), np.nan)
+    for k, l in enumerate(LEADS):
+        if l in hdr:
+            c = hdr.index(l)
+            G[k] = [float(r[c]) if c < len(r) and r[c] != "" else np.nan for r in gt_rows[1:]]
+    return G
+
+
+def _work(job):
+    """Uma imagem: digitaliza, mede, salva sinais (250 Hz) e sobreposição."""
+    from ecgdig import digitize, Config
+    import cv2
+    rid, typ, fs, img_p, gt_p, out, cfg_kw, keep_raw = job
+    out = Path(out)
+    rec = dict(id=rid, type=typ, fs=fs)
+    t0 = time.monotonic()
+    try:
+        G = _load_gt(gt_p)
+        n = G.shape[1]
+        r = digitize(str(img_p), Config(**cfg_kw), return_debug=True)
+        S12 = np.full((12, r["signals"].shape[1]), np.nan)
+        for k_, nm in enumerate(r["leads"]):  # layout livre pode ter nomes fora dos 12
+            if nm in LEADS:
+                S12[LEADS.index(nm)] = r["signals"][k_]
+        P = _to_gt_grid(S12, fs, n)
+        it = r.get("internals", {})
+        rec.update(ok=True, layout=r["layout"], rows=r["layout_rows"], speed=r["speed_mm_per_s"],
+                   speed_source=r.get("speed_source"), duration=r["duration_s"],
+                   duration_assumed=r.get("duration_assumed"), horizontal_scale=r.get("horizontal_scale"),
+                   gains=sorted(set(float(g) for g in r["gains"].values())),
+                   confidence=float((r.get("layout_info") or {}).get("confidence") or 0),
+                   ppmm=r.get("ppmm"), angle=r.get("angle"), rotation=r.get("rotation"),
+                   grid_residual=r.get("grid_residual_mm"), grid_residual_cell=r.get("grid_residual_cell_mm"),
+                   pulses_left=r.get("pulses_found"), pulses_right=r.get("pulses_right"),
+                   x0_rows=[float(v) for v in it.get("x0_rows", [])], scale_rows=[float(v) for v in it.get("scale_rows", [])],
+                   image_shape=list(cv2.imread(str(img_p)).shape[:2]))
+        snr_raw, _ = _snr_record(G, P, fs, align=False)
+        snr_al, per = _snr_record(G, P, fs, align=True)
+        rec.update(snr_raw=snr_raw, snr=snr_al, per_lead=per)
+        # sinais a 250 Hz (float16) para o diagnóstico fora do runner
+        step = max(1, int(round(fs / 250)))
+        (out / "sig").mkdir(exist_ok=True)
+        np.savez_compressed(out / "sig" / f"{rid}-{typ}.npz", gt=G[:, ::step].astype(np.float16),
+                            pred=P[:, ::step].astype(np.float16), fs=fs / step)
+        d = r["debug_image"]
+        sc = min(1.0, 900 / d.shape[1])
+        cv2.imwrite(str(out / "img" / f"{rid}-{typ}.jpg"), cv2.resize(d, None, fx=sc, fy=sc,
+                    interpolation=cv2.INTER_AREA), [cv2.IMWRITE_JPEG_QUALITY, 62])
+    except Exception as e:  # noqa: BLE001
+        rec.update(ok=False, error=repr(e)[:200], trace=traceback.format_exc(limit=3)[-600:])
+    rec["seconds"] = round(time.monotonic() - t0, 1)
+    if keep_raw:
+        import shutil
+        (out / "raw").mkdir(exist_ok=True)
+        shutil.copy(img_p, out / "raw" / f"{rid}-{typ}.png")
+        shutil.copy(gt_p, out / "raw" / f"{rid}.csv")
+    try:
+        Path(img_p).unlink()
+    except OSError:
+        pass
+    print(rid, typ, rec.get("layout"), None if rec.get("snr") is None else round(rec["snr"], 2),
+          rec.get("error", ""), flush=True)
+    return rec
+
+
 def evaluate(a):
     from run import download  # mesmo módulo de download/CLI
-    from ecgdig import digitize, Config
+    from concurrent.futures import ProcessPoolExecutor
     import ast
 
     out: Path = a.out
     out.mkdir(parents=True, exist_ok=True)
+    (out / "img").mkdir(exist_ok=True)
     cfg_kw = {}
     for kv in a.config:
         for part in kv.split():
@@ -103,64 +175,25 @@ def evaluate(a):
     rows = list(csv.DictReader(open(meta_p)))
     random.Random(2026).shuffle(rows)
     rows = rows[: a.n]
+    keep = getattr(a, "keep_raw", 5)
     results = []
-    img_dir = out / "img"
-    img_dir.mkdir(exist_ok=True)
-    for ri, row in enumerate(rows):
-        rid, fs, n = row["id"], float(row["fs"]), int(row["sig_len"])
-        try:
-            gt_p = download(f"train/{rid}/{rid}.csv", cache / rid)
-        except Exception as e:  # noqa: BLE001
-            print("sem gabarito", rid, e, flush=True)
-            continue
-        gt_rows = list(csv.reader(open(gt_p)))
-        hdr = gt_rows[0]
-        G = np.full((12, len(gt_rows) - 1), np.nan)
-        for k, l in enumerate(LEADS):
-            if l in hdr:
-                c = hdr.index(l)
-                G[k] = [float(r[c]) if c < len(r) and r[c] != "" else np.nan for r in gt_rows[1:]]
-        n = G.shape[1]
-        for typ in ("0001", "0003", "0004", "0005", "0006", "0009", "0010", "0011", "0012"):
-            name = f"train/{rid}/{rid}-{typ}.png"
-            rec = dict(id=rid, type=typ, fs=fs)
-            t0 = time.monotonic()
+    with ProcessPoolExecutor(max_workers=max(1, a.jobs)) as ex:
+        for ri, row in enumerate(rows):
+            rid, fs = row["id"], float(row["fs"])
             try:
-                p = download(name, cache / rid)
-            except Exception:  # noqa: BLE001
-                continue
-            try:
-                r = digitize(str(p), Config(**cfg_kw), return_debug=(ri < 4))
-                S12 = np.full((12, r["signals"].shape[1]), np.nan)
-                for k_, nm in enumerate(r["leads"]):  # layout livre pode ter nomes fora dos 12
-                    if nm in LEADS:
-                        S12[LEADS.index(nm)] = r["signals"][k_]
-                P = _to_gt_grid(S12, fs, n)
-                if ri < 4:
-                    (out / "sig").mkdir(exist_ok=True)
-                    np.savez_compressed(out / "sig" / f"{rid}-{typ}.npz", gt=G.astype(np.float32),
-                                        pred=P.astype(np.float32), fs=fs)
-                rec.update(ok=True, layout=r["layout"], speed=r["speed_mm_per_s"], duration=r["duration_s"],
-                           gains=sorted(set(float(g) for g in r["gains"].values())),
-                           confidence=float((r.get("layout_info") or {}).get("confidence") or 0))
-                snr_raw, _ = _snr_record(G, P, fs, align=False)
-                snr_al, per = _snr_record(G, P, fs, align=True)
-                rec.update(snr_raw=snr_raw, snr=snr_al, per_lead=per)
-                if ri < 4:
-                    import cv2
-                    d = r["debug_image"]
-                    sc = min(1.0, 1100 / d.shape[1])
-                    cv2.imwrite(str(img_dir / f"{rid}-{typ}.jpg"), cv2.resize(d, None, fx=sc, fy=sc), [cv2.IMWRITE_JPEG_QUALITY, 72])
+                gt_p = download(f"train/{rid}/{rid}.csv", cache / rid)
             except Exception as e:  # noqa: BLE001
-                rec.update(ok=False, error=repr(e)[:200], trace=traceback.format_exc(limit=2)[-400:])
-            rec["seconds"] = round(time.monotonic() - t0, 1)
-            results.append(rec)
-            print(rid, typ, rec.get("layout"), None if rec.get("snr") is None else round(rec["snr"], 2), rec.get("error", ""), flush=True)
-            try:
-                p.unlink()  # imagens de celular são grandes; o runner tem pouco disco
-            except OSError:
-                pass
-        (out / "results.json").write_text(json.dumps(dict(config=cfg_kw, results=results), indent=1, default=str))
+                print("sem gabarito", rid, e, flush=True)
+                continue
+            jobs = []
+            for typ in TYPES:
+                try:
+                    p = download(f"train/{rid}/{rid}-{typ}.png", cache / rid)
+                except Exception:  # noqa: BLE001
+                    continue
+                jobs.append((rid, typ, fs, str(p), str(gt_p), str(out), cfg_kw, ri < keep))
+            results += list(ex.map(_work, jobs))
+            (out / "results.json").write_text(json.dumps(dict(config=cfg_kw, results=results), indent=1, default=str))
     _report(out, results, cfg_kw)
 
 
