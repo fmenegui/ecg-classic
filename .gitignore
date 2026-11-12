@@ -6,3 +6,7 @@ data/
 bench/
 ext/
 *.npz
+
+# benchmark LITFL: imagens baixadas e saídas
+benchmarks/litfl/cache/
+results/

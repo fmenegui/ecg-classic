@@ -283,7 +283,8 @@ def _correspondences(Gc, T_major, T_minor, use_major, tile, step):
     return src, dst, w
 
 
-def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, nonrigid: str = "cell"):
+def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, nonrigid: str = "cell",
+            cell_min_mm: float = 0.06):
     """Retorna (img_ret, paper_ret, info). img_ret tem R px/mm e linhas grossas em múltiplos de 5R.
 
     nonrigid: "poly" (polinômio cúbico global), "cell" (polinômio + campo local por células de
@@ -339,6 +340,12 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
         out_p, pap_p, rms, mx, my = _refine_nonrigid(out, pap, R, return_map=True)
         if nonrigid == "cell" and mx is not None:
             loc = _local_field(out_p, pap_p, R)
+            # só aplica o campo local quando ele se destaca do papel plano: em scans e
+            # sintéticos sem dobra o resíduo local fica em 0,01-0,04 mm (ruído de fase) e
+            # aplicá-lo só mexe em decisões marginais; vincos e fotos dão 0,09-0,7 mm
+            if loc is not None and loc[2] < cell_min_mm:
+                rms_cell = loc[2]
+                loc = None
             if loc is not None:
                 lx, ly, rms_cell = loc
                 H, W = out.shape[:2]

@@ -1,0 +1,1828 @@
+{
+ "version": 1,
+ "created": "2026-11-12",
+ "annotator": "revisão visual (Claude, sessão de 12/11/2026) sobre a saída do ecgdig; campos None = não verificável na imagem",
+ "fields": {
+  "layout": "família impressa (3x4, 3x4+1, 3x4+2, 3x4+3, 6x2, rows)",
+  "rhythm": "derivações das tiras de ritmo, de cima para baixo (None = não verificável)",
+  "speed": "mm/s",
+  "gain": "ganhos distintos na página, mm/mV (None = pulso ilegível)",
+  "duration": "s por linha",
+  "review": "bom/atencao/falha na revisão de 12/11/2026"
+ },
+ "images": {
+  "0000": {
+   "file": "img_0000",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Right-Bundle-Branch-Block-RBBB-6.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "RBBB"
+   ]
+  },
+  "0001": {
+   "file": "img_0001",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Right-Bundle-Branch-Block-RBBB-5.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "RBBB"
+   ]
+  },
+  "0002": {
+   "file": "img_0002",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Right-Bundle-Branch-Block-RBBB-3.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "RBBB"
+   ]
+  },
+  "0003": {
+   "file": "img_0003",
+   "url": "https://litfl.com/wp-content/uploads/2013/02/OMI-ECG-Proximal-LAD-RBBB-2048x1011.png",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "RBBB"
+   ]
+  },
+  "0004": {
+   "file": "img_0004",
+   "url": "https://litfl.com/wp-content/uploads/2022/07/RBBB-NEW.jpeg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "RBBB"
+   ]
+  },
+  "0005": {
+   "file": "img_0005",
+   "url": "https://litfl.com/wp-content/uploads/2021/01/ECG-Left-Bundle-Branch-Block-LBBB-2-2.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "LBBB"
+   ]
+  },
+  "0006": {
+   "file": "img_0006",
+   "url": "https://litfl.com/wp-content/uploads/2021/01/ECG-LBBB-AF-3.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "atencao",
+   "note": "Ganho de uma linha medido como 7,3 mm/mV (pulso deformado); o resto está bom.",
+   "diagnoses": [
+    "AF",
+    "LBBB"
+   ]
+  },
+  "0007": {
+   "file": "img_0007",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Left-bundle-branch-block-LBBB-4.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "falha",
+   "note": "Traço fraco e quebrado: só parte das linhas foi extraída e a duração saiu 3,4 s.",
+   "diagnoses": [
+    "LBBB"
+   ]
+  },
+  "0008": {
+   "file": "img_0008",
+   "url": "https://litfl.com/wp-content/uploads/2022/07/LBBB.jpeg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "LBBB"
+   ]
+  },
+  "0009": {
+   "file": "img_0009",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-Fibrillation-coarse-flutter-waves.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AF"
+   ]
+  },
+  "0010": {
+   "file": "img_0010",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-Fibrillation-coarse-flutter-waves-2-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AF"
+   ]
+  },
+  "0011": {
+   "file": "img_0011",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-Fibrillation-3.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AF"
+   ]
+  },
+  "0012": {
+   "file": "img_0012",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-Fibrillation-4.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AF"
+   ]
+  },
+  "0013": {
+   "file": "img_0013",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-Fibrillation-Slow-Ventricualr-response.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AF"
+   ]
+  },
+  "0014": {
+   "file": "img_0014",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Ashman-aberrancy-4.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AF",
+    "Premature_beat"
+   ]
+  },
+  "0015": {
+   "file": "img_0015",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/AV-sequential-pacing-1-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "atencao",
+   "note": "Linhas 3 e 4 com trechos retos onde o traço some (interpolação).",
+   "diagnoses": [
+    "PM"
+   ]
+  },
+  "0016": {
+   "file": "img_0016",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/AV-sequential-pacing-2-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "PM"
+   ]
+  },
+  "0017": {
+   "file": "img_0017",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/AV-sequential-pacing-3-2.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "PM"
+   ]
+  },
+  "0018": {
+   "file": "img_0018",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Ventricular-pacing-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "PM"
+   ]
+  },
+  "0019": {
+   "file": "img_0019",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Ventricular-pacing-with-capture-beats-2.jpg",
+   "layout": "3x4+3",
+   "rhythm": [
+    "V1",
+    "II",
+    "V5"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "PM"
+   ]
+  },
+  "0020": {
+   "file": "img_0020",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Ventricular-pacing-with-AF-and-fusion-beats-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "PM"
+   ]
+  },
+  "0021": {
+   "file": "img_0021",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/atrial-pacing-1st-degree-AV-block.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "PM"
+   ]
+  },
+  "0022": {
+   "file": "img_0022",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Atrial-paced-rhythm-with-Wenckebach-conduction.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "PM"
+   ]
+  },
+  "0023": {
+   "file": "img_0023",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Premature-Atrial-Complex-PAC-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Premature_beat"
+   ]
+  },
+  "0024": {
+   "file": "img_0024",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Premature-Ventricular-Complex-PVC-Bigeminy.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "atencao",
+   "note": "Na linha 3 o rastreador salta para a linha de cima num trecho e desenha uma reta.",
+   "diagnoses": [
+    "Premature_beat"
+   ]
+  },
+  "0025": {
+   "file": "img_0025",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Premature-Ventricular-Complex-PVC-Quadrigeminy.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Premature_beat"
+   ]
+  },
+  "0026": {
+   "file": "img_0026",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-PVC-Couplets-.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Premature_beat"
+   ]
+  },
+  "0027": {
+   "file": "img_0027",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Wenckebach-AV-block-1.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AVB_2_3_Adv_SB"
+   ]
+  },
+  "0028": {
+   "file": "img_0028",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Wenckebach-AV-block-Mobitz-1.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AVB_2_3_Adv_SB"
+   ]
+  },
+  "0029": {
+   "file": "img_0029",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Inferior-STEMI-RV-infacrct-Wenckebach.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AVB_2_3_Adv_SB"
+   ]
+  },
+  "0030": {
+   "file": "img_0030",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-wenckebach-atrial-pacing.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": null,
+   "duration": 10.0,
+   "review": "atencao",
+   "note": "A tira de ritmo (rotulada TL/SUAR) não entrou no layout; ganho 5 mm/mV a conferir.",
+   "diagnoses": [
+    "AVB_2_3_Adv_SB"
+   ]
+  },
+  "0031": {
+   "file": "img_0031",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-2-to-1-AV-Block-P-mitrale.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AVB_2_3_Adv_SB"
+   ]
+  },
+  "0032": {
+   "file": "img_0032",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-High-Grade-AV-block-4-to-1-AV-block.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AVB_2_3_Adv_SB"
+   ]
+  },
+  "0033": {
+   "file": "img_0033",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Inferior-STEMI-with-3rd-degree-AV-Block-CHB.jpg",
+   "layout": "6x2",
+   "rhythm": null,
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "falha",
+   "note": "Página 6x2 com supra de ST gigante e papel curvo: lida como 3x4+3, 7,4 s, metade direita sem traço.",
+   "diagnoses": [
+    "AVB_2_3_Adv_SB",
+    "Injury_Current"
+   ]
+  },
+  "0034": {
+   "file": "img_0034",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Complete-heart-block-CHB.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "falha",
+   "note": "Velocidade (50) e ganho (3,8) errados: pulso mal medido e QRS largo enganam a fisiologia.",
+   "diagnoses": [
+    "AVB_2_3_Adv_SB"
+   ]
+  },
+  "0035": {
+   "file": "img_0035",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Complete-heart-block-CHB-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "falha",
+   "note": "Traço muito claro: só QRS isolados foram capturados; duração 3,4 s.",
+   "diagnoses": [
+    "AVB_2_3_Adv_SB"
+   ]
+  },
+  "0036": {
+   "file": "img_0036",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Strip-II-CHB-Complete-heart-block.jpg",
+   "layout": "rows",
+   "rhythm": null,
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "atencao",
+   "note": "Cinco tiras contínuas de DII (impressão de ritmo): nomes de grade 3x4 inventados; o traçado está bom.",
+   "diagnoses": [
+    "AVB_2_3_Adv_SB"
+   ]
+  },
+  "0037": {
+   "file": "img_0037",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/normal-sinus-rhythm-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Normal"
+   ]
+  },
+  "0038": {
+   "file": "img_0038",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Sinus-Tachycardia.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "PSVT_ST"
+   ]
+  },
+  "0039": {
+   "file": "img_0039",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Sin-us-bradycardia.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AVB_2_3_Adv_SB"
+   ]
+  },
+  "0040": {
+   "file": "img_0040",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Slow-Fast-Typical-AVNRT.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "atencao",
+   "note": "Ganhos 6,95 e 7,0 mm/mV em duas linhas: pulso medido errado.",
+   "diagnoses": [
+    "PSVT_ST"
+   ]
+  },
+  "0041": {
+   "file": "img_0041",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Slow-Fast-2-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": null,
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "PSVT_ST"
+   ]
+  },
+  "0042": {
+   "file": "img_0042",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Fast-Slow-AVNRT-ECG-4-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "PSVT_ST"
+   ]
+  },
+  "0044": {
+   "file": "img_0044",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Fast-Slow-AVNRT.jpg",
+   "layout": "3x4+3",
+   "rhythm": [
+    "V1",
+    "II",
+    "V5"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "PSVT_ST"
+   ]
+  },
+  "0045": {
+   "file": "img_0045",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-Flutter-with-2-1-Block-1-.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AT_Flutter"
+   ]
+  },
+  "0046": {
+   "file": "img_0046",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-Flutter-with-Variable-Block.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AT_Flutter"
+   ]
+  },
+  "0047": {
+   "file": "img_0047",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-flutter-with-4-1-block.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AT_Flutter"
+   ]
+  },
+  "0048": {
+   "file": "img_0048",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-Flutter-variable-block-2-1-4-1.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    5.0,
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "atencao",
+   "note": "Ganho dividido 10/5 escrito no cabeçalho, medido como 3,8.",
+   "diagnoses": [
+    "AT_Flutter"
+   ]
+  },
+  "0049": {
+   "file": "img_0049",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-Flutter-with-High-Grade-AV-Block.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AT_Flutter"
+   ]
+  },
+  "0050": {
+   "file": "img_0050",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-flutter-1-1-block.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "falha",
+   "note": "Tira de ritmo clara demais não foi detectada; linha 2 parcial; duração 8,7 s.",
+   "diagnoses": [
+    "AT_Flutter"
+   ]
+  },
+  "0051": {
+   "file": "img_0051",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-Flutter-2-1-block.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AT_Flutter"
+   ]
+  },
+  "0052": {
+   "file": "img_0052",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-flutter-with-Negative-flutter-waves.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AT_Flutter"
+   ]
+  },
+  "0053": {
+   "file": "img_0053",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Ectopic-atrial-tachycardia-inverted-p-waves.jpg",
+   "layout": "3x4+2",
+   "rhythm": [
+    "V1",
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AT_Flutter"
+   ]
+  },
+  "0054": {
+   "file": "img_0054",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Ectopic-atrial-tachycardia-inverted-p-waves-2.jpeg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "AT_Flutter"
+   ]
+  },
+  "0055": {
+   "file": "img_0055",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-12-lead-VF-ventricular-fibrillation.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "VT_VF"
+   ]
+  },
+  "0056": {
+   "file": "img_0056",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Ventricular-fibrillation-VF-original-VF-VT.jpeg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "VT_VF"
+   ]
+  },
+  "0057": {
+   "file": "img_0057",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-AMI-STEMI-to-VF.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "VT_VF",
+    "Injury_Current"
+   ]
+  },
+  "0058": {
+   "file": "img_0058",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-AMI-STEMI-to-VF-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "atencao",
+   "note": "Linha 3 parcialmente extraída (traço fraco em fundo ruidoso).",
+   "diagnoses": [
+    "VT_VF",
+    "Injury_Current"
+   ]
+  },
+  "0059": {
+   "file": "img_0059",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Belhassen-VT-with-capture-beat1-2.jpg",
+   "layout": "3x4+3",
+   "rhythm": [
+    "V1",
+    "II",
+    "V5"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "VT_VF",
+    "RBBB"
+   ]
+  },
+  "0060": {
+   "file": "img_0060",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Idiopathic-Fascicular-Left-Ventricular-Tachycardia-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "VT_VF"
+   ]
+  },
+  "0061": {
+   "file": "img_0061",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Idiopathic-Fascicular-Left-Ventricular-Tachycardia-2a.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "VT_VF"
+   ]
+  },
+  "0062": {
+   "file": "img_0062",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Primary-idiopathic-fascicular-VT-3a.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "VT_VF"
+   ]
+  },
+  "0063": {
+   "file": "img_0063",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Primary-idiopathic-fascicular-VT-3b-reversion.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "VT_VF"
+   ]
+  },
+  "0064": {
+   "file": "img_0064",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Monomorphic-ventricular-tachycardia-VT-8.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "VT_VF"
+   ]
+  },
+  "0065": {
+   "file": "img_0065",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Monomorphic-ventricular-tachycardia-VT-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "falha",
+   "note": "Página fotografada curva (cilindro): grade não retificada, metade do traço perdido, layout errado.",
+   "diagnoses": [
+    "VT_VF"
+   ]
+  },
+  "0066": {
+   "file": "img_0066",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Monomorphic-ventricular-tachycardia-VT-3.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "VT_VF"
+   ]
+  },
+  "0067": {
+   "file": "img_0067",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Monomorphic-ventricular-tachycardia-VT-4-and-bigeminy.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "atencao",
+   "note": "TV com complexos enormes cruzando as linhas vizinhas: o rastreador mistura traços em vários trechos.",
+   "diagnoses": [
+    "VT_VF"
+   ]
+  },
+  "0068": {
+   "file": "img_0068",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Monomorphic-ventricular-tachycardia-VT-5.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "atencao",
+   "note": "Ganho medido 3,7 mm/mV (pulso cortado na borda).",
+   "diagnoses": [
+    "VT_VF"
+   ]
+  },
+  "0069": {
+   "file": "img_0069",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Monomorphic-ventricular-tachycardia-VT-6.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "falha",
+   "note": "Duração 13,6 s e traços cruzados (TV larga): eixo do tempo errado.",
+   "diagnoses": [
+    "VT_VF"
+   ]
+  },
+  "0070": {
+   "file": "img_0070",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Monomorphic-ventricular-tachycardia-VT-71.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "VT_VF"
+   ]
+  },
+  "0071": {
+   "file": "img_0071",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Anterolateral-AMI-STEMI-2.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0072": {
+   "file": "img_0072",
+   "url": "https://litfl.com/wp-content/uploads/2019/06/ICE-004-anterior-hyperacute-STEMI-ECG.jpeg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0073": {
+   "file": "img_0073",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Anterior-STEMI-evolving.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0074": {
+   "file": "img_0074",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Extensive-Anterolateral-STEMI.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "atencao",
+   "note": "Rótulos cortados ('L', '2', '5'): layout montado pela hipótese livre.",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0075": {
+   "file": "img_0075",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Extensive-Anterior-STEMI-acute.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0076": {
+   "file": "img_0076",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Ventricular-Aneurysm.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0077": {
+   "file": "img_0077",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Extensive-anterior-MI-tombstoning-pattern.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0078": {
+   "file": "img_0078",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Anterior-inferior-STEMI.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0079": {
+   "file": "img_0079",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Ostial-LAD-occlusion-septal-STEMI-2.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current",
+    "RBBB"
+   ]
+  },
+  "0080": {
+   "file": "img_0080",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/EC-Proximal-LAD-Acute-anteroseptal-STEMI.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current",
+    "RBBB"
+   ]
+  },
+  "0081": {
+   "file": "img_0081",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-High-Lateral-STEMI-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0082": {
+   "file": "img_0082",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-High-lateral-STEMI-3.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0083": {
+   "file": "img_0083",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Inferior-STEMI-Hyperacute-1.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0084": {
+   "file": "img_0084",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Inferior-AMI-STEMI.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0085": {
+   "file": "img_0085",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Inferior-AMI-STEMI-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0086": {
+   "file": "img_0086",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Inferior-AMI-STEMI-Hyperacute.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "atencao",
+   "note": "Ganho 6,5 mm/mV (fora do padrão): pulso mal medido.",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0087": {
+   "file": "img_0087",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Inferior-AMI-STEMI-3.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0088": {
+   "file": "img_0088",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Inferior-AMI-STEMI-Massive-tombstones.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0089": {
+   "file": "img_0089",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Recent-inferolateral-STEMI.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0090": {
+   "file": "img_0090",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Inferior-AMI-STEMI-CHB-Complete-heart-block.jpg",
+   "layout": "6x2",
+   "rhythm": null,
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "falha",
+   "note": "Mesma página da 0033 (repetida no conjunto): mesmo erro.",
+   "diagnoses": [
+    "AVB_2_3_Adv_SB",
+    "Injury_Current"
+   ]
+  },
+  "0091": {
+   "file": "img_0091",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Inferior-STEMI-with-sinus-node-dysfunction.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0092": {
+   "file": "img_0092",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Lateral-STEMI-1st-diagonal.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "V1"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0093": {
+   "file": "img_0093",
+   "url": "https://litfl.com/wp-content/uploads/2018/10/ECG-High-Lateral-STEMI-1.png",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0094": {
+   "file": "img_0094",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Completed-high-lateral-AMI.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0095": {
+   "file": "img_0095",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Anterolateral-STEMI-1.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0096": {
+   "file": "img_0096",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Anterolateral-STEMI-Hyperacute.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0097": {
+   "file": "img_0097",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Inferolateral-STEMI-proximal-circumflex-artery-occlusion.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0098": {
+   "file": "img_0098",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-inferoposterolateral.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0099": {
+   "file": "img_0099",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Posterior-AMI-1.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0100": {
+   "file": "img_0100",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Posterior-AMI-2.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0101": {
+   "file": "img_0101",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Posterior-AMI-3.jpg",
+   "layout": "3x4",
+   "rhythm": [],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0102": {
+   "file": "img_0102",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/ECG-Posterior-AMI-4a.jpg",
+   "layout": "3x4+1",
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "bom",
+   "note": "",
+   "diagnoses": [
+    "Injury_Current"
+   ]
+  },
+  "0043": {
+   "file": "img_0043",
+   "url": "https://litfl.com/wp-content/uploads/2018/08/Fast-Slow-AVNRT-ECG-5.jpg",
+   "layout": null,
+   "rhythm": null,
+   "speed": 25.0,
+   "gain": [
+    10.0
+   ],
+   "duration": 10.0,
+   "review": "indisponivel",
+   "note": "LITFL recusa o download (HTTP 403).",
+   "diagnoses": []
+  }
+ }
+}
