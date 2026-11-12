@@ -1,0 +1,33 @@
+name: LITFL real-image smoke test
+on:
+  push:
+    paths:
+      - 'benchmarks/litfl_smoke.py'
+      - '.github/workflows/litfl-smoke.yml'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Number of images to test'
+        required: true
+        default: '12'
+        type: string
+jobs:
+  litfl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - name: Run LITFL benchmark
+        env:
+          LIMIT: ${{ inputs.limit || '12' }}
+        run: python benchmarks/litfl_smoke.py --limit "$LIMIT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: litfl-results
+          path: results/litfl/
+          retention-days: 7
