@@ -1,0 +1,33 @@
+name: PMcardio pilot (self-hosted)
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_dir:
+        description: 'Absolute path to unpacked PM-ECG-ID dataset on runner'
+        required: true
+        type: string
+      n:
+        description: 'Number of stratified images'
+        required: true
+        default: '100'
+        type: string
+jobs:
+  benchmark:
+    runs-on: [self-hosted, linux, x64, pmcardio]
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e . numpy
+      - name: Run PMcardio pilot
+        env:
+          DATASET_DIR: ${{ inputs.dataset_dir }}
+          N_IMAGES: ${{ inputs.n }}
+        run: python benchmarks/pmcardio_pilot.py --dataset "$DATASET_DIR" --n "$N_IMAGES"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pmcardio-pilot
+          path: results/pmcardio/
