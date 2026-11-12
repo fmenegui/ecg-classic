@@ -37,18 +37,18 @@
  "schiller12": {
   "layout": "6x1-prec",
   "speed": 50.0,
-  "conf": 0.999982670307168
+  "conf": 0.9999893834663679
  },
  "photo0": {
   "layout": "6x1-prec",
   "speed": 50.0,
-  "conf": 0.9947374572400685
+  "conf": 0.9951041616261564
  },
  "photo1": {
   "layout": "6x1-limb-cabrera",
   "speed": 50.0,
-  "conf": 0.7763260834461596,
-  "einthoven_uV": 217.5,
-  "rms_II_uV": 605.5
+  "conf": 0.55,
+  "einthoven_uV": 235.4,
+  "rms_II_uV": 604.7
  }
 }

@@ -33,6 +33,10 @@ class Config:
     fill_limb: bool = False    # reconstrói derivações dos membros onde possível
     ppmm: float | None = None  # px/mm da imagem original, se conhecido (DPI/25.4)
     pen: str = "measure"       # largura horizontal da pena: measure | calibrate | isotropic
+    # registro por batimentos só corrige cisalhamento acima disto (mm a 25 mm/s): o instante
+    # do QRS difere entre derivações por razões fisiológicas (p90 ~12 ms), o que imita
+    # um cisalhamento de até ~0.5 mm; abaixo disso o registro mais atrapalha que ajuda
+    reg_min_shift_mm: float = 0.65
 
 
 def _pick_rows(peaks, cov, n_expected):
@@ -82,6 +86,35 @@ def _corr(a, b, win=151):
         return 0.0
     return float(np.corrcoef(a, b)[0, 1])
 
+
+
+def _box_cols(xa, n, boxes, pad=2):
+    """Para cada caixa de rótulo que cruza [xa, xa+n): (i0, i1, y0, y1) em índices locais."""
+    out = []
+    for (bx0, by0, bx1, by1) in boxes:
+        i0, i1 = max(0, bx0 - pad - xa), min(n, bx1 + pad + 1 - xa)
+        if i1 > i0:
+            out.append((i0, i1, by0 - pad, by1 + pad))
+    return out
+
+
+def _drop_label_runs(runs, xa, boxes):
+    """Segmentos de tinta inteiramente dentro de um rótulo são letras, não traçado."""
+    for i0, i1, y0, y1 in _box_cols(xa, len(runs), boxes):
+        for i in range(i0, i1):
+            runs[i] = [c for c in runs[i] if not (c[0] >= y0 and c[1] <= y1)]
+
+
+def _mask_label_edges(job, boxes):
+    """Borda do envelope que cai dentro de um rótulo é desconhecida (letra colada ao
+    traço); a borda do lado de fora continua valendo (ex.: topo de um R acima do rótulo)."""
+    top, bot = job["top"], job["bot"]
+    for i0, i1, y0, y1 in _box_cols(job["xa"], len(top), boxes):
+        sl = slice(i0, i1)
+        with np.errstate(invalid="ignore"):
+            t, b = top[sl], bot[sl]
+            t[(t >= y0) & (t <= y1)] = np.nan
+            b[(b >= y0) & (b <= y1)] = np.nan
 
 def _rows_pulses(B, pap, R):
     """Linhas de traçado candidatas (sem texto/bordas), extensões e pulsos."""
@@ -310,7 +343,7 @@ def _row_time_maps(rows, xl, rad, x0g, R, reg, tol_mm=4.0, weak=None, both_sided
     return a_r + b_r * x0_ref, b_r.copy()
 
 
-def _estimate_speed(B, D, rows, R, x_left, width_px):
+def _estimate_speed(B, D, rows, R, x_left, width_px, return_scores=False):
     """25 ou 50 mm/s pela largura do QRS em mm (25 mm/s: ~1.5-4 mm; 50 mm/s: ~3-8 mm)
     combinada com o intervalo RR (40-150 bpm)."""
     q = _row_quick_trace(B, D, rows, R, max(0, int(x_left)), width_px)
@@ -333,11 +366,11 @@ def _estimate_speed(B, D, rows, R, x_left, width_px):
             if g[i0:i1].max() > thr:
                 widths.append((i1 - i0) / R)
     if not widths:
-        return 25.0
+        return (25.0, {}) if return_scores else 25.0
     wq = float(np.median(widths))
     rr = float(np.median(rrs)) if rrs else None
     sc = {}
-    for v in (25.0, 50.0):
+    for v in (12.5, 25.0, 50.0):
         qrs_ms = wq / v * 1000
         s_ = -((np.log(qrs_ms / 100.0)) / 0.35) ** 2
         if rr:
@@ -345,7 +378,8 @@ def _estimate_speed(B, D, rows, R, x_left, width_px):
             s_ += -((np.log(hr / 75.0)) / 0.4) ** 2
         sc[v] = s_
     # 25 mm/s é o padrão esmagador: 50 só com evidência clara
-    return 50.0 if sc[50.0] - sc[25.0] > 1.0 else 25.0
+    v = 50.0 if sc[50.0] - sc[25.0] > 1.0 else 25.0
+    return (v, sc) if return_scores else v
 
 
 def _vote_x0(xl, xe, rad, span_px, R):
@@ -423,10 +457,15 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     if speed is None:
         from .ocr import read_speed
         sp_ocr, sp_sc = read_speed(_edge_rows.text_mask, R)
-        if sp_ocr is not None:
+        v_phys, sc_phys = _estimate_speed(B, D, rows, R, left, right - left, return_scores=True)
+        # o texto vence, a menos que a fisiologia o contradiga com força (leitura fraca de
+        # "25mm/s" degradado vira "12.5" ou "50": QRS de 50 ms / FC de 30 bpm denunciam)
+        ok_txt = sp_ocr is not None and (
+            sp_sc >= 0.7 or not sc_phys or sc_phys.get(sp_ocr, -np.inf) >= max(sc_phys.values()) - 2.0)
+        if ok_txt:
             speed, speed_src = sp_ocr, "texto"
         else:
-            speed, speed_src = _estimate_speed(B, D, rows, R, left, right - left), "QRS/RR"
+            speed, speed_src = v_phys, "QRS/RR"
     if cfg.duration:
         duration = float(cfg.duration)
     else:
@@ -449,7 +488,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     xq0 = max(0, int(x0 - 2 * R))
     qfull = _row_quick_trace(B, D, rows, R, xq0, span_px + 4 * R, full=True)
     qtr = [float(y) - q["cen"] for y, q in zip(rows, qfull)]
-    reg = _register_rows([_beats(t, xq0, R) for t in qtr], R, span_px, rows=rows)
+    reg = _register_rows([_beats(t, xq0, R) for t in qtr], R, span_px, rows=rows,
+                         min_shift_px=cfg.reg_min_shift_mm * R * max(1.0, speed / 25.0))
     xlr, _, wkr = _edge_rows(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2, return_weak=True)
     x0_r, sc_r = _row_time_maps(rows, xlr, lw0 / 2, x0, R, reg, weak=wkr,
                                 both_sided=getattr(_vote_x0, "both_sided", True))
@@ -500,12 +540,17 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
 
     # ------------------------------------------------------------- layout
     layout_info = None
+    label_boxes = []
     if forced is not None:
         rows_spec = [list(r) for r in forced]
         layout = cfg.layout if isinstance(cfg.layout, str) else "custom"
     else:
         ctx = _LayoutCtx(B, D, rows, pulses, R, x0_r, sc_r, speed, duration, qfull, base_q, levels)
         layout_info = ctx.choose()
+        # caixas de rótulos lidos com confiança: o traço que atravessa um rótulo (ex.: R
+        # passando por cima de "V4") não pode ser confundido com as letras
+        label_boxes = [w["box"] for w in ctx.words if w["best"] >= 0.5 and not w["single"]
+                       and (w["box"][2] - w["box"][0]) < 15 * R and (w["box"][3] - w["box"][1]) < 8 * R]
         if layout_info is None:
             rows_spec = [[f"row{i + 1}"] for i in range(len(rows))]
             layout = "rows"
@@ -542,8 +587,11 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             if xb - xa < 10:
                 continue
             runs = column_runs(B, D, ya, yb, xa, xb)
+            _drop_label_runs(runs, xa, label_boxes)
             others = [float(v) for i2, v in enumerate(rows) if i2 != r]
-            sel = viterbi_track(runs, base0, R, others=others, lw=lw0)
+            # na extração final, continuidade das bordas (letras de rótulo coladas ao traço);
+            # os traços rápidos usados no layout ficam como antes
+            sel = viterbi_track(runs, base0, R, others=others, lw=lw0, w_edge=0.3)
             seg_jobs.append(dict(lead=lead, row=r, n0=n0, n1=n1, xa=xa, runs=runs, sel=sel))
 
     # nível de "tinta cheia" e raio do traço (meia espessura) em trechos planos
@@ -562,6 +610,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         dt = np.abs(np.gradient(top)) + np.abs(np.gradient(bot))
         th.append((bot - top)[dt < 0.3])
     th = np.concatenate(th)
+    for j in seg_jobs:
+        _mask_label_edges(j, label_boxes)
     mark_occlusions(seg_jobs, float(np.median(th)) if th.size else lw0)
     th = th[~np.isnan(th)]
     rad = float(np.percentile(th, 20)) / 2 if th.size else lw0 / 2

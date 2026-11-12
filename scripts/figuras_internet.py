@@ -1,4 +1,3 @@
-# Uso: git clone https://github.com/Ahus-AIM/open-ecg-digitizer ext/oed; git clone https://github.com/Tereshchenkolab/paper-ecg ext/pecg; python scripts/figuras_internet.py
 import sys, pickle, json, numpy as np, cv2
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
@@ -28,6 +27,8 @@ for key, f, title, truth in imgs:
     fig.text(0.02, 0.945, f"Detectado: layout {r['layout']}  [{names}]  ·  {r['speed_mm_per_s']:g} mm/s ({r['speed_source']})  ·  "
              f"{r['duration_s']:g} s  ·  ganho {sorted(set(r['gains'].values()))} mm/mV  ·  confiança do layout {li.get('confidence', 0):.2f}",
              fontsize=10.5, va="top", color="#0b4f9c")
+    if li.get("warning"):
+        fig.text(0.51, 0.962, "⚠ " + li["warning"], fontsize=10, va="top", color="#b45309")
     ax = fig.add_axes([0.02, 0.585, 0.47, 0.32]); ax.imshow(img); ax.axis("off")
     ax.set_title("Imagem original", fontsize=11, loc="left")
     ax = fig.add_axes([0.51, 0.585, 0.47, 0.32]); ax.imshow(dbg); ax.axis("off")

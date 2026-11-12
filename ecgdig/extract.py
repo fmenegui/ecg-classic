@@ -267,7 +267,7 @@ def column_runs(B, D, ya, yb, xa, xb):
     return out
 
 
-def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None):
+def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_edge=0.0):
     """Escolhe um segmento por coluna (ou falha) minimizando custo de continuidade."""
     INF = 1e18
     n = len(runs)
@@ -296,9 +296,14 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None):
             e += 0.8
         return e
 
+    _we = w_edge
+
     def trans(pt, pb, pc, t, b, c):
         g = max(0.0, t - pb, pt - b) / R
-        return 2.0 * g + 0.5 * g * g + 0.02 * abs(c - pc) / R
+        # continuidade das BORDAS: num traço desenhado por pena, de uma coluna para a
+        # outra pelo menos uma das bordas (topo/base) anda pouco; letra colada ao traço
+        # (rótulo atravessado por um R) fica no meio e quebra as duas
+        return 2.0 * g + 0.5 * g * g + 0.02 * abs(c - pc) / R + _we * min(abs(t - pt), abs(b - pb)) / R
 
     prev_states = [(base, base, base)]
     prev_cost = np.array([0.0])

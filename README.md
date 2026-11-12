@@ -85,7 +85,24 @@ Imagens públicas dos repositórios [Open-ECG-Digitizer](https://github.com/Ahus
 
 O caso que falha é uma ambiguidade física: precordiais em ordem varrem o tórax como o leque de Cabrera e quase fecham Goldberger; sem rótulos impressos, só a forma de onda não separa as duas hipóteses.
 
-**Regressão sintética** (após as mudanças acima): conjunto misto de teste separado (Cabrera, ganho dividido, 50 mm/s, 3x4/+1/+2/+3, 6x2/+1, 12x1) 24/24 layouts corretos, velocidade 22/24, SNR médio 18.4 dB; `bench/medium` 21.6 dB; layouts fixos 21.0–22.0 dB; `pytest` 3/3.
+A foto sem rótulos agora sai com confiança 0,55 e o aviso "nenhum rótulo lido; decidido só pela fisiologia (alternativa: 6x1-prec)".
+
+### Rodada de melhorias (12/11/2026)
+
+| Conjunto | Antes | Depois | O que mudou |
+|---|---|---|---|
+| Misto de teste (24 imagens: Cabrera, ganho dividido, 50 mm/s, 3x4/+1/+2/+3, 6x2/+1, 12x1) | 18,4 dB | **19,2 dB** | registro entre linhas só acima de 0,65 mm; traço que atravessa rótulo |
+| `bench/heavy` (15 imagens) | 16,7 dB | **19,3 dB** | velocidade lida no texto conferida pela fisiologia ("25mm/s" degradado lido como 12,5 ou 50) |
+| `bench/medium` | 21,6 dB | 21,6 dB | — |
+| Layouts corretos no misto | 24/24 | 24/24 | — |
+
+- **Traço atravessando rótulo** (R passando por cima de "V4"): o Viterbi da extração final passou a pedir continuidade das *bordas* (topo ou base andam pouco entre colunas num traço feito por pena; uma letra colada fica no meio e quebra as duas). Imagem afetada: 20,0 → 22,3 dB.
+- **Registro por batimentos**: o instante do QRS difere entre derivações por razões fisiológicas (p90 ≈ 12 ms nos sinais verdadeiros), o que imita cisalhamento de até ~0,5 mm. Agora o registro só corrige acima de 0,65 mm (escala com a velocidade), que é o caso das fotos com cisalhamento real (foto 2: até 0,9 mm).
+- **Velocidade**: o texto vence, salvo quando a largura do QRS e o RR o contradizem com força (diferença de log-verossimilhança > 2) e a leitura é fraca.
+- **Tiras de ritmo** não repetem a mesma derivação (penalidade); sem nenhum rótulo legível no início das linhas, a confiança é limitada e há aviso.
+- Testado e descartado: filtro passa-baixa adaptativo à resolução (+0,3 dB só no SNR, achata QRS), suavização dependente da inclinação (piora), QT/RR para decidir 25 × 50 mm/s (não ganhou nada), teste de permutação para Goldberger (instável).
+
+Limite físico que continua: a 25 vs 50 mm/s com QRS estreito e FC ~110 bpm sem texto legível (uma imagem do misto) é ambíguo de verdade; derivações de baixa voltagem a 5 mm/mV ficam no piso de quantização.
 
 Os números sintéticos não são comparáveis diretamente com o placar do PhysioNet 2024: lá as imagens são mais variadas, e o gerador sintético daqui é mais fácil do que o mundo real.
 

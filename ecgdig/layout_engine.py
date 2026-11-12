@@ -325,7 +325,13 @@ class Ctx:
                     na, nb = np.linalg.norm(a[m]), np.linalg.norm(b[m])
                     nrmse = np.linalg.norm(a[m] - b[m]) / max(na, nb, 1e-9)
                     parts["dup"] += 0.5 - nrmse
-        total = W_OCR * parts["ocr"] + W_BND * parts["bnd"] + W_LIMB * parts["limb"] + W_DUP * parts["dup"]
+        # tiras de ritmo de um mesmo exame não repetem a mesma derivação (nenhum formato
+        # de fabricante imprime, p.ex., II duas vezes como ritmo)
+        rhythm = [_canon(row[0]) for row in spec if len(row) == 1]
+        if any(len(row) > 1 for row in spec) and len(rhythm) > len(set(rhythm)):
+            parts["rep"] = -(len(rhythm) - len(set(rhythm)))
+        total = W_OCR * parts["ocr"] + W_BND * parts["bnd"] + W_LIMB * parts["limb"] + W_DUP * parts["dup"] \
+            + 3.0 * parts.get("rep", 0.0)
         return total, parts
 
     # ------------------------------------------------------------- hipóteses
@@ -393,5 +399,22 @@ class Ctx:
         best = scored[0]
         margin = best[0] - scored[1][0] if len(scored) > 1 else 10.0
         conf = float(1 / (1 + np.exp(-margin / 2.0)))
+        warn = None
+        n_lab = 0
+        for r in range(self.n):  # rótulos legíveis no início de alguma linha
+            xs = float(self.x_of(r, 0.0)) / self.R
+            w = self.label_near(r, xs - 25, xs + 15)
+            if w is not None and max(w["dist"].values()) >= 0.45:
+                n_lab += 1
+        if n_lab == 0 and len(scored) > 1:
+            # sem nenhum rótulo legível, só a física decide; páginas de 6 tiras de
+            # precordiais em ordem imitam o leque de Cabrera (fecham Goldberger "quase")
+            sets = lambda sp: {_canon(n) for row in sp for n in row}
+            shape = lambda sp: [len(row) for row in sp]
+            alts = [z for z in scored[1:] if sets(z[2]) != sets(best[2])]
+            alts = [z for z in alts if shape(z[2]) == shape(best[2])] or alts
+            if alts:
+                conf = min(conf, 0.55)
+                warn = f"nenhum rótulo lido; {best[1]} decidido só pela fisiologia (alternativa: {alts[0][1]})"
         return dict(name=best[1], spec=best[2], score=best[0], parts=best[3], confidence=conf,
-                    ranking=[(round(s, 2), n) for s, n, _, _ in scored[:6]])
+                    warning=warn, ranking=[(round(s, 2), n) for s, n, _, _ in scored[:6]])
