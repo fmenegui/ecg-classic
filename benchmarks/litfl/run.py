@@ -14,7 +14,7 @@ Uso:
   python benchmarks/litfl/run.py                      # baixa (cache em benchmarks/litfl/cache) e roda tudo
   python benchmarks/litfl/run.py --limit 20 --jobs 2
   python benchmarks/litfl/run.py --compare results/litfl_main.json   # aponta regressões
-Saída: results/litfl/results.json (por imagem + resumo) e results/litfl/report.md
+Saída: results/litfl/results.json (por imagem + resumo), report.md e report.html (+ img/)
 """
 from __future__ import annotations
 
@@ -32,6 +32,7 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[1]))
+sys.path.insert(0, str(HERE))
 
 UA = {"User-Agent": "Mozilla/5.0 (ECG digitization research benchmark)"}
 
@@ -68,7 +69,7 @@ def _expected_fraction(layout_rows, fs=500, n=5000):
 
 
 def evaluate_one(args):
-    key, entry, path, cfg_kw = args
+    key, entry, path, cfg_kw, img_dir = args
     from ecgdig import digitize, Config
     out = dict(id=key, ok=False)
     t0 = time.monotonic()
@@ -78,6 +79,14 @@ def evaluate_one(args):
         out.update(error=repr(e)[:300], trace=traceback.format_exc(limit=2)[-500:], seconds=time.monotonic() - t0)
         return out
     out["seconds"] = round(time.monotonic() - t0, 1)
+    if img_dir is not None:  # página retificada com o traçado extraído por cima
+        import cv2
+        d = r["debug_image"]
+        sc = min(1.0, 1100 / d.shape[1])
+        cv2.imwrite(str(Path(img_dir) / f"{key}.jpg"),
+                    cv2.resize(d, None, fx=sc, fy=sc, interpolation=cv2.INTER_AREA),
+                    [cv2.IMWRITE_JPEG_QUALITY, 72])
+        out["image"] = f"img/{key}.jpg"
     rows = r["layout_rows"]
     rhythm = [row[0] for row in rows if len(row) == 1] if any(len(x) > 1 for x in rows) else []
     gains = sorted(set(float(g) for g in r["gains"].values()))
@@ -191,6 +200,7 @@ def main():
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2)))
     ap.add_argument("--compare", type=Path, default=None, help="results.json de uma rodada anterior")
+    ap.add_argument("--no-html", action="store_true", help="não gera report.html nem as imagens")
     ap.add_argument("--config", action="append", default=[], metavar="CHAVE=VALOR",
                     help="campo do Config (ex.: --config nonrigid=poly)")
     a = ap.parse_args()
@@ -205,12 +215,16 @@ def main():
     ref = json.loads(a.reference.read_text())["images"]
     a.cache.mkdir(parents=True, exist_ok=True)
     a.out.mkdir(parents=True, exist_ok=True)
+    img_dir = None
+    if not a.no_html:
+        img_dir = a.out / "img"
+        img_dir.mkdir(exist_ok=True)
     todo = []
     for key in sorted(ref):
         if ref[key].get("review") == "indisponivel":
             continue
         try:
-            todo.append((key, ref[key], fetch(ref[key], a.cache), cfg_kw))
+            todo.append((key, ref[key], fetch(ref[key], a.cache), cfg_kw, img_dir))
         except Exception as e:  # noqa: BLE001
             print(f"download falhou {key}: {e}", flush=True)
         if a.limit and len(todo) >= a.limit:
@@ -224,6 +238,9 @@ def main():
     cmp = json.loads(a.compare.read_text())["summary"] if a.compare and a.compare.exists() else None
     (a.out / "results.json").write_text(json.dumps(dict(summary=S, config=cfg_kw, results=results), indent=1, default=str))
     (a.out / "report.md").write_text(report_md(S, results, ref, cmp))
+    if not a.no_html:
+        from report_html import write_html
+        write_html(a.out / "report.html", S, results, ref, cmp, cfg_kw)
     print(json.dumps(S, indent=1))
 
 

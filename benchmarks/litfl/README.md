@@ -30,7 +30,7 @@ python benchmarks/litfl/run.py --compare benchmarks/litfl/baseline.json
 python benchmarks/litfl/run.py --config nonrigid=poly       # qualquer campo do Config
 ```
 
-Saída em `results/litfl/`: `results.json` (por imagem e resumo) e `report.md` (tabela de métricas e lista de imagens com erro). O workflow `.github/workflows/litfl-benchmark.yml` roda o benchmark em todo PR que mexe em `ecgdig/` e publica o relatório no resumo do job, comparado com `baseline.json`.
+Saída em `results/litfl/`: `results.json` (por imagem e resumo), `report.md` (tabela de métricas e imagens com erro) e `report.html` com `img/` (resumo + galeria das páginas retificadas com o traçado extraído; abre direto do disco). `--no-html` pula as imagens. O workflow `.github/workflows/litfl-benchmark.yml` roda o benchmark em todo PR que mexe em `ecgdig/` e publica o relatório no resumo do job, comparado com `baseline.json`.
 
 ## Limites
 
