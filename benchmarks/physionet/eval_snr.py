@@ -131,7 +131,15 @@ def evaluate(a):
                 continue
             try:
                 r = digitize(str(p), Config(**cfg_kw), return_debug=(ri < 4))
-                P = _to_gt_grid(r["signals"], fs, n)
+                S12 = np.full((12, r["signals"].shape[1]), np.nan)
+                for k_, nm in enumerate(r["leads"]):  # layout livre pode ter nomes fora dos 12
+                    if nm in LEADS:
+                        S12[LEADS.index(nm)] = r["signals"][k_]
+                P = _to_gt_grid(S12, fs, n)
+                if ri < 4:
+                    (out / "sig").mkdir(exist_ok=True)
+                    np.savez_compressed(out / "sig" / f"{rid}-{typ}.npz", gt=G.astype(np.float32),
+                                        pred=P.astype(np.float32), fs=fs)
                 rec.update(ok=True, layout=r["layout"], speed=r["speed_mm_per_s"], duration=r["duration_s"],
                            gains=sorted(set(float(g) for g in r["gains"].values())),
                            confidence=float((r.get("layout_info") or {}).get("confidence") or 0))
