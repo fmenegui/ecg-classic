@@ -209,11 +209,41 @@ def render(sig: np.ndarray, rng: np.random.Generator, ppmm: float | None = None,
     return img, shown, meta
 
 
+def _nonrigid(img, rng, bg):
+    """Deformação não rígida de papel fotografado: curvatura cilíndrica suave + 1–2 vincos.
+
+    Vinco = deslocamento contínuo com quebra de derivada ao longo de uma reta (as duas metades
+    da folha ficam em planos diferentes), com faixa de sombra. Nenhum polinômio global de grau
+    baixo representa essa quebra; é o caso que motiva a retificação local."""
+    H, W = img.shape[:2]
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    dx = np.zeros((H, W), np.float32); dy = np.zeros((H, W), np.float32)
+    shade = np.ones((H, W), np.float32)
+    # curvatura (folha arqueada): compressão perto das bordas + barriga vertical
+    a = rng.uniform(0.004, 0.012) * W
+    dx += a * np.sin(np.pi * (xx / W - 0.5))
+    dy += rng.uniform(-0.008, 0.008) * H * np.cos(np.pi * (xx / W - 0.5))
+    for _ in range(int(rng.integers(1, 3))):
+        th = rng.uniform(0, np.pi) if rng.random() < 0.4 else rng.choice([0.0, np.pi / 2]) + rng.normal(0, 0.08)
+        nx, ny = np.cos(th), np.sin(th)
+        c = rng.uniform(0.3, 0.7, 2) * [W, H]
+        dist = (xx - c[0]) * nx + (yy - c[1]) * ny
+        k = rng.uniform(0.008, 0.025) * rng.choice([-1, 1])     # mudança de inclinação na dobra
+        t = rng.uniform(-0.01, 0.01)                             # cisalhamento ao longo do vinco
+        r = np.maximum(dist, 0)
+        dx += k * r * nx - t * r * ny
+        dy += k * r * ny + t * r * nx
+        shade *= 1 - rng.uniform(0.08, 0.25) * np.exp(-(dist / (rng.uniform(0.004, 0.015) * W)) ** 2)
+    out = cv2.remap(img, xx + dx, yy + dy, cv2.INTER_LINEAR, borderValue=bg)
+    return np.clip(out.astype(np.float32) * shade[..., None], 0, 255).astype(np.uint8)
+
+
 def degrade_image(img, rng, level, meta):
     H, W = img.shape[:2]
     if level == "none":
         return img
-    lv = {"light": 0.4, "medium": 1.0, "heavy": 1.8}[level]
+    fold = level == "fold"
+    lv = {"light": 0.4, "medium": 1.0, "heavy": 1.8, "fold": 1.0}[level]
     # rotação + translação sobre fundo de "mesa"
     ang = rng.uniform(-3, 3) * lv
     meta["angle"] = ang
@@ -223,6 +253,8 @@ def degrade_image(img, rng, level, meta):
     Hc, Wc = canvas.shape[:2]
     M = cv2.getRotationMatrix2D((Wc / 2, Hc / 2), ang, 1.0)
     canvas = cv2.warpAffine(canvas, M, (Wc, Hc), flags=cv2.INTER_LINEAR, borderValue=bg)
+    if fold:
+        canvas = _nonrigid(canvas, rng, bg)
     # perspectiva leve
     if lv >= 1.0:
         d = 0.025 * (lv - 0.6) * min(Hc, Wc)
@@ -281,4 +313,5 @@ if __name__ == "__main__":
     import sys
     make_dataset(sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 20,
                  degrade=sys.argv[3] if len(sys.argv) > 3 else "medium",
-                 layout=sys.argv[4] if len(sys.argv) > 4 else "3x4+1")
+                 layout=sys.argv[4] if len(sys.argv) > 4 else "3x4+1",
+                 seed=int(sys.argv[5]) if len(sys.argv) > 5 else 0)

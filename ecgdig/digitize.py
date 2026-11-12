@@ -37,6 +37,9 @@ class Config:
     # do QRS difere entre derivações por razões fisiológicas (p90 ~12 ms), o que imita
     # um cisalhamento de até ~0.5 mm; abaixo disso o registro mais atrapalha que ajuda
     reg_min_shift_mm: float = 0.65
+    # papel não plano: "poly" (polinômio cúbico global), "cell" (+ campo local em células de
+    # 5 mm, acompanha vincos e dobras) ou "none"
+    nonrigid: str = "cell"
 
 
 def _pick_rows(peaks, cov, n_expected):
@@ -407,7 +410,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     if img is None:
         raise FileNotFoundError(image)
     R = cfg.R
-    rect, pap, ginfo = rectify(img, R, cfg.ppmm)
+    rect, pap, ginfo = rectify(img, R, cfg.ppmm, cfg.nonrigid)
     D, glev = ink_map(rect, pap, R, return_grid_level=True)
     B = binarize(D, R, glev)
     (rect, pap, D, B), rot = _orient([rect, pap, D, B], R)
@@ -727,7 +730,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                layout_info=layout_info, rotation=str(rot),
                gain_mm_per_mv=levels[0][0] if levels else None, gains=gains_seg, duration_s=duration,
                speed_mm_per_s=speed, speed_source=speed_src, ppmm=ginfo["ppmm"], angle=ginfo["angle"],
-               grid_residual_mm=ginfo["residual_rms_mm"], line_width_px=lw, line_width_h_px=2 * rad_h,
+               grid_residual_mm=ginfo["residual_rms_mm"], grid_residual_cell_mm=ginfo.get("residual_cell_rms_mm"), line_width_px=lw, line_width_h_px=2 * rad_h,
                pulses_found=sum(p is not None for p in pulses))
     if return_debug:
         dbg = rect.copy()
