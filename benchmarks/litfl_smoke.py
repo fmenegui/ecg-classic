@@ -6,6 +6,19 @@ import numpy as np
 from ecgdig import digitize, Config
 
 CSV_URL="https://raw.githubusercontent.com/fmenegui/image-based-ecg-classification-emergency/main/data/external/litfl/metadata/litfl_source_labels.csv"
+FALLBACK = [
+("img_0000.png","https://litfl.com/wp-content/uploads/2018/08/ECG-Right-Bundle-Branch-Block-RBBB-6.jpg"),
+("img_0001.png","https://litfl.com/wp-content/uploads/2018/08/ECG-Right-Bundle-Branch-Block-RBBB-5.jpg"),
+("img_0002.png","https://litfl.com/wp-content/uploads/2018/08/ECG-Right-Bundle-Branch-Block-RBBB-3.jpg"),
+("img_0003.png","https://litfl.com/wp-content/uploads/2013/02/OMI-ECG-Proximal-LAD-RBBB-2048x1011.png"),
+("img_0004.png","https://litfl.com/wp-content/uploads/2022/07/RBBB-NEW.jpeg"),
+("img_0005.png","https://litfl.com/wp-content/uploads/2021/01/ECG-Left-Bundle-Branch-Block-LBBB-2-2.jpg"),
+("img_0006.png","https://litfl.com/wp-content/uploads/2021/01/ECG-LBBB-AF-3.jpg"),
+("img_0007.png","https://litfl.com/wp-content/uploads/2018/08/Left-bundle-branch-block-LBBB-4.jpg"),
+("img_0008.png","https://litfl.com/wp-content/uploads/2022/07/LBBB.jpeg"),
+("img_0009.png","https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-Fibrillation-coarse-flutter-waves.jpg"),
+("img_0010.png","https://litfl.com/wp-content/uploads/2018/08/ECG-Atrial-Fibrillation-coarse-flutter-waves-2-2.jpg"),
+]
 
 def main():
     p=argparse.ArgumentParser()
@@ -14,8 +27,12 @@ def main():
     p.add_argument("--out",type=Path,default=Path("results/litfl"))
     a=p.parse_args()
     a.out.mkdir(parents=True,exist_ok=True)
-    with urllib.request.urlopen(a.metadata,timeout=30) as f:
-        rows=list(csv.DictReader(line.decode("utf-8-sig") for line in f))
+    try:
+        with urllib.request.urlopen(a.metadata,timeout=30) as f:
+            rows=list(csv.DictReader(line.decode("utf-8-sig") for line in f))
+    except Exception as exc:
+        print(f"Metadata unavailable ({exc}), using bundled public LITFL URLs",flush=True)
+        rows=[{"img_filename":name,"source_url":url} for name,url in FALLBACK]
     results=[]
     for i,row in enumerate(rows[:a.limit]):
         path=a.out/row["img_filename"]
