@@ -104,6 +104,17 @@ A foto sem rótulos agora sai com confiança 0,55 e o aviso "nenhum rótulo lido
 
 Limite físico que continua: a 25 vs 50 mm/s com QRS estreito e FC ~110 bpm sem texto legível (uma imagem do misto) é ambíguo de verdade; derivações de baixa voltagem a 5 mm/mV ficam no piso de quantização.
 
+### LITFL: 102 imagens reais sem gabarito (avaliação qualitativa)
+
+Revisão visual de cada página retificada com o traçado sobreposto: **82 boas, 12 com um defeito pontual, 8 falhas**. Funciona em grade cinza ou rosa, ruído de scan e páginas com pulso à direita. Erra no ganho quando o pulso está deformado ou cortado, em traço muito claro ou quebrado, em página curva fotografada e em ondas gigantes que cruzam as linhas vizinhas. Correções que vieram dessa revisão:
+
+- Linhas de traço fraco eram descartadas como texto: rodapé só é rejeitado na ponta do bloco e fora do passo regular das linhas; linhas "fracas" entram se seguirem esse passo.
+- Orientação 0/180° desempatada pelos rótulos legíveis (aVR, V1... — I/II/III são simétricos), não só pela posição do pulso.
+- Tira de ritmo: convenção dos fabricantes como prior (1 tira = II; 3 = V1, II, V5); tira que não é simultânea à grade sai da física; confusão I/II/III no OCR custa metade. Nomes DII: 46 → 68 de ~90 tiras; as duas fotos do usuário passaram a sair V1, II, V5.
+- Cabrera exige alguma evidência (prior −1,5).
+
+Regressão depois disso: misto 24/24 e 19,2 dB; fotos reais mantidas (Einthoven da foto 2: 165 → 90 µV, porque a tira V5 deixou de ser chamada de III).
+
 Os números sintéticos não são comparáveis diretamente com o placar do PhysioNet 2024: lá as imagens são mais variadas, e o gerador sintético daqui é mais fácil do que o mundo real.
 
 ## Limitações conhecidas

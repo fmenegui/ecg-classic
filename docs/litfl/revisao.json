@@ -1,0 +1,22 @@
+{
+ "0006": ["atencao", "Ganho de uma linha medido como 7,3 mm/mV (pulso deformado); o resto está bom."],
+ "0007": ["falha", "Traço fraco e quebrado: só parte das linhas foi extraída e a duração saiu 3,4 s."],
+ "0015": ["atencao", "Linhas 3 e 4 com trechos retos onde o traço some (interpolação)."],
+ "0024": ["atencao", "Na linha 3 o rastreador salta para a linha de cima num trecho e desenha uma reta."],
+ "0030": ["atencao", "A tira de ritmo (rotulada TL/SUAR) não entrou no layout; ganho 5 mm/mV a conferir."],
+ "0033": ["falha", "Página 6x2 com supra de ST gigante e papel curvo: lida como 3x4+3, 7,4 s, metade direita sem traço."],
+ "0034": ["falha", "Velocidade (50) e ganho (3,8) errados: pulso mal medido e QRS largo enganam a fisiologia."],
+ "0035": ["falha", "Traço muito claro: só QRS isolados foram capturados; duração 3,4 s."],
+ "0036": ["atencao", "Cinco tiras contínuas de DII (impressão de ritmo): nomes de grade 3x4 inventados; o traçado está bom."],
+ "0040": ["atencao", "Ganhos 6,95 e 7,0 mm/mV em duas linhas: pulso medido errado."],
+ "0048": ["atencao", "Ganho dividido 10/5 escrito no cabeçalho, medido como 3,8."],
+ "0050": ["falha", "Tira de ritmo clara demais não foi detectada; linha 2 parcial; duração 8,7 s."],
+ "0058": ["atencao", "Linha 3 parcialmente extraída (traço fraco em fundo ruidoso)."],
+ "0065": ["falha", "Página fotografada curva (cilindro): grade não retificada, metade do traço perdido, layout errado."],
+ "0067": ["atencao", "TV com complexos enormes cruzando as linhas vizinhas: o rastreador mistura traços em vários trechos."],
+ "0068": ["atencao", "Ganho medido 3,7 mm/mV (pulso cortado na borda)."],
+ "0069": ["falha", "Duração 13,6 s e traços cruzados (TV larga): eixo do tempo errado."],
+ "0074": ["atencao", "Rótulos cortados ('L', '2', '5'): layout montado pela hipótese livre."],
+ "0086": ["atencao", "Ganho 6,5 mm/mV (fora do padrão): pulso mal medido."],
+ "0090": ["falha", "Mesma página da 0033 (repetida no conjunto): mesmo erro."]
+}

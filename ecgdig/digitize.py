@@ -124,8 +124,31 @@ def _rows_pulses(B, pap, R):
         return peaks, cov, [], [], 40 * R
     tl, raw = trace_likeness(B, peaks, R, return_raw=True)
     if len(tl) and tl.max() > 0:
-        # longo depois de juntar quebras E longo cru (texto em linha só é longo dilatado)
-        ok = (tl >= 0.4 * tl.max()) & (raw >= 0.55 * np.maximum(tl, 1e-9))
+        # traçado: longo depois de juntar quebras (tl) OU com pedaços longos/altos sem juntar
+        # (raw; traço fraco de scan pode ter tl baixo mas raw alto)
+        ok = tl >= 0.4 * tl.max()
+        weak = ~ok & (raw >= 0.3 * max(raw.max(), 1e-9))
+        # linhas só "fracas" entram se continuarem o espaçamento regular das fortes
+        # (cabeçalho com tabela de texto também tem pedaços altos, mas fora do passo)
+        if ok.sum() >= 2 and weak.any():
+            sp0 = float(np.median(np.diff(peaks[ok])))
+            changed = True
+            while changed:
+                changed = False
+                acc = peaks[ok]
+                for i in np.nonzero(weak & ~ok)[0]:
+                    dmin = np.min(np.abs(acc - peaks[i]))
+                    if 0.8 * sp0 <= dmin <= 1.25 * sp0:
+                        ok[i] = True; changed = True
+        # rodapé/cabeçalho de texto: só é "longo" depois de dilatado (raw << tl), fica na
+        # ponta do bloco e mais perto do vizinho que o espaçamento normal das linhas.
+        # (traço quebrado de scan também tem raw baixo, mas fica no meio ou bem espaçado)
+        idx = np.nonzero(ok)[0]
+        if len(idx) >= 3:
+            sp = float(np.median(np.diff(peaks[idx])))
+            for e, nb in ((idx[0], idx[1]), (idx[-1], idx[-2])):
+                if raw[e] < 0.55 * tl[e] and abs(peaks[e] - peaks[nb]) < 0.85 * sp:
+                    ok[e] = False
         peaks = peaks[ok]
     ys = np.nonzero(pap.any(1))[0]
     if len(ys):  # bordas da folha / moldura não são linhas de traçado
@@ -161,11 +184,27 @@ def _orient(arrs, R):
             return cv2.rotate(a.astype(np.uint8), c) > 0
         return cv2.rotate(np.ascontiguousarray(a), c)
 
+    from .ocr import find_words, read_label
+
+    def upright_labels(Bc):
+        # rótulos assimétricos legíveis (aVR, V1...): I/II/III são iguais de cabeça para baixo
+        n_ = 0
+        tm = text_like_mask(Bc, R)
+        for (x0, y0, x1, y1) in find_words(tm, R):
+            d = read_label(tm[y0:y1, x0:x1])
+            if d:
+                k_ = max(d, key=d.get)
+                if d[k_] >= 0.6 and k_ not in ("I", "II", "III"):
+                    n_ += 1
+        return n_
+
     best, best_score = None, -1
     for c in cands:
         Bc, pc = rot(B, c), rot(pap, c)
         pk, _, _, pulses, _ = _rows_pulses(Bc, pc, R)
-        score = sum(p is not None for p in pulses)
+        # pulsos à esquerda + rótulos legíveis (página impressa de cabeça para baixo tem
+        # pulsos dos dois lados em alguns aparelhos; o texto desempata)
+        score = sum(p is not None for p in pulses) + upright_labels(Bc)
         if score > best_score:
             best, best_score = c, score
     return [rot(a, best) for a in arrs], best

@@ -19,6 +19,8 @@ Pontuação (log-verossimilhança informal, termos independentes):
 """
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import cv2
 from scipy.ndimage import median_filter
@@ -294,11 +296,39 @@ class Ctx:
             d = w["dist"]
             # teto por segmento: uma leitura errada (sinal de menos perdido, dígito trocado)
             # custa no máximo 1 unidade; a física (Goldberger, duplicatas) decide o resto
-            parts["ocr"] += max(-1.0, (d.get(name, 0.0) - max(d.values())) / 0.15)
+            top = max(d, key=d.get)
+            # I/II/III só diferem pelo número de barras: uma barra colada ao traço ou ao
+            # pulso some e "II" vira "I". Confusão entre eles custa metade
+            cap = 0.5 if (top in ("I", "II", "III") and _canon(name) in ("I", "II", "III")) else 1.0
+            parts["ocr"] += max(-cap, (d.get(name, 0.0) - d[top]) / 0.15)
         # membros
         sig = {}
+        has_grid = any(len(row) > 1 for row in spec)
+        rhythm = []
         for (r, k, c, name) in segs:
-            sig.setdefault(_canon(name), []).append((self.seg_signal(r, k, c, name), name))
+            v = self.seg_signal(r, k, c, name)
+            if has_grid and k == 1:
+                rhythm.append((v, name))
+            else:
+                sig.setdefault(_canon(name), []).append((v, name))
+        # tira de ritmo só entra na física se for simultânea à cópia da grade: algumas
+        # páginas (montagens, impressões de outro trecho) trazem um ritmo de outro instante,
+        # e aí nem Goldberger nem a duplicata dizem nada sobre o nome
+        for v, name in rhythm:
+            cps = sig.get(_canon(name), [])
+            if cps:
+                with np.errstate(all="ignore"), warnings.catch_warnings():
+                    warnings.simplefilter("ignore", RuntimeWarning)
+                    a = np.nanmean(np.stack([x for x, _ in cps]), 0)
+                m = ~np.isnan(a) & ~np.isnan(v)
+                if m.sum() >= 50 and a[m].std() > 0 and v[m].std() > 0:
+                    nr = np.linalg.norm(a[m] - v[m]) / max(np.linalg.norm(a[m]), np.linalg.norm(v[m]), 1e-9)
+                    # derivação quase plana (< ~80 µV RMS): o NRMSE é só ruído de quantização
+                    flat = min(np.std(a[m]), np.std(v[m])) < 0.08
+                    if nr > 0.85 and not flat:
+                        parts["dup"] -= 0.5
+                        continue
+            sig.setdefault(_canon(name), []).append((v, name))
         limb_names = [n for n in sig if is_limb(n)]
         if len(limb_names) >= 3:
             T = len(self.t)
@@ -338,10 +368,16 @@ class Ctx:
     def _best_rhythm_names(self, grid_spec, rest_rows):
         """Nomeia cada tira de ritmo (linha inteira, 1 derivação) pelo melhor escore conjunto."""
         spec = [list(r) for r in grid_spec]
-        for r in rest_rows:
+        rest_rows = list(rest_rows)
+        # convenção dos fabricantes: 1 tira de ritmo = II (GE, Philips, Mortara, Schiller);
+        # 2 = V1 e II; 3 = V1, II, V5. Prior moderado: rótulo lido ou a física podem vencer.
+        canon = {1: [{"II"}], 2: [{"V1", "II"}, {"V1", "II"}], 3: [{"V1"}, {"II"}, {"V5"}]}.get(
+            len(rest_rows), [set()] * len(rest_rows))
+        for j, r in enumerate(rest_rows):
             best, best_n = -np.inf, None
             for nm in LEAD_NAMES:
                 sc, _ = self.score(spec + [[nm]])
+                sc += 1.5 if nm in canon[j] else 0.0
                 # o escore inclui a grade; só a diferença entre nomes importa
                 if sc > best:
                     best, best_n = sc, nm
@@ -388,6 +424,8 @@ class Ctx:
             sc, parts = self.score(spec)
             if name != "livre":
                 sc += 3.0  # prior para formatos de fabricante (a hipótese livre depende só do OCR)
+                if "cabrera" in name:
+                    sc -= 1.5  # Cabrera é regional (Escandinávia): precisa de alguma evidência
             else:
                 # numa grade cada derivação aparece uma vez (tiras de ritmo são linhas de 1)
                 grid_names = [nm for row in spec if len(row) > 1 for nm in row]
