@@ -283,8 +283,11 @@ def _correspondences(Gc, T_major, T_minor, use_major, tile, step):
     return src, dst, w
 
 
-def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None):
-    """Retorna (img_ret, paper_ret, info). img_ret tem R px/mm e linhas grossas em múltiplos de 5R."""
+def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, nonrigid: str = "cell"):
+    """Retorna (img_ret, paper_ret, info). img_ret tem R px/mm e linhas grossas em múltiplos de 5R.
+
+    nonrigid: "poly" (polinômio cúbico global), "cell" (polinômio + campo local por células de
+    5 mm, interpolado bilinearmente — acompanha vincos) ou "none"."""
     paper = paper_mask(img)
     G = grid_map(img, paper)
     ang = estimate_rotation(G)
@@ -331,17 +334,107 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None):
     pap = cv2.warpPerspective(paper, T_total, (Wo, Ho), flags=cv2.INTER_NEAREST | cv2.WARP_INVERSE_MAP)
 
     # refinamento não-rígido: resíduo de fase -> polinômio cúbico -> remap
-    out, pap, rms = _refine_nonrigid(out, pap, R)
+    rms, rms_cell = float("nan"), float("nan")
+    if nonrigid in ("poly", "cell"):
+        out_p, pap_p, rms, mx, my = _refine_nonrigid(out, pap, R, return_map=True)
+        if nonrigid == "cell" and mx is not None:
+            loc = _local_field(out_p, pap_p, R)
+            if loc is not None:
+                lx, ly, rms_cell = loc
+                H, W = out.shape[:2]
+                gx, gy = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32))
+                # composição dos mapas (uma única reamostragem da imagem original retificada)
+                cx_ = cv2.remap(mx, gx + lx, gy + ly, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+                cy_ = cv2.remap(my, gx + lx, gy + ly, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+                out_p = cv2.remap(out, cx_, cy_, cv2.INTER_CUBIC, borderValue=(255, 255, 255))
+                pap_p = cv2.remap(pap, cx_, cy_, cv2.INTER_NEAREST)
+        out, pap = out_p, pap_p
     info = dict(angle=ang, ppmm=ppmm, has_major=has_major, n_corr=int(len(src)),
-                residual_rms_mm=rms, T=T_total)
+                residual_rms_mm=rms, residual_cell_rms_mm=rms_cell, T=T_total)
     return out, pap, info
+
+
+def _fill_nan(F: np.ndarray, W: np.ndarray, sigma: float) -> np.ndarray:
+    """Preenche/suaviza por convolução normalizada (média ponderada gaussiana dos vizinhos válidos)."""
+    ok = ~np.isnan(F)
+    num = cv2.GaussianBlur(np.where(ok, F * W, 0).astype(np.float32), (0, 0), sigma)
+    den = cv2.GaussianBlur(np.where(ok, W, 0).astype(np.float32), (0, 0), sigma)
+    return np.where(den > 1e-6, num / np.maximum(den, 1e-6), 0.0)
+
+
+def _local_field(out, pap, R, cell_mm: float = 5.0, tile_mm: float = 10.0):
+    """Resíduo local da grade de 1 mm numa malha de células de 5 mm, depois do polinômio.
+
+    1. fase da linha de 1 mm em blocos de 10 mm centrados em cada vértice de 5 mm;
+    2. desenrolamento 2D guiado por qualidade (período 1 mm) — o campo pode passar de ±0,5 mm
+       ao atravessar um vinco, desde que vértices vizinhos difiram menos de 0,5 mm;
+    3. limpeza à moda do Gridder: só a maior região conexa de vértices confiáveis, descarte de
+       vértices que destoam da mediana 3×3, faltantes preenchidos pelos vizinhos;
+    4. interpolação bilinear entre vértices = transformação de 4 cantos por célula.
+    Retorna (dx, dy, rms_mm) densos, ou None se a grade local não for confiável."""
+    G = grid_map(out, pap)
+    H, W = G.shape
+    step, tile = int(round(cell_mm * R)), int(round(tile_mm * R))
+    P = _tile_phases(G, R, tile, step)
+    phx, phy, qx, qy, cx, cy = [P[..., k] for k in range(6)]
+    if P.shape[0] < 3 or P.shape[1] < 3:
+        return None
+    q = np.minimum(qx, qy)
+    good = (qx > 0.25) & (qy > 0.25)
+    if good.mean() < 0.2:
+        return None
+    # maior componente conexa de vértices confiáveis
+    n, lab = cv2.connectedComponents(good.astype(np.uint8), connectivity=4)
+    if n < 2:
+        return None
+    big = 1 + int(np.argmax(np.bincount(lab.ravel())[1:]))
+    good = lab == big
+    fields = []
+    for ph, qq in ((phx, qx), (phy, qy)):
+        d = (ph + R / 2) % R - R / 2                        # resíduo assinado (embrulhado)
+        u = _unwrap_quality(d, np.where(good, qq, 0), R, 1e-6)
+        u[~good] = np.nan
+        u -= R * np.round(np.nanmedian(u) / R)              # o polinômio já zerou o resíduo médio
+        # vértices que destoam dos vizinhos (fase saltou um período ou bloco contaminado)
+        win = np.lib.stride_tricks.sliding_window_view(np.pad(u, 1, constant_values=np.nan), (3, 3))
+        with np.errstate(all="ignore"):
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                med = np.nanmedian(win.reshape(*u.shape, 9), axis=2)
+        bad = np.abs(u - med) > 0.25 * R
+        u[bad] = np.nan
+        fields.append((u, u - med))
+    w = np.where(good, q, 0).astype(np.float32)
+    rms = float(np.sqrt(np.nanmean(fields[0][0] ** 2 + fields[1][0] ** 2)) / R)
+    miss = cv2.GaussianBlur(w, (0, 0), 0.7) < 1e-3
+    sm = [np.where(miss, 0.0, _fill_nan(u, w, 0.7)) for u, _ in fields]   # suaviza ruído de fase
+    # Encolhimento (Wiener) pelo ruído do próprio campo: em papel plano o resíduo depois do
+    # polinômio é < 0,01 mm e o campo medido é quase só ruído — e 0,03 mm de erro horizontal num
+    # QRS íngreme já custa ~0,06 mV. Só se aplica o que se destaca do ruído (vincos: 0,3–2 mm).
+    rough = np.concatenate([r[np.isfinite(r)] for _, r in fields])
+    sigma = 1.4826 * np.median(np.abs(rough)) if rough.size else 0.0
+    tau = max(3.0 * sigma, 0.05 * R)
+    mag2 = sm[0] ** 2 + sm[1] ** 2
+    gain = cv2.GaussianBlur((mag2 / (mag2 + tau ** 2)).astype(np.float32), (0, 0), 0.7)
+    dense = []
+    for f in sm:
+        f = f * gain
+        # amostras nos centros dos blocos -> campo denso bilinear
+        x0, y0 = cx[0, 0], cy[0, 0]
+        Fd = cv2.resize(f.astype(np.float32), (f.shape[1] * step, f.shape[0] * step),
+                        interpolation=cv2.INTER_LINEAR)
+        # alinha: amostra (i, j) fica no pixel (y0 + i*step, x0 + j*step)
+        Mt = np.float32([[1, 0, x0 - (step - 1) / 2], [0, 1, y0 - (step - 1) / 2]])
+        dense.append(cv2.warpAffine(Fd, Mt, (W, H), borderMode=cv2.BORDER_REPLICATE))
+    return dense[0], dense[1], rms
 
 
 def _poly_terms(u, v, deg=3):
     return np.stack([u ** i * v ** j for i in range(deg + 1) for j in range(deg + 1 - i)], 1)
 
 
-def _refine_nonrigid(out, pap, R):
+def _refine_nonrigid(out, pap, R, return_map=False):
     G = grid_map(out, pap)
     tile, step = int(20 * R), int(8 * R)
     P = _tile_phases(G, R, tile, step)  # período fino = 1 mm
@@ -351,7 +444,7 @@ def _refine_nonrigid(out, pap, R):
     dy = (phy + R / 2) % R - R / 2
     good = (qx > 0.2) & (qy > 0.2)
     if good.sum() < 15:
-        return out, pap, float("nan")
+        return (out, pap, float("nan"), None, None) if return_map else (out, pap, float("nan"))
     H, W = G.shape
     un, vn = cx[good] / W - 0.5, cy[good] / H - 0.5
     A = _poly_terms(un, vn)
@@ -377,4 +470,6 @@ def _refine_nonrigid(out, pap, R):
     my = gy + (my - cv2.resize(yy, (W, H), interpolation=cv2.INTER_LINEAR))
     out2 = cv2.remap(out, mx, my, cv2.INTER_CUBIC, borderValue=(255, 255, 255))
     pap2 = cv2.remap(pap, mx, my, cv2.INTER_NEAREST)
+    if return_map:
+        return out2, pap2, rms_before, mx, my
     return out2, pap2, rms_before

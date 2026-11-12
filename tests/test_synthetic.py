@@ -24,3 +24,14 @@ def test_snr(level, min_snr):
         res = digitize(img)
         assert res["layout"] == "3x4+1"
         assert _snr(sig, res["signals"], shown) > min_snr
+
+
+def test_fold_local_field():
+    """Papel com vinco: o campo local por células de 5 mm tem de superar o polinômio global."""
+    from ecgdig.digitize import Config
+    rng = np.random.default_rng(101)
+    sig = synth_signals(rng)
+    img, shown, _ = render(sig, rng, degrade="fold")
+    poly = _snr(sig, digitize(img, Config(nonrigid="poly"))["signals"], shown)
+    cell = _snr(sig, digitize(img, Config(nonrigid="cell"))["signals"], shown)
+    assert cell > 15.0 and cell > poly + 1.5

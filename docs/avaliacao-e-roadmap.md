@@ -56,6 +56,6 @@ E(s) = Σ ρ(render(s) − imagem) + λ·w_baixa_conf·‖s − template∘warp�
 1. A — layout universal *(primeira versão feita: biblioteca + Cabrera + 6 tiras + hipótese livre; OCR clássico; velocidade pelo texto; 24/24 no sintético misto; 6/7 imagens reais da internet — falha só sem rótulos impressos)*
 2. B — mapas suaves
 3. C + template de batimento + posto 3
-4. D — geometria
+4. D — geometria *(vincos feitos antes da hora, 12/11/2026: campo local por células de 5 mm, ideia do Undistortion da PMcardio reimplementada sobre a fase da grade — sem Dotter nem Gridder; sintético com dobras 9,7 → 17,3 dB, neutro em papel plano. Falta: PUMA, lente, reflexo)*
 5. F — QC/incerteza (em paralelo)
 6. E — inversão por renderização
