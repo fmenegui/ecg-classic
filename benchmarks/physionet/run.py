@@ -64,15 +64,23 @@ def list_files(max_pages=400):
 
 
 def download(name, dest: Path):
+    """Baixa um arquivo da competição; devolve o caminho local (descompacta se vier .zip)."""
     dest.mkdir(parents=True, exist_ok=True)
-    kaggle("competitions", "download", COMP, "-f", name, "-p", str(dest), "-q")
-    p = dest / Path(name).name
-    z = dest / (Path(name).name + ".zip")
-    if z.exists():
-        with zipfile.ZipFile(z) as zf:
-            zf.extractall(dest)
-        z.unlink()
-    return p
+    before = {p for p in dest.rglob("*")}
+    log = kaggle("competitions", "download", COMP, "-f", name, "-p", str(dest), check=False)
+    new = [p for p in dest.rglob("*") if p not in before and p.is_file()]
+    for z in [p for p in new if p.suffix == ".zip"]:
+        try:
+            with zipfile.ZipFile(z) as zf:
+                zf.extractall(dest)
+            z.unlink()
+        except zipfile.BadZipFile:
+            pass
+    base = Path(name).name
+    hits = [p for p in dest.rglob("*") if p.is_file() and p.name == base]
+    if not hits:
+        raise FileNotFoundError(f"{name} não apareceu em {dest}; saída do CLI: {log.strip()[:300]}")
+    return hits[0]
 
 
 def inspect(out: Path):
@@ -89,8 +97,8 @@ def inspect(out: Path):
     # CSVs pequenos de topo e um registro de exemplo
     small = [f for f in files if "/" not in (f.get("name") or "") and (f.get("name") or "").endswith(".csv")]
     for f in small[:6]:
-        p = download(f["name"], out / "sample")
         try:
+            p = download(f["name"], out / "sample")
             head = p.read_text(errors="replace").splitlines()[:6]
         except Exception as e:  # noqa: BLE001
             head = [repr(e)]
@@ -109,12 +117,14 @@ def inspect(out: Path):
                 continue
             if p.suffix == ".csv":
                 txt = p.read_text(errors="replace").splitlines()
+                (out / "sample_record.csv").write_text("\n".join(txt[:20]))
                 L += [f"`{n}`: {len(txt)} linhas", "", "```", *txt[:4], "```", ""]
             elif p.suffix.lower() in (".png", ".jpg", ".jpeg"):
                 import cv2
                 im = cv2.imread(str(p))
                 L.append(f"`{n}`: imagem {None if im is None else im.shape}")
         L.append("")
+    L += ["## Arquivos baixados", "", "```", *[str(p) for p in sorted((out / "sample").rglob("*"))][:80], "```"]
     (out / "report.md").write_text("\n".join(L))
     print("\n".join(L))
 
