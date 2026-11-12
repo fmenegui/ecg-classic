@@ -129,6 +129,35 @@ Revisão visual de cada página retificada com o traçado sobreposto: **82 boas,
 
 Regressão depois disso: misto 24/24 e 19,2 dB; fotos reais mantidas (Einthoven da foto 2: 165 → 90 µV, porque a tira V5 deixou de ser chamada de III).
 
+### Avaliação independente do campo por células + calibração (12/11/2026)
+
+Medido nos conjuntos desta máquina (diferentes dos da tabela acima), com o campo local só aplicado quando o resíduo local passa de 0,06 mm (papel plano: 0,01–0,04 mm; vincos e fotos: 0,09–0,74 mm). Sem essa trava, nos scans do LITFL o campo mexia em decisões marginais (nome de 4 tiras de ritmo, 2 páginas viravam Cabrera) sem ganho de coerência.
+
+| Conjunto | Polinômio | Por célula (com trava) |
+|---|---|---|
+| `fold` (15, semente 777) | 7,1 dB | **18,1 dB** |
+| misto de teste (24) | 19,24 dB, 24/24 | 19,24 dB, 24/24 |
+| `bench/heavy` | 19,40 dB | 19,40 dB |
+| `bench/medium` | 21,60 dB | 21,61 dB |
+| Fotos reais: cópias duplicadas e Einthoven (média, µV) | 66,6 | **36,3** |
+
+Na foto 2 a II da grade e a do ritmo passam a concordar a 8 µV (antes 48) e o resíduo de Einthoven cai de 90 para 21 µV.
+
+**Calibração.** Pulso no fim da linha também é procurado (vários aparelhos imprimem a calibração à direita); ganho fora do padrão (3,7 / 6,5 / 7 mm/mV, pulso deformado ou cortado) não vale e a linha herda o ganho mais votado da página (ou 10); pulso da direita que discorda do consenso cede; ganho dividido só pelo pulso da esquerda; o 0 mV só vem de pulso confiável. Ganho certo no LITFL: 92 % → 97 %.
+
+### Benchmark LITFL
+
+`benchmarks/litfl/` transforma a revisão acima em benchmark: referência anotada à mão para cada imagem (layout, tiras de ritmo, velocidade, ganho, duração) e métricas de coerência sem gabarito (cobertura, Einthoven antes da fusão, ritmo × grade). Roda em todo PR que mexe em `ecgdig/` (`.github/workflows/litfl-benchmark.yml`) e compara com `benchmarks/litfl/baseline.json`.
+
+| Métrica (102 imagens) | `main` anterior | Agora |
+|---|---|---|
+| Layout correto | 92,2 % | 92,2 % |
+| Tiras de ritmo todas certas | 87,9 % | 87,9 % |
+| Velocidade | 99 % | 99 % |
+| Duração | 91,2 % | 91,2 % |
+| Ganho | 92 % | **97 %** |
+| Layout + velocidade + duração + ganho | 83,3 % | **87,3 %** |
+
 Os números sintéticos não são comparáveis diretamente com o placar do PhysioNet 2024: lá as imagens são mais variadas, e o gerador sintético daqui é mais fácil do que o mundo real.
 
 ## Limitações conhecidas

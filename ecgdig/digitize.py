@@ -470,6 +470,18 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     pulses = [pulses_all[i] for i in idx]
     spacing = float(np.median(np.diff(rows))) if len(rows) > 1 else spacing
     half = 0.45 * spacing
+    # pulso no FIM da linha (vários aparelhos imprimem a calibração à direita, ou dos dois
+    # lados): procurado na imagem espelhada; serve só para ganho, não para o eixo do tempo
+    rpulses = [None] * len(rows)
+    Bf = B[:, ::-1]
+    for i_, (y, e) in enumerate(zip(rows, ext)):
+        if e:
+            up_sp = (y - rows[i_ - 1]) if i_ > 0 else spacing
+            try:
+                rpulses[i_] = detect_pulse(Bf, y, half, W - 1 - e[1], R,
+                                           up=max(half, min(0.95 * up_sp, 25 * R)))
+            except Exception:
+                rpulses[i_] = None
 
     # espessura provisória (alturas de segmentos em colunas)
     lw_guess = []
@@ -541,34 +553,62 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         # ganhos são sempre padronizados; foto em perspectiva encurta o pulso em até ~20%
         gg = min((2.5, 5.0, 10.0, 20.0, 40.0), key=lambda v: abs(np.log(g / v)))
         return gg if abs(g - gg) / gg < 0.22 else float(g)
-    lv1, lv2 = [], []
-    for p in pulses:
-        if p is None:
-            lv1.append(None); lv2.append(None); continue
-        lv1.append((p["foot"] + 0.5 - (p["top"] - 0.5) - lw0) / R)
-        lv2.append((p["foot"] + 0.5 - (p["top2"] - 0.5) - lw0) / R if p.get("step") else None)
-    g1s = [g for g in lv1 if g is not None]
-    g1med = float(np.median(g1s)) if g1s else 10.0
-    # pulso incoerente (QRS confundido / pé encoberto) não define ganho
     std_g = (2.5, 5.0, 10.0, 20.0, 40.0)
+
+    def _std_ok(g, tol=0.22):
+        return g is not None and min(abs(g - gg) / gg for gg in std_g) < tol
+
+    def _lv(p):
+        if p is None:
+            return None, None
+        g1_ = (p["foot"] + 0.5 - (p["top"] - 0.5) - lw0) / R
+        g2_ = (p["foot"] + 0.5 - (p["top2"] - 0.5) - lw0) / R if p.get("step") else None
+        return g1_, g2_
+    lv1, lv2, src = [], [], []
+    for p, rp in zip(pulses, rpulses):
+        a1, a2 = _lv(p)
+        b1, b2 = _lv(rp)
+        # pulso da esquerda vale se der um ganho padrão; senão tenta o da direita
+        if _std_ok(a1) or not _std_ok(b1):
+            lv1.append(a1); lv2.append(a2); src.append("L" if a1 is not None else None)
+        else:
+            lv1.append(b1); lv2.append(None); src.append("R")  # ganho dividido só pelo pulso da esquerda
+    # Consenso da página: ganhos são padronizados (2,5/5/10/20/40 mm/mV). Pulso deformado,
+    # cortado na borda ou colado ao traço dá 3,7 ou 7 mm/mV; esse nível não vale e a linha
+    # herda o ganho padrão mais votado entre as linhas confiáveis (ou 10, se nenhuma for).
+    reliable = [_snap(g) for g in lv1 if _std_ok(g)]
+    if reliable:
+        vals, cnts = np.unique(reliable, return_counts=True)
+        g1def = float(vals[np.argmax(cnts)])
+    else:
+        g1def = 10.0  # nenhum pulso confiável: 10 mm/mV é o padrão de quase todo aparelho
+    gain_flags = []
     for r_, g in enumerate(lv1):
-        # linhas podem ter ganhos diferentes legitimamente (ganho dividido): só descarta
-        # nível que não é próximo de nenhum ganho padrão nem da mediana
-        if g is not None and min(abs(g - gg) / gg for gg in std_g) > 0.22 and abs(g - g1med) / g1med > 0.15:
+        # pulso da direita (menos confiável: costuma encostar no fim do traço) que discorda
+        # do consenso da página também cede
+        if g is not None and src[r_] == "R" and len(reliable) >= 2 and _snap(g) != g1def:
             lv1[r_] = None
-    g1s = [g for g in lv1 if g is not None]
-    g2s = [g for g in lv2 if g is not None]
-    g1def = _snap(float(np.median(g1s))) if g1s else 10.0
+            gain_flags.append(r_)
+            continue
+        if g is not None and not _std_ok(g):
+            lv1[r_] = None
+            lv2[r_] = None
+            gain_flags.append(r_)
+    g2s = [g for g in lv2 if _std_ok(g)]
     g2def = _snap(float(np.median(g2s))) if g2s else None
     levels = []
     for r_ in range(len(rows)):
         g1 = _snap(lv1[r_]) if lv1[r_] is not None else g1def
-        g2 = _snap(lv2[r_]) if lv2[r_] is not None else (g2def if pulses[r_] is None else None)
+        g2 = _snap(lv2[r_]) if (lv2[r_] is not None and _std_ok(lv2[r_])) else (
+            g2def if pulses[r_] is None else None)
         if cfg.gain:
             g1, g2 = float(cfg.gain), None
         levels.append((g1, g2))
+    # o 0 mV vem do platô do pulso da esquerda só se ele for confiável
+    pulses_base = [p if (p is not None and src[r_] == "L" and lv1[r_] is not None) else None
+                   for r_, p in enumerate(pulses)]
     base_q = []
-    for r_, (y, p) in enumerate(zip(rows, pulses)):
+    for r_, (y, p) in enumerate(zip(rows, pulses_base)):
         if p is not None:
             base_q.append(p["top"] - 0.5 + lw0 / 2 + levels[r_][0] * R)
         else:
@@ -696,7 +736,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                                 both_sided=getattr(_vote_x0, "both_sided", True))
 
     # linha de base final com o raio medido: 0 mV = centro do platô 1 + ganho do nível 1
-    for r_, p in enumerate(pulses):
+    for r_, p in enumerate(pulses_base):
         if p is not None:
             base_q[r_] = p["top"] - 0.5 + rad + levels[r_][0] * R
 
@@ -704,7 +744,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         yc, valid = centerline_from_envelopes(j["top"], j["bot"], rad, rh=rad_h)
         if valid.sum() < 5:
             continue
-        p = pulses[j["row"]]
+        p = pulses_base[j["row"]]
         gain = seg_gain(j["row"], j["lead"])
         if p is not None:
             base = base_q[j["row"]]
@@ -770,7 +810,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                gain_mm_per_mv=levels[0][0] if levels else None, gains=gains_seg, duration_s=duration,
                speed_mm_per_s=speed, speed_source=speed_src, ppmm=ginfo["ppmm"], angle=ginfo["angle"],
                grid_residual_mm=ginfo["residual_rms_mm"], grid_residual_cell_mm=ginfo.get("residual_cell_rms_mm"), line_width_px=lw, line_width_h_px=2 * rad_h,
-               pulses_found=sum(p is not None for p in pulses))
+               pulses_found=sum(p is not None for p in pulses),
+               pulses_right=sum(p is not None for p in rpulses), gain_rows_inferred=gain_flags)
     if return_debug:
         dbg = rect.copy()
         for xs, yi, valid in traces_dbg:

@@ -1,0 +1,5620 @@
+{
+ "summary": {
+  "images": 102,
+  "ran": 102,
+  "errors": 0,
+  "layout_acc": 0.922,
+  "layout_n": 102,
+  "rhythm_acc": 0.879,
+  "rhythm_n": 99,
+  "speed_acc": 0.99,
+  "speed_n": 102,
+  "duration_acc": 0.912,
+  "duration_n": 102,
+  "gain_acc": 0.97,
+  "gain_n": 100,
+  "rhythm_strip_acc": 0.857,
+  "all_structural_ok": 0.873,
+  "coverage_median": 1.0,
+  "coverage_n": 102,
+  "einthoven_ratio_median": 0.617,
+  "einthoven_ratio_n": 100,
+  "dup_II_nrmse_median": 0.579,
+  "dup_II_nrmse_n": 67,
+  "seconds_mean": 8.0
+ },
+ "config": {},
+ "results": [
+  {
+   "id": "0000",
+   "ok": true,
+   "seconds": 6.6,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999504359530821,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.9720422029495239
+  },
+  {
+   "id": "0001",
+   "ok": true,
+   "seconds": 7.0,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9971078593250988,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.5920961499214172,
+   "dup_II_nrmse": 0.9739024639129639
+  },
+  {
+   "id": "0002",
+   "ok": true,
+   "seconds": 8.2,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.5052150910037579,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 4,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.5682916641235352,
+   "dup_II_nrmse": 1.1599024534225464
+  },
+  {
+   "id": "0003",
+   "ok": true,
+   "seconds": 9.0,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9988983433946325,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 4,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.8727023601531982,
+   "dup_II_nrmse": 0.6648344993591309
+  },
+  {
+   "id": "0004",
+   "ok": true,
+   "seconds": 10.3,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9991971362862622,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.19359025359153748,
+   "dup_II_nrmse": 0.12634681165218353
+  },
+  {
+   "id": "0005",
+   "ok": true,
+   "seconds": 6.5,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999329375864645,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.33962056040763855
+  },
+  {
+   "id": "0006",
+   "ok": true,
+   "seconds": 7.5,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999999759892818,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 2,
+   "pulses_right": 0,
+   "gain_rows_inferred": [
+    2
+   ],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.4355219006538391,
+   "dup_II_nrmse": 0.2263905256986618
+  },
+  {
+   "id": "0007",
+   "ok": true,
+   "seconds": 1.9,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 3.4,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9942886033802665,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": false,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.40781980752944946,
+   "dup_II_nrmse": 0.9527691602706909
+  },
+  {
+   "id": "0008",
+   "ok": true,
+   "seconds": 7.1,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.999996710049937,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.8854274153709412,
+   "dup_II_nrmse": 1.3550151586532593
+  },
+  {
+   "id": "0009",
+   "ok": true,
+   "seconds": 8.4,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.8314711915012852,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 3,
+   "gain_rows_inferred": [
+    0
+   ],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.5976977348327637,
+   "dup_II_nrmse": 1.303688406944275
+  },
+  {
+   "id": "0010",
+   "ok": true,
+   "seconds": 8.2,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.8057681798966561,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 4,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.6542789340019226,
+   "dup_II_nrmse": 1.0057936906814575
+  },
+  {
+   "id": "0011",
+   "ok": true,
+   "seconds": 8.1,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999983996966236,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.3828154802322388,
+   "dup_II_nrmse": 0.8326754570007324
+  },
+  {
+   "id": "0012",
+   "ok": true,
+   "seconds": 8.6,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "I"
+    ]
+   ],
+   "rhythm": [
+    "I"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.5419798611595065,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": false,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.398659586906433
+  },
+  {
+   "id": "0013",
+   "ok": true,
+   "seconds": 8.6,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999871543155741,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.573529601097107,
+   "dup_II_nrmse": 0.7531673312187195
+  },
+  {
+   "id": "0014",
+   "ok": true,
+   "seconds": 9.1,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999972859731746,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.5309016704559326,
+   "dup_II_nrmse": 1.1441965103149414
+  },
+  {
+   "id": "0015",
+   "ok": true,
+   "seconds": 8.5,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999633911523187,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.4862818121910095,
+   "dup_II_nrmse": 1.0984474420547485
+  },
+  {
+   "id": "0016",
+   "ok": true,
+   "seconds": 8.8,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999747790339684,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.596047580242157,
+   "dup_II_nrmse": 0.4112382233142853
+  },
+  {
+   "id": "0017",
+   "ok": true,
+   "seconds": 6.9,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "texto",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999876831050531,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 3,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.5542407631874084
+  },
+  {
+   "id": "0018",
+   "ok": true,
+   "seconds": 6.6,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.95438237344609,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 4,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.5190779566764832,
+   "dup_II_nrmse": 0.6386813521385193
+  },
+  {
+   "id": "0019",
+   "ok": true,
+   "seconds": 11.7,
+   "layout": "3x4+3",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "V1"
+    ],
+    [
+     "II"
+    ],
+    [
+     "V5"
+    ]
+   ],
+   "rhythm": [
+    "V1",
+    "II",
+    "V5"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999427337850176,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 3,
+    "rhythm_strips": 3,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.5746476650238037,
+   "dup_II_nrmse": 0.38957491517066956
+  },
+  {
+   "id": "0020",
+   "ok": true,
+   "seconds": 9.8,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.999970217346138,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.7793386578559875,
+   "dup_II_nrmse": 0.40902289748191833
+  },
+  {
+   "id": "0021",
+   "ok": true,
+   "seconds": 6.7,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9967239848918089,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 1,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.7944918870925903,
+   "dup_II_nrmse": 0.960000216960907
+  },
+  {
+   "id": "0022",
+   "ok": true,
+   "seconds": 7.6,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999962008115509,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.616221010684967,
+   "dup_II_nrmse": 0.5237383246421814
+  },
+  {
+   "id": "0023",
+   "ok": true,
+   "seconds": 9.0,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9566894909824414,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 2,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.2268544435501099,
+   "dup_II_nrmse": 0.9446359872817993
+  },
+  {
+   "id": "0024",
+   "ok": true,
+   "seconds": 9.8,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9997371753441491,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.4096536934375763,
+   "dup_II_nrmse": 0.6539843678474426
+  },
+  {
+   "id": "0025",
+   "ok": true,
+   "seconds": 9.6,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.8175744761936437,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.8111166954040527,
+   "dup_II_nrmse": 0.9299345016479492
+  },
+  {
+   "id": "0026",
+   "ok": true,
+   "seconds": 9.3,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.99999229659239,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.7061640024185181,
+   "dup_II_nrmse": 1.1348297595977783
+  },
+  {
+   "id": "0027",
+   "ok": true,
+   "seconds": 8.5,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "V3"
+    ]
+   ],
+   "rhythm": [
+    "V3"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9947201331317167,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 1,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": false,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.47397634387016296
+  },
+  {
+   "id": "0028",
+   "ok": true,
+   "seconds": 7.7,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999993092664868,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.581091582775116,
+   "dup_II_nrmse": 0.284706175327301
+  },
+  {
+   "id": "0029",
+   "ok": true,
+   "seconds": 8.9,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9998768758056172,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 4,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.30960437655448914,
+   "dup_II_nrmse": 0.12337739020586014
+  },
+  {
+   "id": "0030",
+   "ok": true,
+   "seconds": 8.1,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    5.0
+   ],
+   "confidence": 0.9999767295541272,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 1,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": false,
+    "rhythm": false,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.5846921801567078
+  },
+  {
+   "id": "0031",
+   "ok": true,
+   "seconds": 7.5,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9905942351347424,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 2,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.37242305278778076,
+   "dup_II_nrmse": 0.42755481600761414
+  },
+  {
+   "id": "0032",
+   "ok": true,
+   "seconds": 8.7,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999588835558425,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.3824784457683563,
+   "dup_II_nrmse": 0.3860066831111908
+  },
+  {
+   "id": "0033",
+   "ok": true,
+   "seconds": 9.7,
+   "layout": "3x4+3",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ],
+    [
+     "aVF"
+    ],
+    [
+     "I"
+    ]
+   ],
+   "rhythm": [
+    "II",
+    "aVF",
+    "I"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 7.4,
+   "gains": [
+    5.0
+   ],
+   "confidence": 0.9648315464690651,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 1,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": false,
+    "speed": true,
+    "duration": false,
+    "gain": false
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.22359780967235565,
+   "dup_II_nrmse": 0.2889578640460968
+  },
+  {
+   "id": "0034",
+   "ok": true,
+   "seconds": 7.9,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "V1"
+    ]
+   ],
+   "rhythm": [
+    "V1"
+   ],
+   "speed": 50.0,
+   "speed_source": "QRS/RR",
+   "duration": 5.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9803084543744908,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 1,
+   "pulses_right": 4,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": false,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 1,
+    "speed": false,
+    "duration": false,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.297552227973938
+  },
+  {
+   "id": "0035",
+   "ok": true,
+   "seconds": 1.7,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 3.4,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9719284666071999,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": false,
+    "rhythm": false,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": false,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 2.0250813961029053
+  },
+  {
+   "id": "0036",
+   "ok": true,
+   "seconds": 7.7,
+   "layout": "3x4+2",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ],
+    [
+     "V1"
+    ]
+   ],
+   "rhythm": [
+    "II",
+    "V1"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.8685832438734084,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": false,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.801788091659546,
+   "dup_II_nrmse": 0.6371902823448181
+  },
+  {
+   "id": "0037",
+   "ok": true,
+   "seconds": 8.8,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9992077628078155,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.6127662658691406,
+   "dup_II_nrmse": 0.6777209043502808
+  },
+  {
+   "id": "0038",
+   "ok": true,
+   "seconds": 8.7,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999838509688121,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.8478978872299194,
+   "dup_II_nrmse": 0.762735903263092
+  },
+  {
+   "id": "0039",
+   "ok": true,
+   "seconds": 6.4,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9990918772077301,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.523072361946106
+  },
+  {
+   "id": "0040",
+   "ok": true,
+   "seconds": 9.0,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999976569980386,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 4,
+   "pulses_right": 0,
+   "gain_rows_inferred": [
+    0,
+    2
+   ],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.35497114062309265,
+   "dup_II_nrmse": 0.3522092401981354
+  },
+  {
+   "id": "0041",
+   "ok": true,
+   "seconds": 8.4,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    5.0
+   ],
+   "confidence": 0.9995722529639247,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 1,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.6440314650535583,
+   "dup_II_nrmse": 0.6167730093002319
+  },
+  {
+   "id": "0042",
+   "ok": true,
+   "seconds": 8.1,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "III"
+    ]
+   ],
+   "rhythm": [
+    "III"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999899604645565,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": false,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.2843206524848938
+  },
+  {
+   "id": "0044",
+   "ok": true,
+   "seconds": 10.3,
+   "layout": "3x4+3",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "V1"
+    ],
+    [
+     "II"
+    ],
+    [
+     "V5"
+    ]
+   ],
+   "rhythm": [
+    "V1",
+    "II",
+    "V5"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.999993992744389,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 3,
+    "rhythm_strips": 3,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.6254555583000183,
+   "dup_II_nrmse": 0.5368518233299255
+  },
+  {
+   "id": "0045",
+   "ok": true,
+   "seconds": 9.3,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9996275016250863,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.0433098077774048,
+   "dup_II_nrmse": 0.5794763565063477
+  },
+  {
+   "id": "0046",
+   "ok": true,
+   "seconds": 7.7,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.957780686727475,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 3,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.413581520318985,
+   "dup_II_nrmse": 0.21479308605194092
+  },
+  {
+   "id": "0047",
+   "ok": true,
+   "seconds": 8.4,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "I"
+    ]
+   ],
+   "rhythm": [
+    "I"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9966719834867851,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 4,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": false,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.5635732412338257
+  },
+  {
+   "id": "0048",
+   "ok": true,
+   "seconds": 8.7,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "V1"
+    ]
+   ],
+   "rhythm": [
+    "V1"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    5.0
+   ],
+   "confidence": 0.9999980518371469,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 2,
+   "pulses_right": 0,
+   "gain_rows_inferred": [
+    3
+   ],
+   "check": {
+    "layout": true,
+    "rhythm": false,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": false
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.9383262991905212
+  },
+  {
+   "id": "0049",
+   "ok": true,
+   "seconds": 8.5,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9821518546946307,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 4,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.23137904703617096,
+   "dup_II_nrmse": 1.0797368288040161
+  },
+  {
+   "id": "0050",
+   "ok": true,
+   "seconds": 8.2,
+   "layout": "3x4-cabrera",
+   "rows": [
+    [
+     "aVL",
+     "II",
+     "V1",
+     "V4"
+    ],
+    [
+     "I",
+     "aVF",
+     "V2",
+     "V5"
+    ],
+    [
+     "-aVR",
+     "III",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 8.7,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.5261877936158019,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": false,
+    "rhythm": false,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": false,
+    "gain": true
+   },
+   "coverage": 0.9997701149425287
+  },
+  {
+   "id": "0051",
+   "ok": true,
+   "seconds": 7.1,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.8175744761936437,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 3,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.4292479455471039
+  },
+  {
+   "id": "0052",
+   "ok": true,
+   "seconds": 6.6,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9190282655127848,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.7005758285522461
+  },
+  {
+   "id": "0053",
+   "ok": true,
+   "seconds": 9.8,
+   "layout": "3x4+2",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "V1"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "V1",
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999986553070589,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 2,
+    "rhythm_strips": 2,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.1110631227493286,
+   "dup_II_nrmse": 0.5462914705276489
+  },
+  {
+   "id": "0054",
+   "ok": true,
+   "seconds": 8.0,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.7,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9993139404327405,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 4,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": false,
+    "gain": true
+   },
+   "coverage": 0.9998442367601247,
+   "einthoven_ratio": 1.0378155708312988,
+   "dup_II_nrmse": 0.9484871625900269
+  },
+  {
+   "id": "0055",
+   "ok": true,
+   "seconds": 7.8,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9998762469745535,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 1,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.5236353874206543,
+   "dup_II_nrmse": 0.4449608325958252
+  },
+  {
+   "id": "0056",
+   "ok": true,
+   "seconds": 10.2,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.797937903029688,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.2654510736465454,
+   "dup_II_nrmse": 1.2550781965255737
+  },
+  {
+   "id": "0057",
+   "ok": true,
+   "seconds": 10.5,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "I"
+    ]
+   ],
+   "rhythm": [
+    "I"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.975434027869254,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": false,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.5159963369369507
+  },
+  {
+   "id": "0058",
+   "ok": true,
+   "seconds": 12.3,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9803876770832656,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.2809020280838013,
+   "dup_II_nrmse": 1.0154180526733398
+  },
+  {
+   "id": "0059",
+   "ok": true,
+   "seconds": 12.9,
+   "layout": "3x4+3",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "V1"
+    ],
+    [
+     "II"
+    ],
+    [
+     "V5"
+    ]
+   ],
+   "rhythm": [
+    "V1",
+    "II",
+    "V5"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9971595626718125,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 3,
+    "rhythm_strips": 3,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.6973837614059448,
+   "dup_II_nrmse": 0.9427544474601746
+  },
+  {
+   "id": "0060",
+   "ok": true,
+   "seconds": 7.6,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9984442611140856,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 4,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.1387654542922974,
+   "dup_II_nrmse": 0.8360219597816467
+  },
+  {
+   "id": "0061",
+   "ok": true,
+   "seconds": 7.7,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999997977960011,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 2,
+   "pulses_right": 0,
+   "gain_rows_inferred": [
+    2
+   ],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.0269768238067627,
+   "dup_II_nrmse": 1.318955421447754
+  },
+  {
+   "id": "0062",
+   "ok": true,
+   "seconds": 7.4,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999812587782946,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.5314216613769531,
+   "dup_II_nrmse": 0.6108938455581665
+  },
+  {
+   "id": "0063",
+   "ok": true,
+   "seconds": 7.8,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999973853915441,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.9507389068603516,
+   "dup_II_nrmse": 0.18229307234287262
+  },
+  {
+   "id": "0064",
+   "ok": true,
+   "seconds": 9.3,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9996326665485255,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 2,
+   "pulses_right": 0,
+   "gain_rows_inferred": [
+    0,
+    1
+   ],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.43142250180244446,
+   "dup_II_nrmse": 0.2871553599834442
+  },
+  {
+   "id": "0065",
+   "ok": true,
+   "seconds": 12.7,
+   "layout": "6x1-prec",
+   "rows": [
+    [
+     "V1"
+    ],
+    [
+     "V2"
+    ],
+    [
+     "V3"
+    ],
+    [
+     "V4"
+    ],
+    [
+     "V5"
+    ],
+    [
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 7.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.7368168827308778,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": false,
+    "rhythm": false,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": false,
+    "gain": true
+   },
+   "coverage": 1.0
+  },
+  {
+   "id": "0066",
+   "ok": true,
+   "seconds": 8.8,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9990140681589789,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 4,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.701330304145813,
+   "dup_II_nrmse": 0.3041704595088959
+  },
+  {
+   "id": "0067",
+   "ok": true,
+   "seconds": 9.2,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9962793897728366,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 4,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.0763375759124756,
+   "dup_II_nrmse": 0.27550506591796875
+  },
+  {
+   "id": "0068",
+   "ok": true,
+   "seconds": 8.8,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.8322044788241133,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 1,
+   "pulses_right": 0,
+   "gain_rows_inferred": [
+    2
+   ],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.8790757060050964,
+   "dup_II_nrmse": 1.4101186990737915
+  },
+  {
+   "id": "0069",
+   "ok": true,
+   "seconds": 11.3,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 13.6,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.8945989708487415,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": false,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.25742894411087036,
+   "dup_II_nrmse": 0.3589566946029663
+  },
+  {
+   "id": "0070",
+   "ok": true,
+   "seconds": 8.3,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "aVF"
+    ]
+   ],
+   "rhythm": [
+    "aVF"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.8830122175588313,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 1,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": false,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.5420904159545898
+  },
+  {
+   "id": "0071",
+   "ok": true,
+   "seconds": 6.5,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999222124508965,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.819901168346405
+  },
+  {
+   "id": "0072",
+   "ok": true,
+   "seconds": 7.4,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9985250767840687,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 4,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.1346626728773117,
+   "dup_II_nrmse": 0.15838472545146942
+  },
+  {
+   "id": "0073",
+   "ok": true,
+   "seconds": 7.6,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.999773207554204,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 4,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.2508727014064789,
+   "dup_II_nrmse": 0.031197484582662582
+  },
+  {
+   "id": "0074",
+   "ok": true,
+   "seconds": 7.4,
+   "layout": "livre",
+   "rows": [
+    [
+     "I"
+    ],
+    [
+     "II"
+    ],
+    [
+     "III"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.631023251010741,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 3,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": false,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.8781102299690247
+  },
+  {
+   "id": "0075",
+   "ok": true,
+   "seconds": 6.6,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9998248781826072,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.6188803911209106
+  },
+  {
+   "id": "0076",
+   "ok": true,
+   "seconds": 6.5,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9852239440260395,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.2529240846633911
+  },
+  {
+   "id": "0077",
+   "ok": true,
+   "seconds": 6.0,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9939679829519037,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.8802741169929504
+  },
+  {
+   "id": "0078",
+   "ok": true,
+   "seconds": 6.2,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999554873018379,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.4513101577758789
+  },
+  {
+   "id": "0079",
+   "ok": true,
+   "seconds": 5.9,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999775129843043,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.33541423082351685
+  },
+  {
+   "id": "0080",
+   "ok": true,
+   "seconds": 6.6,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9992800213223921,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 3,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.3205045163631439
+  },
+  {
+   "id": "0081",
+   "ok": true,
+   "seconds": 6.8,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9996376645150428,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.9067325592041016,
+   "dup_II_nrmse": 0.10135719925165176
+  },
+  {
+   "id": "0082",
+   "ok": true,
+   "seconds": 5.7,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9996715182138554,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.29422876238822937
+  },
+  {
+   "id": "0083",
+   "ok": true,
+   "seconds": 6.1,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999991703862415,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.5523844361305237
+  },
+  {
+   "id": "0084",
+   "ok": true,
+   "seconds": 6.9,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9995217210351472,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.8933110237121582,
+   "dup_II_nrmse": 0.14949890971183777
+  },
+  {
+   "id": "0085",
+   "ok": true,
+   "seconds": 6.6,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999619236771191,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.41870394349098206,
+   "dup_II_nrmse": 0.9391325116157532
+  },
+  {
+   "id": "0086",
+   "ok": true,
+   "seconds": 7.1,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.999937995439301,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 1,
+   "pulses_right": 0,
+   "gain_rows_inferred": [
+    1
+   ],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.19256839156150818
+  },
+  {
+   "id": "0087",
+   "ok": true,
+   "seconds": 6.8,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999931947520418,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.6170091032981873
+  },
+  {
+   "id": "0088",
+   "ok": true,
+   "seconds": 7.6,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9355417439824594,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 2,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.1939077228307724,
+   "dup_II_nrmse": 0.08379684388637543
+  },
+  {
+   "id": "0089",
+   "ok": true,
+   "seconds": 7.1,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9999925086174254,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 1.5103626251220703,
+   "dup_II_nrmse": 0.7928733229637146
+  },
+  {
+   "id": "0090",
+   "ok": true,
+   "seconds": 9.2,
+   "layout": "3x4+3",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ],
+    [
+     "I"
+    ],
+    [
+     "III"
+    ]
+   ],
+   "rhythm": [
+    "II",
+    "I",
+    "III"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 7.4,
+   "gains": [
+    5.0
+   ],
+   "confidence": 0.9834829443452541,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 1,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": false,
+    "speed": true,
+    "duration": false,
+    "gain": false
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.4488033056259155,
+   "dup_II_nrmse": 0.29878756403923035
+  },
+  {
+   "id": "0091",
+   "ok": true,
+   "seconds": 10.0,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.8640363800187381,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 2,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.834513247013092,
+   "dup_II_nrmse": 0.8201363682746887
+  },
+  {
+   "id": "0092",
+   "ok": true,
+   "seconds": 6.7,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "V1"
+    ]
+   ],
+   "rhythm": [
+    "V1"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9996624350344673,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 4,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.3349032402038574
+  },
+  {
+   "id": "0093",
+   "ok": true,
+   "seconds": 7.4,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9801100456200498,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.8829096555709839,
+   "dup_II_nrmse": 0.10265898704528809
+  },
+  {
+   "id": "0094",
+   "ok": true,
+   "seconds": 6.1,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9966653927494588,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 3,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.1636406034231186
+  },
+  {
+   "id": "0095",
+   "ok": true,
+   "seconds": 7.4,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9601066769044437,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 3,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.1408068984746933
+  },
+  {
+   "id": "0096",
+   "ok": true,
+   "seconds": 5.2,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.87463940473455,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.8022773265838623
+  },
+  {
+   "id": "0097",
+   "ok": true,
+   "seconds": 8.2,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9992554740818196,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.7922342419624329,
+   "dup_II_nrmse": 0.2211267352104187
+  },
+  {
+   "id": "0098",
+   "ok": true,
+   "seconds": 8.3,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9963137486594524,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 4,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.25768375396728516,
+   "dup_II_nrmse": 0.2455986887216568
+  },
+  {
+   "id": "0099",
+   "ok": true,
+   "seconds": 8.1,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9994957828762122,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 4,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.270163893699646,
+   "dup_II_nrmse": 0.2496221959590912
+  },
+  {
+   "id": "0100",
+   "ok": true,
+   "seconds": 7.6,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9938791781626782,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 3,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.2530755400657654,
+   "dup_II_nrmse": 0.16620120406150818
+  },
+  {
+   "id": "0101",
+   "ok": true,
+   "seconds": 7.2,
+   "layout": "3x4",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ]
+   ],
+   "rhythm": [],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9933071490757153,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 0,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 0,
+    "rhythm_strips": 0,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.3378584682941437
+  },
+  {
+   "id": "0102",
+   "ok": true,
+   "seconds": 7.9,
+   "layout": "3x4+1",
+   "rows": [
+    [
+     "I",
+     "aVR",
+     "V1",
+     "V4"
+    ],
+    [
+     "II",
+     "aVL",
+     "V2",
+     "V5"
+    ],
+    [
+     "III",
+     "aVF",
+     "V3",
+     "V6"
+    ],
+    [
+     "II"
+    ]
+   ],
+   "rhythm": [
+    "II"
+   ],
+   "speed": 25.0,
+   "speed_source": "QRS/RR",
+   "duration": 10.0,
+   "gains": [
+    10.0
+   ],
+   "confidence": 0.9578651784605187,
+   "warning": null,
+   "rotation": "None",
+   "pulses_left": 0,
+   "pulses_right": 3,
+   "gain_rows_inferred": [],
+   "check": {
+    "layout": true,
+    "rhythm": true,
+    "rhythm_strips_ok": 1,
+    "rhythm_strips": 1,
+    "speed": true,
+    "duration": true,
+    "gain": true
+   },
+   "coverage": 1.0,
+   "einthoven_ratio": 0.21156388521194458,
+   "dup_II_nrmse": 0.41775479912757874
+  }
+ ]
+}
