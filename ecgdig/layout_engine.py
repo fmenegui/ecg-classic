@@ -180,6 +180,11 @@ class Ctx:
         # consenso de altura: todos os rótulos de uma página usam a mesma fonte
         conf = [w for w in words if not w["single"] and w["best"] >= 0.55]
         conf_ok = len(conf) >= 3
+        # barras soltas ("I") muito maiores ou menores que os rótulos da página são pulso ou QRS
+        multi = [w["h"] for w in words if not w["single"] and w["best"] >= 0.45]
+        if len(multi) >= 2:
+            hm = float(np.median(multi))
+            words = [w for w in words if not w["single"] or 0.7 * hm <= w["h"] <= 1.35 * hm]
         hl = None
         if conf_ok:
             hl = float(np.median([w["h"] for w in conf]))
@@ -229,6 +234,10 @@ class Ctx:
             if w["row"] != r or not (x_mm_lo * R <= x0 <= x_mm_hi * R):
                 continue
             sc = w["best"]
+            if w.get("single"):
+                # barra solta lida como "I": fragmento de QRS, aresta de pulso ou uma barra
+                # de "II" que sobrou; perde para uma leitura de vários caracteres ao lado
+                sc *= 0.7
             if x_ref_mm is not None:
                 sc *= float(np.exp(-abs(x0 / R - x_ref_mm) / 8.0))
             if sc > best:
@@ -300,6 +309,8 @@ class Ctx:
             # I/II/III só diferem pelo número de barras: uma barra colada ao traço ou ao
             # pulso some e "II" vira "I". Confusão entre eles custa metade
             cap = 0.5 if (top in ("I", "II", "III") and _canon(name) in ("I", "II", "III")) else 1.0
+            if w.get("single") and top == "I" and _canon(name) in ("II", "III"):
+                cap = 0.0  # uma barra só não desmente II/III: as outras podem ter colado no traço
             parts["ocr"] += max(-cap, (d.get(name, 0.0) - d[top]) / 0.15)
         # membros
         sig = {}
@@ -350,6 +361,8 @@ class Ctx:
                     m = ~np.isnan(a) & ~np.isnan(b)
                     if m.sum() < 50 or a[m].std() == 0 or b[m].std() == 0:
                         continue
+                    if max(a[m].std(), b[m].std()) < 0.08:
+                        continue  # duas cópias quase planas: o NRMSE é só ruído, não é evidência
                     # erro RMS normalizado: sensível a forma E amplitude (derivações
                     # vizinhas têm correlação alta, mas amplitudes diferentes)
                     na, nb = np.linalg.norm(a[m]), np.linalg.norm(b[m])
@@ -376,7 +389,11 @@ class Ctx:
         for j, r in enumerate(rest_rows):
             best, best_n = -np.inf, None
             for nm in LEAD_NAMES:
-                sc, _ = self.score(spec + [[nm]])
+                sc, parts_ = self.score(spec + [[nm]])
+                # o nome da tira vem do rótulo, da comparação direta com a mesma derivação na
+                # grade e da convenção; Goldberger (página inteira) não entra: com tira não
+                # simultânea ou traço ruim ele puxa para III/aVF/V3 sem motivo
+                sc -= W_LIMB * parts_["limb"]
                 sc += 1.5 if nm in canon[j] else 0.0
                 # o escore inclui a grade; só a diferença entre nomes importa
                 if sc > best:

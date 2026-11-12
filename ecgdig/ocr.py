@@ -22,6 +22,8 @@ VOCAB = {
     "V1": "V1", "V2": "V2", "V3": "V3", "V4": "V4", "V5": "V5", "V6": "V6",
     "v1": "V1", "v2": "V2", "v3": "V3", "v4": "V4", "v5": "V5", "v6": "V6",
     "avr": "aVR", "avl": "aVL", "avf": "aVF",
+    # tira de ritmo rotulada entre parênteses: "Rhythm (II) 10 mm/mV"
+    "(I)": "I", "(II)": "II", "(III)": "III", "(V1)": "V1", "(V5)": "V5", "(aVF)": "aVF",
 }
 _FONT_DIRS = ["/usr/share/fonts/truetype/freefont", "/usr/share/fonts/truetype/liberation",
               "/usr/share/fonts/truetype/dejavu"]

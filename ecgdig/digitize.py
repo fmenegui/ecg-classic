@@ -91,6 +91,40 @@ def _corr(a, b, win=151):
 
 
 
+
+def _cut_leading_pulse(v, fs):
+    """Pulso de calibração que o detector não achou e entrou no traço: no começo da linha,
+    platô plano de ~1 mV (0,5-2,5 mV) por >= 40 ms seguido de queda brusca. Tudo até a
+    queda (+ 10 ms) vira desconhecido."""
+    n = min(len(v), int(0.4 * fs))
+    if n < int(0.06 * fs):
+        return v
+    w = v[:n]
+    if not np.isfinite(w).any():
+        return v
+    k = int(0.04 * fs)
+    best = None
+    for i in range(0, n - k):
+        seg = w[i:i + k]
+        if not np.isfinite(seg).all():
+            continue
+        m = float(np.median(seg))
+        if 0.5 <= abs(m) <= 2.5 and np.std(seg) < 0.04:
+            # fim do platô: primeira amostra que sai dele por mais de metade da altura
+            j = i + k
+            while j < n and np.isfinite(w[j]) and abs(w[j] - m) < 0.5 * abs(m):
+                j += 1
+            drop = j < n and np.isfinite(w[min(n - 1, j + int(0.02 * fs))]) and \
+                abs(w[min(n - 1, j + int(0.02 * fs))]) < 0.35 * abs(m)
+            if drop:
+                best = j
+                break
+    if best is None:
+        return v
+    out = v.copy()
+    out[:min(len(v), best + int(0.01 * fs))] = np.nan
+    return out
+
 def _box_cols(xa, n, boxes, pad=2):
     """Para cada caixa de rótulo que cruza [xa, xa+n): (i0, i1, y0, y1) em índices locais."""
     out = []
@@ -520,6 +554,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             speed, speed_src = sp_ocr, "texto"
         else:
             speed, speed_src = v_phys, "QRS/RR"
+    speed_nominal = speed
+    duration_assumed = False
     if cfg.duration:
         duration = float(cfg.duration)
     else:
@@ -529,7 +565,16 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                 duration = d_
                 break
         else:
-            duration = round(duration, 1)
+            if len(rows) >= 3:
+                # página de várias linhas fora de qualquer duração padrão: quase sempre a
+                # escala horizontal está errada (imagem da web redimensionada sem manter a
+                # proporção, grade só com linhas grossas). A página padrão tem 10 s; o eixo
+                # do tempo se ajusta à largura medida (a escala vertical não muda)
+                duration = 10.0
+                duration_assumed = True
+                speed = span_mm / duration
+            else:
+                duration = round(duration, 1)
     N = int(round(duration * cfg.fs))
     span_px = (N - 1) / cfg.fs * speed * R
 
@@ -766,6 +811,12 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         xs_e = x0_r[rr] + sc_r[rr] * (j["n1"] - 1) / cfg.fs * speed * R
         lo_cut = xs_s + tr if j["n0"] > 0 else -np.inf          # fronteira interna à esquerda
         hi_cut = xs_e - tr if j["n1"] < N else np.inf           # fronteira interna à direita
+        if j["n0"] == 0 and pulses[rr] is not None:
+            # começo da linha: nada antes do fim do pulso de calibração (a descida do pulso e
+            # o platô não são sinal)
+            pe = pulses[rr].get("x_fall", pulses[rr].get("x_end"))
+            if pe is not None:
+                lo_cut = max(lo_cut, float(pe) + tr)
         good = valid & (xs > lo_cut) & (xs < hi_cut)
         if good.sum() < 10:
             good = valid
@@ -778,7 +829,13 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         a0 = np.polyfit(xg[:K], yg[:K], 1); a1 = np.polyfit(xg[-K:], yg[-K:], 1)
         yn = np.where(xn < xg[0], yg[0] + 0.5 * a0[0] * (xn - xg[0]), yn)
         yn = np.where(xn > xg[-1], yg[-1] + 0.5 * a1[0] * (xn - xg[-1]), yn)
+        # extrapolar só o que a marca separadora esconde (~1 raio de pena); além disso a
+        # amostra é desconhecida: uma rampa inventada estraga o 1º batimento e Einthoven
+        ext_max = 2.0 * tr
+        yn = np.where((xn < xg[0] - ext_max) | (xn > xg[-1] + ext_max), np.nan, yn)
         v = (base - yn) / (gain * R)
+        if j["n0"] == 0:
+            v = _cut_leading_pulse(v, cfg.fs)
         lead = j["lead"]
         if lead == "-aVR":  # Cabrera: derivação invertida
             lead, v = "aVR", -v
@@ -808,7 +865,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     res = dict(signals=sig, fs=cfg.fs, leads=list(names), layout=layout, layout_rows=rows_spec,
                layout_info=layout_info, rotation=str(rot),
                gain_mm_per_mv=levels[0][0] if levels else None, gains=gains_seg, duration_s=duration,
-               speed_mm_per_s=speed, speed_source=speed_src, ppmm=ginfo["ppmm"], angle=ginfo["angle"],
+               speed_mm_per_s=speed_nominal, speed_source=speed_src, duration_assumed=duration_assumed,
+               horizontal_scale=speed / speed_nominal, ppmm=ginfo["ppmm"], angle=ginfo["angle"],
                grid_residual_mm=ginfo["residual_rms_mm"], grid_residual_cell_mm=ginfo.get("residual_cell_rms_mm"), line_width_px=lw, line_width_h_px=2 * rad_h,
                pulses_found=sum(p is not None for p in pulses),
                pulses_right=sum(p is not None for p in rpulses), gain_rows_inferred=gain_flags)

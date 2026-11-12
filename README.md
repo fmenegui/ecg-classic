@@ -158,6 +158,23 @@ Na foto 2 a II da grade e a do ritmo passam a concordar a 8 µV (antes 48) e o r
 | Ganho | 92 % | **97 %** |
 | Layout + velocidade + duração + ganho | 83,3 % | **87,3 %** |
 
+### Correções guiadas pelos erros do benchmark LITFL (12/11/2026)
+
+| LITFL (102 imagens) | Antes | Depois |
+|---|---|---|
+| Tiras de ritmo todas certas | 87,9 % | **92,9 %** |
+| Duração | 91,2 % | **99,0 %** |
+| Layout + velocidade + duração + ganho | 87,3 % | **91,2 %** |
+| Einthoven antes da fusão (mediana, menor é melhor) | 0,62 | **0,52** |
+| Ritmo II × grade II, NRMSE (mediana) | 0,58 | **0,54** |
+| Layout / ganho / velocidade | 92,2 / 97 / 99 % | iguais |
+
+- **Começo da linha:** o traço começa depois da descida do pulso; pulso que o detector não achou (platô plano de 0,5–2,5 mV seguido de queda) é cortado; a extrapolação nas pontas de segmento vai só até 2 raios de pena, além disso a amostra fica desconhecida (antes uma rampa inventada estragava o 1º batimento). Cobertura cai de 100 % para 98,9 % por isso, de propósito.
+- **Nome da tira de ritmo:** decidido por rótulo, comparação direta com a mesma derivação na grade e convenção do fabricante, sem o termo de Goldberger (que puxava para III/aVF/V3); barra solta lida como "I" (fragmento de QRS, aresta de pulso ou "II" com uma barra colada ao traço) não desmente II/III e perde para leituras de vários caracteres; barras soltas de altura diferente dos rótulos da página são descartadas; vocabulário com parênteses ("Rhythm (II)").
+- **Duração:** página de 3 ou mais linhas fora de qualquer duração padrão é quase sempre escala horizontal errada (imagem da web redimensionada sem manter a proporção, grade só com linhas grossas): assume 10 s e ajusta o eixo do tempo à largura medida, sem mexer na escala vertical (`duration_assumed`, `horizontal_scale` no resultado).
+
+Sintético: misto 23/24 layouts (a tira V1 quase plana da imagem 018, a 5 mm/mV, passa a se chamar I: sem física nem rótulo legível, é o caso de piso de quantização; SNR igual), 19,19 dB; `fold` 18,1, `heavy` 19,4, `medium` 21,6 dB, iguais. Fotos reais: coerência 36,3 → 35,4 µV.
+
 Os números sintéticos não são comparáveis diretamente com o placar do PhysioNet 2024: lá as imagens são mais variadas, e o gerador sintético daqui é mais fácil do que o mundo real.
 
 ## Limitações conhecidas
