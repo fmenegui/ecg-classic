@@ -41,7 +41,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: results/physionet/data
-          key: physionet-shard-${{ matrix.ids }}-v1
+          key: physionet-shard-${{ strategy.job-index }}-v1
       - name: Avaliar
         env:
           PHYSIONET_KEEP_DATA: '1'
