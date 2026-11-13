@@ -1,0 +1,39 @@
+name: Híbrido - treino do segmentador de traço (CPU)
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: 'Minutos de treino'
+        required: false
+        default: '320'
+        type: string
+      steps:
+        description: 'Passos (teto)'
+        required: false
+        default: '40000'
+        type: string
+permissions:
+  contents: read
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e . onnx onnxruntime
+      - name: Treinar
+        run: python hybrid/train.py --steps ${{ inputs.steps }} --minutes ${{ inputs.minutes }} --workers 3 --out hybrid/out
+      - name: Amostras
+        if: always()
+        run: python hybrid/gen.py hybrid/out/amostras.png 7 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trace-seg-${{ github.run_id }}
+          path: hybrid/out/
+          retention-days: 30

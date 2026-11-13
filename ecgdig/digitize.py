@@ -51,6 +51,8 @@ class Config:
     rigid_edges: bool = True     # Viterbi: traço íngreme que translada inteiro não paga a continuidade das bordas
     pulse_retry: bool = True     # pulso procurado também a partir da margem comum das linhas
     row_beats: bool = True       # linhas nas pontas sem QRS simultâneos aos das outras saem
+    ink_model: str = ""         # caminho do ONNX do segmentador de traço (modo híbrido)
+    ink_mix: float = 1.0        # 1 = só a rede; <1 mistura com o mapa clássico
     band_sp: float = 1.6        # faixa de busca do traço: +-band_sp espaçamentos de linha
     fit: str = "none"          # "lsf": renderização inversa com o perfil de pena medido
 
@@ -754,6 +756,13 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     rect, pap, ginfo = rectify(img, R, cfg.ppmm, cfg.nonrigid, major_snap=cfg.major_snap,
                                fine_snap=cfg.fine_snap)
     D, glev = ink_map(rect, pap, R, return_grid_level=True)
+    if cfg.ink_model:
+        # modo híbrido: a rede diz onde está a tinta do traço; o resto segue clássico
+        from .inkmodel import predict
+        Pn = predict(rect, cfg.ink_model)
+        Pn[pap == 0] = 0.0
+        D = Pn if cfg.ink_mix >= 1.0 else (cfg.ink_mix * Pn + (1 - cfg.ink_mix) * D).astype(np.float32)
+        glev = 0.0 if cfg.ink_mix >= 1.0 else glev
     B = binarize(D, R, glev)
     (rect, pap, D, B), rot = _orient([rect, pap, D, B], R)
 
