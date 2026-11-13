@@ -59,3 +59,19 @@ E(s) = Σ ρ(render(s) − imagem) + λ·w_baixa_conf·‖s − template∘warp�
 4. D — geometria *(vincos feitos antes da hora, 12/11/2026: campo local por células de 5 mm, ideia do Undistortion da PMcardio reimplementada sobre a fase da grade — sem Dotter nem Gridder; sintético com dobras 9,7 → 17,3 dB, neutro em papel plano. Falta: PUMA, lente, reflexo)*
 5. F — QC/incerteza (em paralelo)
 6. E — inversão por renderização
+
+## 5. Avaliação no PhysioNet (Kaggle), 13/11/2026
+
+20 registros × 9 capturas do treino da competição, com sinal verdadeiro. A métrica é o SNR com alinhamento de ±0,2 s em passo de 1 amostra. Resultado: **3,3 → 11,0 dB** no geral; render 21,4; scans 10,6–12,6; fotos 3,4–10,8. O layout 3x4+1 passou de 44% para 92%. LITFL e sintéticos ficaram sem regressão.
+
+A decomposição por oráculo (`benchmarks/physionet/diagnose.py`) apontou as causas, e cada uma foi corrigida:
+
+- **Grade preta em scans P&B:** o molde agora desce até a linha.
+- **Papel deslocado no scanner,** com a grade 0,3–1,2 mm fora do lugar, o que é ambíguo para a fase de 1 mm: foi criado o ajuste pelas linhas grossas (`_major_snap`).
+- **Origem do tempo decidida por bordas falsas:** o pulso passou a ser âncora fraca.
+- **Linhas espúrias em fotos:** borda impressa, cabeçalho e régua deixaram de ser tratados como linhas de ECG.
+- **Duração por artefato:** a duração agora segue a duração padrão que os finais de linha confirmam.
+
+O que ainda custa SNR, em ordem: distorção horizontal local (≈ 1 dB; ancorar colunas nas marcas separadoras), layout/derivação trocada (≈ 0,9 dB), fotos de celular (0005 ≈ 3,4 dB, com o próprio traço errado) e ganho (≈ 0,5 dB).
+
+Lição de método: num render, 1 ms de deslocamento muda o SNR em vários dB. Comparações entre versões precisam de alinhamento por amostra e de sinais salvos para recalcular.
