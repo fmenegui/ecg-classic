@@ -32,6 +32,44 @@ def _normals(cx, cy):
     return -ty / nrm, tx / nrm
 
 
+def _pav(y):
+    """Regressão isotônica (não decrescente) por pool-adjacent-violators. Devolve (valor por
+    ponto, rótulo do bloco por ponto)."""
+    vals, wts, cnt = [], [], []
+    for v in y:
+        vals.append(float(v)); wts.append(1.0); cnt.append(1)
+        while len(vals) > 1 and vals[-2] > vals[-1]:
+            w = wts[-2] + wts[-1]
+            v2 = (vals[-2] * wts[-2] + vals[-1] * wts[-1]) / w
+            c2 = cnt[-2] + cnt[-1]
+            vals.pop(); wts.pop(); cnt.pop()
+            vals[-1], wts[-1], cnt[-1] = v2, w, c2
+    out = np.repeat(vals, cnt)
+    lab = np.repeat(np.arange(len(vals)), cnt)
+    return out, lab
+
+
+def monotone_order(cx, cy, spread=0.3):
+    """Ordena a curva em x sem embaralhar a ordem do arco: x vira não decrescente pela
+    regressão isotônica (média dos trechos que voltam para trás) e, dentro de cada trecho
+    "vertical" agrupado, os pontos se espalham em +-spread px na ordem do arco. Ordenar por x
+    puro intercala os pontos da subida e da descida do QRS e vira serrilhado."""
+    xi, lab = _pav(cx)
+    out = xi.copy()
+    if len(lab):
+        st = np.r_[0, np.nonzero(np.diff(lab))[0] + 1]
+        en = np.r_[st[1:], len(lab)]
+        for a, b in zip(st, en):
+            if b - a > 1:
+                lo = xi[a] - spread if a == 0 else max(xi[a] - spread, 0.5 * (xi[a - 1] + xi[a]))
+                hi = xi[a] + spread if b == len(xi) else min(xi[a] + spread, 0.5 * (xi[a] + xi[b]))
+                out[a:b] = np.linspace(lo, hi, b - a)
+    # garante estritamente crescente
+    o = np.maximum.accumulate(out)
+    keep = np.r_[True, np.diff(o) > 1e-4]
+    return o[keep], np.asarray(cy)[keep]
+
+
 def estimate_psf(D, xs, yc, rad, n_max=400):
     """(a, sigma) pelo perfil vertical da tinta em colunas planas do traço."""
     from scipy.optimize import least_squares
@@ -66,7 +104,7 @@ def estimate_psf(D, xs, yc, rad, n_max=400):
     return float(A), float(s)
 
 
-def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_rad=2.0):
+def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_rad=2.0, order="sort"):
     """Refina os pontos (xg, yg) da curva casando o traço renderizado com D.
     Devolve (x, y) novos, ordenados em x, ou os originais se o ajuste não for confiável."""
     xg = np.asarray(xg, float); yg = np.asarray(yg, float)
@@ -151,6 +189,8 @@ def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_
         delta = delta - lr * grad + lr * lam * a * a * lap
         delta = np.clip(delta, -max_shift, max_shift)
     cx = cx0 + delta * nx; cy = cy0 + delta * ny
+    if order == "monotone":
+        return monotone_order(cx, cy)
     o = np.argsort(cx, kind="stable")
     cx, cy = cx[o], cy[o]
     keep = np.r_[True, np.diff(cx) > 1e-3]

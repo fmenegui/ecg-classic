@@ -101,7 +101,7 @@ def _metric_align(G, P, fs):
     return Q
 
 
-def decompose(G, P, fs):
+def decompose(G, P, fs, return_signals=False):
     G = G.astype(np.float64)
     P = P.astype(np.float64)
     out = {}
@@ -231,6 +231,8 @@ def decompose(G, P, fs):
         low = uniform_filter1d(d, w) / np.maximum(cnt, 1e-6)
         P5[i] = np.where(m, P4[i] + low, P4[i])
     out["linha de base"] = _snr(G, P5)
+    if return_signals:
+        return out, P5
     return out
 
 
