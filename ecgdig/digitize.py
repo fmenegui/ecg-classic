@@ -94,6 +94,12 @@ def _corr(a, b, win=151):
 
 
 
+def _runs_bool(m):
+    """Trechos True de um vetor booleano: (inícios, fins exclusivos)."""
+    d = np.diff(np.r_[0, np.asarray(m, np.int8), 0])
+    return np.nonzero(d == 1)[0], np.nonzero(d == -1)[0]
+
+
 def _tick_span(xs, top, bot, xb, R):
     """A marca separadora na fronteira xb: colunas "altas" (topo-base > 1,2 mm) a ±0,4 mm de
     xb, estendidas enquanto topo E base ficam onde estavam (±0,3 mm). A marca é um retângulo;
@@ -257,7 +263,7 @@ def _rows_pulses(B, pap, R):
         # "pulso" longe da coluna dos outros (QR code, caixa do cabeçalho) não conta
         xs_p = np.array([p["x_start"] for p in pulses if p is not None], float)
         med_x = float(np.median(xs_p))
-        has = [p is not None and abs(p["x_start"] - med_x) < 10 * R for p in pulses]
+        has = [p is not None and abs(p["x_start"] - med_x) < 3 * R for p in pulses]
     if sum(has) >= 2 and len(peaks) > sum(has) and len(peaks) >= 3:
         exc = [_excursions(B, int(y), half, R) for y in peaks]
         ref = float(np.median([x for x, h in zip(exc, has) if h]))
@@ -344,6 +350,11 @@ def _origin_cands(D, B, rows, ext, pulses, half, lev, R, rad):
     o ruído ou a borda da folha numa foto podem estar a dezenas de mm do traço."""
     xl, xe, wk = _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad, return_weak=True)
     xl = [float(v) for v in xl if not np.isnan(v)]
+    # o traço não começa antes do pulso de calibração: "início" à esquerda dos pulsos das
+    # outras linhas é a borda da folha/grade numa foto
+    xs_p = [p["x_start"] for p in pulses if p is not None]
+    if xs_p:
+        xl = [v for v in xl if v > float(np.median(xs_p))]
     xe = [float(v) for v in xe if not np.isnan(v)]
     return xl, xe, [float(v) for v in wk if np.isfinite(v)]
 
@@ -565,6 +576,11 @@ def _vote_x0(xl, xe, rad, span_px, R, weak=()):
     o valor quando o grupo não tem nenhuma borda de verdade (elas têm viés de ~0,1 mm)."""
     c = [(v + rad, "L") for v in xl] + [(v - rad - span_px, "R") for v in xe] + \
         [(v + rad, "W") for v in weak]
+    if weak:
+        # com pulsos, o traço começa no fim do pulso ou poucos mm depois: um final de linha
+        # que põe a origem 8 mm além (ou antes do pulso) emendou em outra coisa
+        wm = float(np.median(weak)) + rad
+        c = [(v, t) for v, t in c if t != "R" or -1.0 * R <= v - wm <= 8.0 * R]
     _vote_x0.both_sided = False
     if not c:
         return None
@@ -644,6 +660,9 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     # ---------------------------------------------------- velocidade e duração
     xlr0, xer0, wkr0 = _edge_rows(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2, return_weak=True)
     # início por linha: borda do traço, ou o fim do pulso quando o traço sai colado nele
+    xs_p0 = [p["x_start"] for p in pulses if p is not None]
+    if xs_p0:  # início à esquerda do pulso não é traço (borda da folha)
+        xlr0 = np.where(xlr0 <= float(np.median(xs_p0)), np.nan, xlr0)
     xlr0 = np.where(np.isnan(xlr0), wkr0 + lw0 / 2, xlr0)
     xl_ok = xlr0[~np.isnan(xlr0)]
     xr_ok = xer0[~np.isnan(xer0)]
@@ -660,6 +679,10 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         # "25mm/s" degradado vira "12.5" ou "50": QRS de 50 ms / FC de 30 bpm denunciam)
         ok_txt = sp_ocr is not None and (
             sp_sc >= 0.7 or not sc_phys or sc_phys.get(sp_ocr, -np.inf) >= max(sc_phys.values()) - 2.0)
+        # 25 mm/s é o padrão esmagador; "50" lido numa foto (o "25" borrado) só vale se a
+        # fisiologia (QRS/RR) não preferir 25
+        if ok_txt and sp_ocr != 25.0 and sc_phys and sc_phys.get(25.0, -np.inf) > sc_phys.get(sp_ocr, -np.inf) + 0.5:
+            ok_txt = False
         if ok_txt:
             speed, speed_src = sp_ocr, "texto"
         else:
@@ -682,8 +705,13 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                 exp_ = left + lw0 + d_ * speed * R
                 sup[d_] = int((np.abs(xr_ok - exp_) < 1.5 * R).sum())
             d_best = max(sup, key=sup.get) if sup else None
+            n_pulses = sum(p is not None for p in pulses)
             if d_best is not None and sup[d_best] >= max(1, int(np.ceil(0.25 * len(xr_ok)))):
                 duration = d_best
+            elif n_pulses >= 2 and 10.0 < duration <= 12.5 and len(rows) >= 3:
+                # início ancorado nos pulsos e linhas "longas demais": os finais emendaram na
+                # borda da folha/grade (foto). A grade dá o mm; vale a página padrão de 10 s
+                duration = 10.0
             elif len(rows) >= 3:
                 # página de várias linhas fora de qualquer duração padrão: quase sempre a
                 # escala horizontal está errada (imagem da web redimensionada sem manter a
@@ -838,6 +866,19 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             # na extração final, continuidade das bordas (letras de rótulo coladas ao traço);
             # os traços rápidos usados no layout ficam como antes
             sel = viterbi_track(runs, base0, R, others=others, lw=lw0, w_edge=0.3)
+            # restrição fisiológica: o ECG volta à linha de base a cada batimento. Um caminho
+            # que passa > 0,8 s inteiro a mais de 4 mm dela seguiu outra coisa (borda da folha,
+            # régua de texto, traço vizinho): esses segmentos saem e o rastreio é refeito
+            far_len = int(0.8 * speed * R)
+            cen = np.array([runs[i][k][2] if k is not None else np.nan for i, k in enumerate(sel)])
+            far = np.abs(cen - base0) > 4 * R
+            st_, en_ = _runs_bool(far)
+            bad = [(a_, b_) for a_, b_ in zip(st_, en_) if b_ - a_ >= far_len]
+            if bad:
+                for a_, b_ in bad:
+                    for i in range(a_, b_):
+                        runs[i] = [rr_ for rr_ in runs[i] if abs(rr_[2] - base0) <= 4 * R]
+                sel = viterbi_track(runs, base0, R, others=others, lw=lw0, w_edge=0.3)
             seg_jobs.append(dict(lead=lead, row=r, n0=n0, n1=n1, xa=xa, runs=runs, sel=sel))
 
     # nível de "tinta cheia" e raio do traço (meia espessura) em trechos planos

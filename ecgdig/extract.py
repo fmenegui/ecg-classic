@@ -169,7 +169,8 @@ def detect_pulse(B, y0, half, xa, R, up=None):
     up = half if up is None else up
     a, b = max(0, int(y0 - up)), min(H, int(y0 + 0.6 * half))
     x0s = max(0, int(xa - 10 * R))
-    x1 = min(W, int(xa + 20 * R))
+    # 30 mm: em fotos a extensão da linha pode começar na borda da folha/grade, antes do pulso
+    x1 = min(W, int(xa + 30 * R))
     sub = B[a:b, x0s:x1].astype(np.uint8)
     kv = max(3, int(0.8 * R) | 1)  # fecha quebras verticais (resolução baixa / JPEG)
     sub = cv2.morphologyEx(sub, cv2.MORPH_CLOSE, np.ones((kv, 1), np.uint8)) > 0
@@ -217,7 +218,9 @@ def detect_pulse(B, y0, half, xa, R, up=None):
                     continue
                 return dict(top=float(t1), top2=float(t2), foot=float(foot), x_start=int(x0s + cs[i]),
                             x_end=int(x0s + ce[k]), x_fall=float(x0s + 0.5 * (cs[k] + ce[k])), step=True)
-            if abs(t1 - t2) > 1.0 * R or abs(b1 - b2) > 4.0 * R:
+            # a borda de descida termina no valor do ECG em t = 0 e pode emendar na marca
+            # separadora: o pé dela fica bem abaixo do da subida (até ~1 mV)
+            if abs(t1 - t2) > 1.0 * R or abs(b1 - b2) > 10.0 * R:
                 continue
             top = 0.5 * (t1 + t2); foot = min(b1, b2)
             if abs(foot - y0) > 4 * R:
