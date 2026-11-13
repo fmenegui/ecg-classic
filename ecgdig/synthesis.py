@@ -66,13 +66,18 @@ def estimate_psf(D, xs, yc, rad, n_max=400):
     return float(A), float(s)
 
 
-def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5):
+def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_rad=2.0):
     """Refina os pontos (xg, yg) da curva casando o traço renderizado com D.
     Devolve (x, y) novos, ordenados em x, ou os originais se o ajuste não for confiável."""
     xg = np.asarray(xg, float); yg = np.asarray(yg, float)
     ok = np.isfinite(xg) & np.isfinite(yg)
     xg, yg = xg[ok], yg[ok]
     if len(xg) < 20:
+        return xg, yg
+    if rad > max_rad:
+        # pena grossa de contorno nítido: o modelo morfológico (inversão pelas bordas) já é
+        # exato e a gaussiana erra o perfil chapado, puxando os picos estreitos para baixo.
+        # A síntese serve ao traço fino e borrado (scans, fotos, render do PhysioNet)
         return xg, yg
     psf = estimate_psf(D, xg, yg, rad)
     if psf is None:
