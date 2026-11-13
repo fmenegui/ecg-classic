@@ -873,7 +873,19 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             cen = np.array([runs[i][k][2] if k is not None else np.nan for i, k in enumerate(sel)])
             far = np.abs(cen - base0) > 4 * R
             st_, en_ = _runs_bool(far)
-            bad = [(a_, b_) for a_, b_ in zip(st_, en_) if b_ - a_ >= far_len]
+            # ... e é PLANO (sem QRS): uma derivação com desnível real de linha de base
+            # continua tendo complexos; borda de folha e régua não
+            win_ = max(10, int(1.0 * speed * R))
+
+            def _flat(a_, b_):  # em >= 75% das janelas de 1 s a excursão local fica < 2,5 mm
+                fl = []
+                for w0 in range(a_, b_, win_):
+                    seg = cen[w0:min(b_, w0 + win_)]
+                    seg = seg[np.isfinite(seg)]
+                    if len(seg) > 5:
+                        fl.append(np.ptp(np.percentile(seg, [5, 95])) < 2.5 * R)
+                return bool(fl) and np.mean(fl) >= 0.75
+            bad = [(a_, b_) for a_, b_ in zip(st_, en_) if b_ - a_ >= far_len and _flat(a_, b_)]
             if bad:
                 for a_, b_ in bad:
                     for i in range(a_, b_):
