@@ -142,7 +142,7 @@ def inspect(out: Path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["inspect", "eval"])
+    ap.add_argument("mode", choices=["inspect", "eval", "prefetch"])
     ap.add_argument("--out", type=Path, default=Path("results/physionet"))
     ap.add_argument("--n", type=int, default=40)
     ap.add_argument("--jobs", type=int, default=2)
@@ -152,6 +152,23 @@ def main():
     a = ap.parse_args()
     if a.mode == "inspect":
         inspect(a.out)
+    elif a.mode == "prefetch":  # só baixa (cache do workflow), sem avaliar
+        import csv as _csv
+        cache = a.out / "data"
+        meta = download("train.csv", cache)
+        ids = [x for x in a.ids.split(",") if x]
+        rows = [r for r in _csv.DictReader(open(meta)) if r["id"] in ids]
+        miss = 0
+        for r in rows:
+            rid = r["id"]
+            for nm in [f"train/{rid}/{rid}.csv"] + [f"train/{rid}/{rid}-{t}.png" for t in
+                                                     ("0001", "0003", "0004", "0005", "0006", "0009", "0010", "0011", "0012")]:
+                try:
+                    download(nm, cache / rid)
+                except Exception as e:  # noqa: BLE001
+                    miss += 1
+                    print("falhou", nm, str(e)[:120], flush=True)
+        print("faltando", miss)
     else:
         from eval_snr import evaluate  # escrito depois da inspeção do formato
         evaluate(a)
