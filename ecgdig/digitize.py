@@ -362,7 +362,27 @@ def _rows_pulses(B, pap, R):
             # quebras maiores na vertical
             p_ = detect_pulse(B, y, half, min(e[0], xs_med) if xs_med is not None else e[0], R,
                               up=max(half, min(0.95 * up_sp, 25 * R)), close_mm=2.5)
+            if p_ is not None:
+                p_ = dict(p_, retry=True)
         pulses.append(p_)
+    # pulso achado só na segunda tentativa vale se concordar com os achados na primeira
+    # (altura e coluna); sem nenhum da primeira, vale sozinho
+    first = [p for p in pulses if p is not None and not p.get("retry")]
+    if first:
+        h0 = float(np.median([p["foot"] - p["top"] for p in first]))
+        x0_ = float(np.median([p["x_start"] for p in first]))
+        pulses = [None if (p is not None and p.get("retry") and
+                           (abs((p["foot"] - p["top"]) - h0) > 0.2 * h0 or abs(p["x_start"] - x0_) > 3 * R))
+                  else p for p in pulses]
+    else:
+        rt = [p for p in pulses if p is not None]
+        # só da segunda tentativa: precisa de pelo menos dois, de mesma altura e coluna
+        ok_ = False
+        if len(rt) >= 2:
+            hs = np.array([p["foot"] - p["top"] for p in rt]); xs_ = np.array([p["x_start"] for p in rt])
+            ok_ = np.ptp(hs) <= 0.2 * np.median(hs) and np.ptp(xs_) <= 3 * R
+        if not ok_:
+            pulses = [None] * len(pulses)
     # linha nas pontas do bloco sem pulso, quando outras têm: cabeçalho isolado, régua de
     # texto colada ao bloco, borda da área impressa/sombra da folha numa foto (quase plana)
     has = [p is not None for p in pulses]
