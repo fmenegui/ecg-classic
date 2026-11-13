@@ -218,31 +218,33 @@ def _rows_pulses(B, pap, R):
     for i, (y, e) in enumerate(zip(peaks, ext)):
         up_sp = (y - peaks[i - 1]) if i > 0 else spacing
         pulses.append(detect_pulse(B, y, half, e[0], R, up=max(half, min(0.95 * up_sp, 25 * R))) if e else None)
-    # linha nas pontas do bloco sem pulso, quando as outras têm, e quase sem excursões
-    # verticais: borda da área impressa / sombra da folha numa foto / régua de texto
+    # linha nas pontas do bloco sem pulso, quando outras têm: cabeçalho isolado, régua de
+    # texto colada ao bloco, borda da área impressa/sombra da folha numa foto (quase plana)
     has = [p is not None for p in pulses]
-    if sum(has) >= 3:
+    if sum(has) >= 2:
         # "pulso" longe da coluna dos outros (QR code, caixa do cabeçalho) não conta
         xs_p = np.array([p["x_start"] for p in pulses if p is not None], float)
         med_x = float(np.median(xs_p))
         has = [p is not None and abs(p["x_start"] - med_x) < 10 * R for p in pulses]
-    if sum(has) >= 3 and len(peaks) > sum(has):
+    if sum(has) >= 2 and len(peaks) > sum(has) and len(peaks) >= 3:
         exc = [_excursions(B, int(y), half, R) for y in peaks]
         ref = float(np.median([x for x, h in zip(exc, has) if h]))
-        pk_p = np.array([y for y, h in zip(peaks, has) if h])
-        sp_p = float(np.median(np.diff(pk_p))) if len(pk_p) > 1 else spacing
         len_p = float(np.median([e[1] - e[0] for e, h in zip(ext, has) if h and e]))
+        sp_all = float(np.median(np.diff(peaks)))
         keep = np.ones(len(peaks), bool)
         for order in (range(len(peaks)), range(len(peaks) - 1, -1, -1)):
             for i in order:
                 if has[i]:
                     break
-                gap = float(np.min(np.abs(pk_p - peaks[i])))
+                others = peaks[keep & (np.arange(len(peaks)) != i)]
+                gap = float(np.min(np.abs(others - peaks[i]))) if len(others) else np.inf
                 short = not ext[i] or (ext[i][1] - ext[i][0]) < 0.6 * len_p
-                # quase plana, curta (texto do rodapé) ou isolada do bloco (cabeçalho)
-                if exc[i] < 0.4 * ref or short or gap > 1.6 * sp_p:
+                flat = exc[i] < 0.4 * ref
+                if gap > 1.6 * sp_all or gap < 0.7 * sp_all or (sum(has) >= 3 and (flat or short)):
                     keep[i] = False
-        if not keep.all():
+                else:
+                    break
+        if not keep.all() and keep.sum() >= 2:
             peaks = peaks[keep]
             ext = [e for e, k in zip(ext, keep) if k]
             pulses = [p for p, k in zip(pulses, keep) if k]
