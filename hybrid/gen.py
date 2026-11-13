@@ -73,7 +73,9 @@ def _grid_layer(rng, H, W, S):
     if dotted:
         minor = lines(u, per, w_min * 1.5) * lines(v, per, w_min * 1.5)
     major = np.maximum(lines(u, 5 * per, w_maj), lines(v, 5 * per, w_maj))
-    kind = rng.integers(5)
+    # grade preta/cinza (impressora P&B, scan escurecido) com mais peso: é onde a grade e o
+    # traço têm a mesma cor e a rede mais erra
+    kind = int(rng.choice(5, p=[0.3, 0.12, 0.13, 0.33, 0.12]))
     if kind == 0:      # vermelho/rosa clássico
         cmin = (int(rng.integers(150, 230)), int(rng.integers(150, 225)), int(rng.integers(220, 256)))
         cmaj = (int(rng.integers(60, 170)), int(rng.integers(60, 160)), int(rng.integers(180, 256)))
@@ -186,7 +188,7 @@ def _degrade(rng, img):
     f = f + rng.normal(0, rng.uniform(0, 10), f.shape)
     f = np.clip(f, 0, 255).astype(np.uint8)
     # P&B pontilhado (scanner de fax/P&B)
-    if rng.random() < 0.1:
+    if rng.random() < 0.22:
         gr = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY).astype(np.float32)
         gr = (gr + rng.normal(0, 30, gr.shape) > rng.uniform(110, 170)).astype(np.uint8) * 255
         f = cv2.cvtColor(gr, cv2.COLOR_GRAY2BGR)
@@ -208,6 +210,8 @@ def sample(rng, size=192):
     for a, c in _grid_layer(rng, H, W, S):
         img = _blend(img, a, c)
     lay = _trace_layer(rng, H, W, S)
+    if rng.random() < 0.08:  # recorte só de grade/texto: a rede precisa aprender a dizer "nada"
+        lay[:] = 0
     ink = _rand_color(rng)
     if rng.random() < 0.2:  # traço da mesma cor da grade grossa (pior caso)
         ink = (int(rng.integers(0, 60)),) * 3
