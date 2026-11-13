@@ -22,6 +22,23 @@ python benchmarks/physionet/report_html.py art/physionet-eval-<run_id> \
 
 `diagnose.py` mede quanto SNR custa cada tipo de erro: aplica correções "oráculo" cumulativas (cada uma usa o gabarito só para o seu erro) na ordem layout/derivação trocada → trechos vazios → origem do tempo → escala horizontal → distorção horizontal local (janelas de 0,5 s) → ganho → linha de base. O que sobra é erro de forma.
 
+## Quarta rodada (13/11/2026): rastreio e linhas, +0,9 dB nas 135 locais
+
+Diagnóstico: depois do oráculo de tempo, ganho e linha de base, 40–48% do erro restante está nos picos, que ficam aquém do verdadeiro. Na imagem, isso vinha de traço íngreme abandonado pelo rastreio e de linhas falsas mudando o layout das fotos.
+
+| Mudança | Onde ajuda | Exemplo |
+|---|---|---|
+| Translação rígida: segmentos sobrepostos que andam juntos não pagam a continuidade das bordas (`rigid_edges`) | QRS gigante cruzando linhas | render 10,3 → 29,9 dB |
+| Ponte por tinta contínua entre segmentos no Viterbi (`bridge`) | traço fraco partido em fotos | pequeno, sempre conservador |
+| Ritmo comum entre linhas: linha da ponta sem QRS simultâneos e fora do espaçamento sai (`row_beats`) | fotos de tela, cabeçalho, faixa de grade | 0,5 → 16,7; −6,6 → 6,8 dB |
+| Pulso procurado de novo a partir da margem comum, validado contra os outros (`pulse_retry`) | bordas do pulso partidas | |
+
+135 imagens locais com gabarito: **13,64 → 14,57 dB** (32 melhores, 12 piores, a pior −0,3 dB); nenhum tipo piorou. LITFL e sintéticos idênticos à referência. Testado e descartado: renderização inversa com perfil de pena medido (`fit="lsf"`, −0,6 dB num scan), ordem isotônica na síntese (neutra), deslocamento maior na síntese (−0,2 dB).
+
+O piso da impressão: nos scans, o instante de cada QRS varia ±3 ms por batimento em relação ao gabarito, igual em todas as linhas e em várias capturas da mesma folha, enquanto a grade está certa a ±0,02 mm. É o sinal impresso que saiu deslocado (rasterização antes da impressão), e isso não se recupera da imagem.
+
+Workflow `physionet-shards.yml`: baixa os 20 registros uma vez (cache compartilhado, devagar por causa do limite do Kaggle) e avalia em 4 frentes paralelas.
+
 ## Terceira rodada (13/11/2026): leitura do traço, +0,5 dB
 
 Depois da segunda rodada, 84–91% da energia do erro dos scans estava no QRS, com amplitude certa e instante errado (1 coluna = 4 ms). Foram testadas duas ideias:
