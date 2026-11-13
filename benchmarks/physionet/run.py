@@ -67,9 +67,14 @@ def download(name, dest: Path):
     """Baixa um arquivo da competição; devolve o caminho local (descompacta se vier .zip)."""
     dest.mkdir(parents=True, exist_ok=True)
     before = {p for p in dest.rglob("*")}
-    r = subprocess.run(["kaggle", "competitions", "download", COMP, "-f", name, "-p", str(dest)],
-                       capture_output=True, text=True)
-    log = (r.stdout + " | " + r.stderr).strip()  # stderr mostra limite de uso/credencial
+    import time
+    for tent in range(7):
+        r = subprocess.run(["kaggle", "competitions", "download", COMP, "-f", name, "-p", str(dest)],
+                           capture_output=True, text=True)
+        log = (r.stdout + " | " + r.stderr).strip()  # stderr mostra limite de uso/credencial
+        if "429" not in log:
+            break
+        time.sleep(min(300, 15 * 2 ** tent))  # limite de requisições do Kaggle: espera e tenta de novo
     new = [p for p in dest.rglob("*") if p not in before and p.is_file()]
     for z in [p for p in new if p.suffix == ".zip"]:
         try:
