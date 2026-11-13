@@ -22,6 +22,19 @@ python benchmarks/physionet/report_html.py art/physionet-eval-<run_id> \
 
 `diagnose.py` mede quanto SNR custa cada tipo de erro: aplica correções "oráculo" cumulativas (cada uma usa o gabarito só para o seu erro) na ordem layout/derivação trocada → trechos vazios → origem do tempo → escala horizontal → distorção horizontal local (janelas de 0,5 s) → ganho → linha de base. O que sobra é erro de forma.
 
+## Terceira rodada (13/11/2026): leitura do traço, +0,5 dB
+
+Depois da segunda rodada, 84–91% da energia do erro dos scans estava no QRS, com amplitude certa e instante errado (1 coluna = 4 ms). Foram testadas duas ideias:
+
+| Teste | Imagens | Antes | Depois | Estado |
+|---|---|---|---|---|
+| Instante sub-pixel no QRS (`steep_subpx`) | 180 (Kaggle) | 13,23 dB | 13,44 dB | opcional |
+| Ajuste por síntese (`synth`) | 135 (locais) | 13,17 dB | 13,64 dB (105 melhores) | ligado |
+| Ajuste por síntese (`synth`) | 45 (Kaggle) | 14,07 dB | 14,53 dB (31 melhores, 8 piores) | ligado |
+| Os dois juntos | 135 (locais) | 13,17 dB | 13,67 dB | — |
+
+O ajuste por síntese (`ecgdig/synthesis.py`) desenha a curva com um modelo de pena e borrão estimado na própria imagem e desloca cada ponto até o desenho casar com a tinta. Só atua em traço fino (raio ≤ 2 px): na pena grossa e nítida dos sintéticos a gaussiana erra o perfil e baixaria 3–4 dB. Ganho por tipo: render, scans e scans escurecidos +0,8 a +1,0 dB; fotos −0,2 a +0,3 dB. Custo de ~6 s por imagem. LITFL: Einthoven 0,512 → 0,473. Misturar com o batimento médio piorou (−0,1 a −0,9 dB) e não entrou.
+
 ## Segunda rodada (13/11/2026, mesmos 20 registros): 11,2 → 13,2 dB
 
 | Tipo de imagem | 1ª rodada | 2ª rodada |

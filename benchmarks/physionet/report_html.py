@@ -235,6 +235,9 @@ def build(art: Path, before: Path | None, out: Path, findings_md: Path | None = 
     res = R["results"]
     dec = json.loads((art / "decomposition.json").read_text()) if (art / "decomposition.json").exists() else []
     B = json.loads((before / "results.json").read_text())["results"] if before else None
+    if B:  # rodada parcial (limite de tempo): compara só as mesmas imagens
+        keys = {(r["id"], r["type"]) for r in res}
+        B = [r for r in B if (r["id"], r["type"]) in keys]
     if B:  # mesma métrica nas duas rodadas
         na, nb = _npz_snr(art), _npz_snr(before)
         for r in res:

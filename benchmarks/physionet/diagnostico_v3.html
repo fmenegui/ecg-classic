@@ -1,0 +1,25 @@
+<section>
+  <div class="eyebrow">Terceira rodada · leitura do traço</div>
+  <h2>Onde estava o erro que sobrou, e dois testes para atacá-lo</h2>
+  <p>Depois da segunda rodada, <b>84 a 91% da energia do erro dos scans estava no QRS</b>. A amplitude dos picos já estava certa (razão de 0,96 a 0,99 entre extraído e verdadeiro), então o erro era o <b>instante</b> das subidas e descidas íngremes. Lida por coluna, a posição do traço tem resolução de 0,1 mm, que equivale a 4 ms a 25 mm/s; num QRS de 50 mV/s isso dá até 0,2 mV de erro.</p>
+  <p>Um oráculo confirmou que a geometria não é mais o gargalo: registrando cada scan no render do mesmo ECG, o ganho foi de só +0,1 a 0,8 dB.</p>
+
+  <div class="finding">
+    <h3>Teste 1 · média a posteriori do instante no QRS<span>+0,21 dB (180 imagens)</span></h3>
+    <p>A estimativa troca o eixo nos trechos íngremes. Em cada linha de pixel que o traço cruza, o centróide horizontal da tinta, com precisão sub-pixel, é a estimativa de mínimo erro quadrático do instante em que a curva passa por aquela altura.</p>
+    <p>Os pontos de coluna ficam, porque no pico e no vale a inversão da pena é exata, e os pontos de linha entram entre eles. Na primeira versão os pontos de coluna eram trocados pelos de linha, e os picos ficavam achatados.</p>
+    <p>Resultado nas 180 imagens: 13,23 → 13,44 dB. Fica como opção (<code>Config(steep_subpx=True)</code>): somado ao teste 2 acrescenta só +0,03 dB.</p>
+  </div>
+
+  <div class="finding">
+    <h3>Teste 2 · ajuste por síntese<span>+0,47 dB (135 imagens) · ligado</span></h3>
+    <p>O modelo físico de formação da imagem é M(p) = 1 − exp(−Σ<sub>k</sub> a·g<sub>σ</sub>(p − c<sub>k</sub>)): pontos da curva a cada 0,5 px de arco, uma gaussiana que junta pena e borrão, e a saturação da tinta. Os parâmetros a e σ vêm da própria imagem, do perfil do traço nos trechos planos. Cada ponto é então deslocado ao longo da normal da curva até o desenho casar com o mapa de tinta, por mínimos quadrados com regularização de 2ª ordem.</p>
+    <p>Na avaliação local (135 imagens brutas com gabarito: 45 dos primeiros registros e 90 das piores falhas), o SNR foi de 13,17 para 13,64 dB e melhorou em 105 das 135 imagens. Por tipo de imagem: render +0,8, scans +0,5 a +0,9 e fotos −0,2 a +0,3 dB. Na rodada do Kaggle com a síntese ligada, as 45 imagens que terminaram antes do limite de tempo foram de 14,07 para 14,53 dB (31 melhores, 8 piores), com o mesmo padrão por tipo. O custo é de ~6 s a mais por imagem (19 → 26 s, mediana). No LITFL a coerência interna melhorou: Einthoven 0,512 → 0,473 e cópias de II 0,54 → 0,45.</p>
+    <p><b>Limite encontrado:</b> nos sintéticos, que usam pena grossa de contorno nítido, a gaussiana errava o perfil chapado e puxava os picos estreitos para baixo (−3 a −4 dB). Uma pena em disco borrada resolveu os sintéticos mas piorou as imagens reais. Por isso a síntese só atua em traço fino (raio ≤ 2 px), onde de fato há borrão; na pena grossa a inversão pelas bordas já é exata, e os sintéticos ficaram idênticos.</p>
+  </div>
+
+  <div class="finding">
+    <h3>Sobre o batimento médio<span>testado, não entra</span></h3>
+    <p>Misturar o sinal extraído com a mediana dos batimentos do próprio paciente baixou a média: −0,1 dB com 25% de peso e −0,5 dB com 50%; no render, −0,9 dB. O template apaga a variação real entre batimentos, e a métrica cobra cada amostra. Ele só faria sentido como prior local onde o traço está tapado.</p>
+  </div>
+</section>

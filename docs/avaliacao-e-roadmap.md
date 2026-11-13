@@ -88,6 +88,16 @@ O ponto de partida foram os relatos do 4º e do 5º lugares do Kaggle (~22,7 dB,
 Fotos de celular foram de 3,7 para 11,3 dB e scans coloridos de 12,1 para 15,2 dB.
 
 O oráculo de geometria (scan registrado no render) mostra que o gargalo agora é o traçado: o scan fica em ~15 dB contra ~23 dB no render. Próximos passos:
-1. estimador de traçado MMSE (forward-backward com a média a posteriori);
+1. estimador de traçado MMSE (forward-backward com a média a posteriori), testado na 3ª rodada;
 2. máscara da folha pela presença de grade, para fotos com vinheta;
 3. simultaneidade entre linhas onde a grade é fraca (P&B).
+
+### Terceira rodada (13/11/2026): leitura do traço, +0,5 dB
+
+Dois testes contra o erro de instante no QRS:
+
+- **Média a posteriori do instante nos trechos íngremes** (centróide da tinta em cada linha de pixel, entre os pontos de coluna): 13,23 → 13,44 dB em 180 imagens. Fica opcional (`Config(steep_subpx=True)`), porque somado ao ajuste por síntese acrescenta só +0,03 dB.
+- **Ajuste por síntese** (`ecgdig/synthesis.py`): modelo M = 1 − exp(−Σ a·g_σ) com pena e borrão estimados na imagem; os pontos da curva se deslocam pela normal até o desenho casar com a tinta. Resultados: 13,17 → 13,64 dB em 135 imagens locais e 14,07 → 14,53 dB em 45 imagens do Kaggle. Ligado por padrão, só em traço fino (raio ≤ 2 px). Sintéticos idênticos; LITFL com Einthoven 0,512 → 0,473.
+- **Batimento médio como prior global:** piora de 0,1 a 0,9 dB e não entra.
+
+Onde ainda há espaço: as fotos (0006, 0009, 0010) quase não ganham com a síntese. O limite delas é a geometria e a iluminação, não o traço.
