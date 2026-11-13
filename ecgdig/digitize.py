@@ -43,7 +43,7 @@ class Config:
     major_snap: bool = True   # ajuste pelas linhas grossas (5 mm)
     fine_snap: bool = True    # ajuste pelas linhas finas (1 mm)
     steep_subpx: bool = False  # instante sub-pixel nos trechos íngremes (teste)
-    synth: bool = False        # ajuste por síntese pena + borrão (teste)
+    synth: bool = True         # ajuste por síntese: pena + borrão gaussianos (traço fino)
 
 
 def _pick_rows(peaks, cov, n_expected):
