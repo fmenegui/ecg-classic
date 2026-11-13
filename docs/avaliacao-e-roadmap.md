@@ -75,3 +75,19 @@ A decomposição por oráculo (`benchmarks/physionet/diagnose.py`) apontou as ca
 O que ainda custa SNR, em ordem: distorção horizontal local (≈ 1 dB; ancorar colunas nas marcas separadoras), layout/derivação trocada (≈ 0,9 dB), fotos de celular (0005 ≈ 3,4 dB, com o próprio traço errado) e ganho (≈ 0,5 dB).
 
 Lição de método: num render, 1 ms de deslocamento muda o SNR em vários dB. Comparações entre versões precisam de alinhamento por amostra e de sinais salvos para recalcular.
+
+### Segunda rodada (13/11/2026): 11,2 → 13,2 dB
+
+O ponto de partida foram os relatos do 4º e do 5º lugares do Kaggle (~22,7 dB, com redes neurais), cujo maior ganho veio da retificação local pela grade inteira. O equivalente clássico implementado aqui:
+
+- **Grade:** cada linha de 1 mm localizada, com o traço mascarado por cor.
+- **Fronteiras:** a marca separadora é reconhecida como retângulo.
+- **Restrições físicas no Viterbi:** volta à linha de base e origem ancorada no pulso.
+- **Fotos:** pulso e duração tratados de forma robusta.
+
+Fotos de celular foram de 3,7 para 11,3 dB e scans coloridos de 12,1 para 15,2 dB.
+
+O oráculo de geometria (scan registrado no render) mostra que o gargalo agora é o traçado: o scan fica em ~15 dB contra ~23 dB no render. Próximos passos:
+1. estimador de traçado MMSE (forward-backward com a média a posteriori);
+2. máscara da folha pela presença de grade, para fotos com vinheta;
+3. simultaneidade entre linhas onde a grade é fraca (P&B).

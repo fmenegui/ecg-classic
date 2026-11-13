@@ -337,8 +337,9 @@ def build(art: Path, before: Path | None, out: Path, findings_md: Path | None = 
     dec_b = json.loads((before / "decomposition.json").read_text()) if before and (before / "decomposition.json").exists() else None
     if dec_b:
         H.append(decomp_block(dec_b, "Diagnóstico · antes", "Para onde ia o SNR", how))
-    if findings_md and findings_md.exists():
-        H.append(findings_md.read_text())
+    for fm in (findings_md if isinstance(findings_md, (list, tuple)) else [findings_md]):
+        if fm and Path(fm).exists():
+            H.append(Path(fm).read_text())
     if dec:
         H.append(decomp_block(dec, "Diagnóstico · agora" if dec_b else "Diagnóstico",
                               "O que ainda custa SNR" if dec_b else "Para onde vai o SNR", how))
@@ -420,7 +421,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("art", type=Path)
     ap.add_argument("--before", type=Path)
-    ap.add_argument("--findings", type=Path, help="trecho HTML com o diagnóstico escrito")
+    ap.add_argument("--findings", type=Path, nargs="*", default=[], help="trechos HTML com o diagnóstico escrito")
     ap.add_argument("-o", "--out", type=Path, default=None)
     a = ap.parse_args()
     build(a.art, a.before, a.out or a.art / "report.html", a.findings)

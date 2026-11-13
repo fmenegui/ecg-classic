@@ -1,0 +1,36 @@
+<section>
+  <div class="eyebrow">Segunda rodada · o que mudou</div>
+  <h2>Grade indexada linha a linha, marcas separadoras e restrições físicas</h2>
+  <p>Ponto de partida: o código e os relatos dos primeiros colocados do Kaggle (4º e 5º lugares, ~22,7 dB, com redes neurais). O ganho deles veio sobretudo da retificação local, feita a partir de todas as interseções da grade: no relato do 5º lugar, sair da homografia global rendeu +1,6 dB. Aqui o mesmo princípio entra sem aprendizado. Cada passo foi medido em 45 imagens locais com gabarito e mais 90 imagens das piores falhas, e só ficou o que melhorou sem quebrar o LITFL e os sintéticos.</p>
+
+  <div class="finding">
+    <h3>1. Cada linha de 1 mm localizada na imagem<span>geometria</span></h3>
+    <p>Depois do ajuste pelas linhas grossas de 5 mm, que é inequívoco, cada linha fina passa a ser localizada uma a uma, em faixas de 20 mm. A medida usa o canal em que a grade aparece; na média dos canais, a linha fina rosa quase some. O traço fica fora da medida porque é escuro e neutro, enquanto a grade é colorida. Antes, um QRS alto dentro da faixa era tomado pela linha da grade, justamente onde o tempo mais importa.</p>
+    <p>O resíduo da grade nos scans caiu de 0,08–0,15 mm para ~0,05 mm, perto do render (0,04 mm). O A/B nas 180 imagens dá +0,5 dB só para esta etapa.</p>
+  </div>
+
+  <div class="finding">
+    <h3>2. Marca separadora entre derivações<span>scans e fotos</span></h3>
+    <p>Na troca de derivação há uma barra vertical. No scan ela fica borrada e mais larga que a pena, e virava um degrau de 0,3 a 0,9 mV nos primeiros 20 ms de cada derivação.</p>
+    <p><b>Correção:</b> a marca é reconhecida como um retângulo, com topo e base constantes, colado na fronteira. A largura usada é a típica da página: o percentil 25 entre todas as fronteiras, para que um QRS colado na marca não seja cortado junto. O trecho escondido é extrapolado com meia inclinação. Só isso valeu cerca de +4 dB num scan colorido.</p>
+  </div>
+
+  <div class="finding">
+    <h3>3. Restrições físicas no rastreio<span>fotos</span></h3>
+    <ul>
+      <li><b>Volta à linha de base:</b> o ECG volta à isoelétrica a cada batimento. Um caminho do Viterbi que passa mais de 0,8 s a mais de 4 mm da base, plano (sem QRS) em 75% das janelas de 1 s, seguiu outra coisa: a borda da folha, a régua de texto ou o traço vizinho. Esses segmentos saem e o rastreio é refeito. Isso tirou fotos de −13 e −4 dB para +11 e +17 dB.</li>
+      <li><b>Origem ancorada no pulso:</b> o traço começa no fim do pulso de calibração ou poucos mm depois. Por isso, um "início" à esquerda do pulso e um final de linha que poria a origem mais de 8 mm além dele são descartados; eles vinham da borda da folha.</li>
+      <li><b>Velocidade:</b> um "50 mm/s" lido no texto de uma foto (o "25" borrado) só vale se o QRS e o RR também apontarem 50.</li>
+    </ul>
+  </div>
+
+  <div class="finding">
+    <h3>4. Linhas de traçado nas fotos<span>0005 · 0009</span></h3>
+    <p>Nas fotos, a extensão da linha começava na borda da folha e não no pulso. Como a busca do pulso ia só até 20 mm, o pulso ficava de fora, e sem pulsos as regras que tiram o cabeçalho e a régua não atuavam. A busca passou a ir até 30 mm. O pé da borda de descida pode emendar na marca separadora (até 10 mm abaixo). Os pulsos precisam estar na mesma coluna, a 3 mm entre si. Se o fim das linhas emenda na borda e o início está ancorado nos pulsos, vale a página padrão de 10 s, sem reescalar o tempo.</p>
+  </div>
+
+  <div class="finding">
+    <h3>5. Oráculo de geometria<span>diagnóstico</span></h3>
+    <p>Para saber se ainda faltava geometria, cada scan foi registrado no render do mesmo ECG por fluxo óptico denso e digitalizado de novo. O ganho ficou em +0,1 a 0,8 dB. A geometria deixou de ser o gargalo: o que separa um scan (15 dB) do render (23 dB) agora está no traçado em si, com borrão, espessura da pena e ruído.</p>
+  </div>
+</section>

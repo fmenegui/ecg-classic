@@ -22,7 +22,40 @@ python benchmarks/physionet/report_html.py art/physionet-eval-<run_id> \
 
 `diagnose.py` mede quanto SNR custa cada tipo de erro: aplica correções "oráculo" cumulativas (cada uma usa o gabarito só para o seu erro) na ordem layout/derivação trocada → trechos vazios → origem do tempo → escala horizontal → distorção horizontal local (janelas de 0,5 s) → ganho → linha de base. O que sobra é erro de forma.
 
-## Rodada atual (13/11/2026, mesmos 20 registros)
+## Segunda rodada (13/11/2026, mesmos 20 registros): 11,2 → 13,2 dB
+
+| Tipo de imagem | 1ª rodada | 2ª rodada |
+|---|---|---|
+| 0001 (render) | 21,4 dB | 21,3 dB |
+| 0003 (scan colorido) | 12,1 | 15,2 |
+| 0004 (scan P&B) | 10,8 | 12,4 |
+| 0011 (scan com sujeira) | 12,9 | 15,2 |
+| 0012 (scan escurecido) | 10,7 | 12,7 |
+| 0005 (foto de celular) | 3,7 | 11,3 |
+| 0006 (foto de tela) | 9,0 | 8,3 |
+| 0009 (foto amassada) | 9,1 | 10,0 |
+| 0010 (foto com sombra) | 11,2 | 12,8 |
+| **Todas** | **11,2 dB** | **13,2 dB** |
+
+Métrica oficial reimplementada, na resolução original do gabarito. Layout 3x4+1 reconhecido em 95% das imagens. LITFL sem regressão: estrutura idêntica, Einthoven 0,519 → 0,512. Sintéticos iguais ou melhores.
+
+O que mudou, ponto de partida e motivos em `diagnostico_v2.html`:
+
+1. **Grade de 1 mm indexada linha a linha** (`_major_snap(period_mm=1)` depois do ajuste de 5 mm). É o equivalente clássico da retificação por interseções dos primeiros colocados. A medida é feita no canal em que a grade aparece, com o traço (escuro e neutro) fora dela. O resíduo nos scans caiu de 0,08–0,15 mm para ~0,05 mm. A/B nas 180 imagens: +0,5 dB (`Config(fine_snap=False)` desliga).
+2. **Marca separadora entre derivações:** tratada como um retângulo de largura típica da página e cortada. O trecho escondido é extrapolado com meia inclinação.
+3. **Restrições físicas no rastreio:**
+   - volta à linha de base: um trecho longe da base e plano por > 0,8 s é descartado e o rastreio, refeito;
+   - origem ancorada no pulso;
+   - 50 mm/s só com aval do QRS/RR.
+4. **Fotos:**
+   - pulso procurado até 30 mm do início da linha;
+   - pés da borda de descida tolerantes;
+   - pulsos na mesma coluna (3 mm);
+   - página de 10 s quando o início está nos pulsos e o fim emendou na borda.
+
+Ferramentas: `run.py eval --ids a,b,c` avalia registros específicos e guarda as imagens brutas, útil para atacar falhas. O oráculo de geometria, que registra o scan no render por fluxo óptico, mostrou que a geometria já não é o gargalo dos scans: o que falta está no traçado.
+
+## Primeira rodada (13/11/2026, mesmos 20 registros)
 
 | Tipo de imagem | Antes | Depois |
 |---|---|---|
