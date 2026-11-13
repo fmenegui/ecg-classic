@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import random
 import time
 import traceback
@@ -148,10 +149,11 @@ def _work(job):
         (out / "raw").mkdir(exist_ok=True)
         shutil.copy(img_p, out / "raw" / f"{rid}-{typ}.png")
         shutil.copy(gt_p, out / "raw" / f"{rid}.csv")
-    try:
-        Path(img_p).unlink()
-    except OSError:
-        pass
+    if not os.environ.get("PHYSIONET_KEEP_DATA"):
+        try:
+            Path(img_p).unlink()
+        except OSError:
+            pass
     print(rid, typ, rec.get("layout"), None if rec.get("snr") is None else round(rec["snr"], 2),
           rec.get("error", ""), flush=True)
     return rec

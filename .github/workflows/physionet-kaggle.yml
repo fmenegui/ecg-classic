@@ -48,8 +48,16 @@ jobs:
       - name: Inspecionar
         if: inputs.mode == 'inspect'
         run: python benchmarks/physionet/run.py inspect --out results/physionet
+      - name: Cache dos dados do Kaggle
+        if: inputs.mode == 'eval'
+        uses: actions/cache@v4
+        with:
+          path: results/physionet/data
+          key: physionet-data-n${{ inputs.n }}-${{ inputs.ids }}-v1
       - name: Avaliar
         if: inputs.mode == 'eval'
+        env:
+          PHYSIONET_KEEP_DATA: '1'
         run: python benchmarks/physionet/run.py eval --n "${{ inputs.n }}" --out results/physionet ${{ inputs.config && format('--config "{0}"', inputs.config) || '' }} ${{ inputs.ids && format('--ids {0} --keep-raw 99', inputs.ids) || '' }}
       - name: Resumo
         if: always()
@@ -58,5 +66,7 @@ jobs:
         if: always()
         with:
           name: physionet-${{ inputs.mode }}-${{ github.run_id }}
-          path: results/physionet/
+          path: |
+            results/physionet/
+            !results/physionet/data/**/*.png
           retention-days: 14

@@ -66,6 +66,10 @@ def list_files(max_pages=400):
 def download(name, dest: Path):
     """Baixa um arquivo da competição; devolve o caminho local (descompacta se vier .zip)."""
     dest.mkdir(parents=True, exist_ok=True)
+    base = Path(name).name
+    have = [p for p in dest.rglob(base) if p.is_file()]
+    if have:  # já baixado (cache do workflow): não gasta requisição do Kaggle
+        return have[0]
     before = {p for p in dest.rglob("*")}
     import time
     for tent in range(7):
