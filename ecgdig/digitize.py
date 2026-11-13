@@ -92,6 +92,36 @@ def _corr(a, b, win=151):
 
 
 
+def _tick_span(xs, top, bot, xb, R):
+    """A marca separadora na fronteira xb: colunas "altas" (topo-base > 1,2 mm) a ±0,4 mm de
+    xb, estendidas enquanto topo E base ficam onde estavam (±0,3 mm). A marca é um retângulo;
+    um QRS colado tem topo/base andando e não entra. Devolve (x_ini, x_fim) ou None."""
+    if not len(xs):
+        return None
+    hh = bot - top
+    tall = hh > 1.2 * R
+    c = int(np.argmin(np.abs(xs - xb)))
+    win = int(0.4 * R)
+    cand = [q for q in range(max(0, c - win), min(len(xs), c + win + 1)) if tall[q]]
+    if not cand:
+        return None
+    q0 = min(cand, key=lambda q: abs(xs[q] - xb))
+    t0, b0 = top[q0], bot[q0]
+    tol = 0.3 * R
+
+    def same(q):
+        return tall[q] and abs(top[q] - t0) < tol and abs(bot[q] - b0) < tol
+
+    a_ = b_ = q0
+    while a_ - 1 >= 0 and same(a_ - 1):
+        a_ -= 1
+    while b_ + 1 < len(xs) and same(b_ + 1):
+        b_ += 1
+    if xs[b_] - xs[a_] > 1.2 * R:
+        return None
+    return float(xs[a_]), float(xs[b_])
+
+
 def _cut_leading_pulse(v, fs):
     """Pulso de calibração que o detector não achou e entrou no traço: no começo da linha,
     platô plano de ~1 mV (0,5-2,5 mV) por >= 40 ms seguido de queda brusca. Tudo até a
@@ -871,6 +901,24 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         if p is not None:
             base_q[r_] = p["top"] - 0.5 + rad + levels[r_][0] * R
 
+    # extensão típica da marca separadora (à esquerda/direita da fronteira) nesta página
+    ext_l, ext_r = [], []
+    for j in seg_jobs:
+        rr = j["row"]
+        xs_ = np.arange(j["xa"], j["xa"] + len(j["top"]), dtype=np.float64)
+        if j["n0"] > 0:   # começo de derivação: quanto a marca avança depois da fronteira
+            xb = x0_r[rr] + sc_r[rr] * j["n0"] / cfg.fs * speed * R
+            sp_ = _tick_span(xs_, j["top"], j["bot"], xb, R)
+            if sp_ is not None:
+                ext_r.append(sp_[1] - xb)
+        if j["n1"] < N:   # fim de derivação: quanto a marca começa antes da fronteira
+            xb = x0_r[rr] + sc_r[rr] * (j["n1"] - 1) / cfg.fs * speed * R
+            sp_ = _tick_span(xs_, j["top"], j["bot"], xb, R)
+            if sp_ is not None:
+                ext_l.append(xb - sp_[0])
+    # percentil 25: um QRS colado à fronteira só alarga a medida, nunca a estreita
+    tick_l = float(np.percentile(ext_l, 25)) + 1.0 if len(ext_l) >= 3 else 0.0
+    tick_r = float(np.percentile(ext_r, 25)) + 1.0 if len(ext_r) >= 3 else 0.0
     for j in seg_jobs:
         yc, valid = centerline_from_envelopes(j["top"], j["bot"], rad, rh=rad_h)
         if valid.sum() < 5:
@@ -906,34 +954,16 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         # marca separadora na troca de derivação: barra vertical mais larga que a pena em
         # scans e fotos (borrão). As colunas da marca têm o traço "alto" (topo-base de vários
         # mm) colado na fronteira; corta até o fim dela, para não virar um degrau de 0,3 mV
-        hh = j["bot"] - j["top"]
-        tall = hh > 1.2 * R
-
-        def _tick_span(xb):
-            # trecho contíguo de colunas "altas" que contém a fronteira (±0,4 mm) e não passa
-            # de 1,2 mm de largura: é a marca, não um QRS que por acaso cai ali
-            c = int(np.argmin(np.abs(xs - xb)))
-            win = int(0.4 * R)
-            cand = [q for q in range(max(0, c - win), min(len(xs), c + win + 1)) if tall[q]]
-            if not cand:
-                return None
-            a_ = b_ = cand[len(cand) // 2]
-            while a_ - 1 >= 0 and tall[a_ - 1]:
-                a_ -= 1
-            while b_ + 1 < len(xs) and tall[b_ + 1]:
-                b_ += 1
-            if xs[b_] - xs[a_] > 1.2 * R:
-                return None
-            return float(xs[a_]), float(xs[b_])
-
+        # marca separadora: corta até a extensão típica da marca nesta página (mediana entre
+        # todas as fronteiras), para um QRS colado na fronteira não ser cortado junto
         if j["n0"] > 0:
-            sp_ = _tick_span(xs_s)
+            sp_ = _tick_span(xs, j["top"], j["bot"], xs_s, R)
             if sp_ is not None:
-                lo_cut = max(lo_cut, sp_[1] + 1.0)
+                lo_cut = max(lo_cut, xs_s + min(sp_[1] - xs_s, tick_r) + 1.0)
         if j["n1"] < N:
-            sp_ = _tick_span(xs_e)
+            sp_ = _tick_span(xs, j["top"], j["bot"], xs_e, R)
             if sp_ is not None:
-                hi_cut = min(hi_cut, sp_[0] - 1.0)
+                hi_cut = min(hi_cut, xs_e - min(xs_e - sp_[0], tick_l) - 1.0)
         good = valid & (xs > lo_cut) & (xs < hi_cut)
         if good.sum() < 10:
             good = valid
@@ -952,10 +982,15 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         yn = np.where((xn < xg[0] - ext_max) | (xn > xg[-1] + ext_max), np.nan, yn)
         # na troca de derivação o trecho escondido pela marca é curto (poucos ms): vale o
         # primeiro/último valor limpo, constante (melhor que vazio, que a métrica lê como zero)
-        if j["n0"] > 0:
-            yn = np.where((xn < xg[0]) & (xn >= xs_s - 1.0), yg[0], yn)
-        if j["n1"] < N:
-            yn = np.where((xn > xg[-1]) & (xn <= xs_e + 1.0), yg[-1], yn)
+        # extrapolação linear com a inclinação das primeiras amostras limpas (um QRS colado
+        # à fronteira continua subindo/descendo por baixo da marca)
+        K4 = min(4, len(xg))
+        if j["n0"] > 0 and K4 >= 2:
+            sl = np.polyfit(xg[:K4], yg[:K4], 1)[0]
+            yn = np.where((xn < xg[0]) & (xn >= xs_s - 1.0), yg[0] + sl * (xn - xg[0]), yn)
+        if j["n1"] < N and K4 >= 2:
+            sl = np.polyfit(xg[-K4:], yg[-K4:], 1)[0]
+            yn = np.where((xn > xg[-1]) & (xn <= xs_e + 1.0), yg[-1] + sl * (xn - xg[-1]), yn)
         v = (base - yn) / (gain * R)
         if j["n0"] == 0:
             v = _cut_leading_pulse(v, cfg.fs)
