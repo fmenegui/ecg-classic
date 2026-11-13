@@ -159,7 +159,7 @@ def row_extent(B, y0, half, R, max_gap_mm=3.0):
     return int(s[i]), int(e[i])
 
 
-def detect_pulse(B, y0, half, xa, R, up=None):
+def detect_pulse(B, y0, half, xa, R, up=None, close_mm=0.8):
     """Pulso de calibração (retângulo) no início da linha.
     Exige: duas bordas verticais altas (4..25 mm) separadas por 1.5..12 mm, de alturas,
     topos e pés alinhados (< 1 mm), topo horizontal coberto de tinta entre elas e pé
@@ -172,7 +172,7 @@ def detect_pulse(B, y0, half, xa, R, up=None):
     # 30 mm: em fotos a extensão da linha pode começar na borda da folha/grade, antes do pulso
     x1 = min(W, int(xa + 30 * R))
     sub = B[a:b, x0s:x1].astype(np.uint8)
-    kv = max(3, int(0.8 * R) | 1)  # fecha quebras verticais (resolução baixa / JPEG)
+    kv = max(3, int(close_mm * R) | 1)  # fecha quebras verticais (resolução baixa / JPEG)
     sub = cv2.morphologyEx(sub, cv2.MORPH_CLOSE, np.ones((kv, 1), np.uint8)) > 0
     n = sub.shape[1]
     tops = np.full(n, np.nan); bots = np.full(n, np.nan)

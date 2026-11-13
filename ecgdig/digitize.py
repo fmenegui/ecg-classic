@@ -49,6 +49,7 @@ class Config:
     synth_order: str = "sort"
     fit_kw: dict = None
     rigid_edges: bool = True     # Viterbi: traço íngreme que translada inteiro não paga a continuidade das bordas
+    pulse_retry: bool = True     # pulso procurado também a partir da margem comum das linhas
     row_beats: bool = True       # linhas nas pontas sem QRS simultâneos aos das outras saem
     band_sp: float = 1.6        # faixa de busca do traço: +-band_sp espaçamentos de linha
     fit: str = "none"          # "lsf": renderização inversa com o perfil de pena medido
@@ -347,9 +348,21 @@ def _rows_pulses(B, pap, R):
     half = 0.45 * spacing
     ext = [row_extent(B, y, half, R) for y in peaks]
     pulses = []
+    starts = [e[0] for e in ext if e]
+    xs_med = float(np.median(starts)) if starts else None
     for i, (y, e) in enumerate(zip(peaks, ext)):
         up_sp = (y - peaks[i - 1]) if i > 0 else spacing
-        pulses.append(detect_pulse(B, y, half, e[0], R, up=max(half, min(0.95 * up_sp, 25 * R))) if e else None)
+        p_ = detect_pulse(B, y, half, e[0], R, up=max(half, min(0.95 * up_sp, 25 * R))) if e else None
+        # traço fraco/partido no começo da linha (foto, tela): a extensão começa depois do
+        # pulso. As linhas começam na mesma margem: tenta de novo a partir da margem comum
+        if p_ is None and e and xs_med is not None and _PULSE_RETRY[0] and 10 * R < e[0] - xs_med < 60 * R:
+            p_ = detect_pulse(B, y, half, xs_med, R, up=max(half, min(0.95 * up_sp, 25 * R)))
+        if p_ is None and e and _PULSE_RETRY[0]:
+            # bordas verticais do pulso claras e partidas (foto de tela, traço fino): fecha
+            # quebras maiores na vertical
+            p_ = detect_pulse(B, y, half, min(e[0], xs_med) if xs_med is not None else e[0], R,
+                              up=max(half, min(0.95 * up_sp, 25 * R)), close_mm=2.5)
+        pulses.append(p_)
     # linha nas pontas do bloco sem pulso, quando outras têm: cabeçalho isolado, régua de
     # texto colada ao bloco, borda da área impressa/sombra da folha numa foto (quase plana)
     has = [p is not None for p in pulses]
@@ -392,6 +405,7 @@ def _rows_pulses(B, pap, R):
 
 
 _ROW_BEAT_RULE = [True]
+_PULSE_RETRY = [True]
 _ROW_BEAT_THR = [0.3]
 _ROW_BEAT_DEBUG = False
 
@@ -712,6 +726,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         raise FileNotFoundError(image)
     R = cfg.R
     _ROW_BEAT_RULE[0] = cfg.row_beats
+    _PULSE_RETRY[0] = cfg.pulse_retry
     rect, pap, ginfo = rectify(img, R, cfg.ppmm, cfg.nonrigid, major_snap=cfg.major_snap,
                                fine_snap=cfg.fine_snap)
     D, glev = ink_map(rect, pap, R, return_grid_level=True)
