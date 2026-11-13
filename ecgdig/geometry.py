@@ -284,7 +284,8 @@ def _correspondences(Gc, T_major, T_minor, use_major, tile, step):
 
 
 def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, nonrigid: str = "cell",
-            cell_min_mm: float = 0.06, major_snap: bool = True):
+            cell_min_mm: float = 0.06, major_snap: bool = True, fine_snap: bool = True,
+            fine_min_mm: float = 0.06):
     """Retorna (img_ret, paper_ret, info). img_ret tem R px/mm e linhas grossas em múltiplos de 5R.
 
     nonrigid: "poly" (polinômio cúbico global), "cell" (polinômio + campo local por células de
@@ -335,7 +336,8 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
     pap = cv2.warpPerspective(paper, T_total, (Wo, Ho), flags=cv2.INTER_NEAREST | cv2.WARP_INVERSE_MAP)
 
     # refinamento não-rígido: resíduo de fase -> polinômio cúbico -> remap
-    rms, rms_cell, snap_mm = float("nan"), float("nan"), 0.0
+    rms, rms_cell, snap_mm, fine_mm = float("nan"), float("nan"), 0.0, 0.0
+    snp = None
     if nonrigid in ("poly", "cell"):
         out_p, pap_p, rms, mx, my = _refine_nonrigid(out, pap, R, return_map=True)
         cx_ = cy_ = None
@@ -370,13 +372,30 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
                 cy2 = cv2.remap(cy_, gx + sx, gy + sy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
                 out_p = cv2.remap(out, cx2, cy2, cv2.INTER_CUBIC, borderValue=(255, 255, 255))
                 pap_p = cv2.remap(pap, cx2, cy2, cv2.INTER_NEAREST)
+        if mx is not None and fine_snap and ppmm >= 6.0:
+            if cx_ is None:
+                cx_, cy_ = mx, my
+            if snp is not None:
+                cx_, cy_ = cx2, cy2
+            fn = _major_snap(out_p, pap_p, R, band_mm=20.0, step_mm=5.0, search_mm=0.45,
+                             min_rms_mm=fine_min_mm, max_rms_mm=0.5, period_mm=1.0, outlier_mm=0.15,
+                             smooth=1.0, con_floor=0.006)
+            if fn is not None:
+                fx, fy, fine_mm = fn
+                H, W = out.shape[:2]
+                gx, gy = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32))
+                cx3 = cv2.remap(cx_, gx + fx, gy + fy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+                cy3 = cv2.remap(cy_, gx + fx, gy + fy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+                out_p = cv2.remap(out, cx3, cy3, cv2.INTER_CUBIC, borderValue=(255, 255, 255))
+                pap_p = cv2.remap(pap, cx3, cy3, cv2.INTER_NEAREST)
         out, pap = out_p, pap_p
     info = dict(angle=ang, ppmm=ppmm, has_major=has_major, n_corr=int(len(src)),
-                residual_rms_mm=rms, residual_cell_rms_mm=rms_cell, major_snap_mm=snap_mm, T=T_total)
+                residual_rms_mm=rms, residual_cell_rms_mm=rms_cell, major_snap_mm=snap_mm, fine_snap_mm=fine_mm, T=T_total)
     return out, pap, info
 
 
-def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_mm=0.15, max_rms_mm=0.8):
+def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_mm=0.15, max_rms_mm=0.8,
+                period_mm=5.0, outlier_mm=0.6, smooth=0.8, con_floor=0.03):
     """Ajuste fino pelas LINHAS GROSSAS (5 mm), localizadas uma a uma.
 
     Depois do polinômio e do campo por células, a grade ainda pode estar fora do lugar numa
@@ -384,13 +403,21 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
     (às vezes em degrau) e a fase de 1 mm é ambígua nesses valores. A linha grossa é
     inequívoca dentro de ±2,5 mm: em faixas de 20 mm, a mediana das linhas da imagem dá o
     perfil da grade sem o traço; o máximo perto de cada múltiplo de 5 mm é a linha.
+    Com period_mm=1 (e busca < 0,5 mm) é o ajuste FINO: cada linha de 1 mm localizada, o
+    equivalente clássico da grade indexada por interseção dos primeiros colocados do Kaggle.
     Retorna (dx, dy, rms_mm) densos (amostrar em x+dx, y+dy) ou None."""
     import warnings
-    f = out.astype(np.float32).mean(2) if out.ndim == 3 else out.astype(np.float32)
-    S = np.clip(1.0 - f / (_bg_max(f) + 1e-3), 0, 1)
+    if out.ndim == 3:
+        # escuridão no canal em que a grade mais aparece (grade vermelha/rosa: verde e azul);
+        # a média dos canais quase apaga a linha fina
+        S = np.max([np.clip(1.0 - out[..., c].astype(np.float32) / (_bg_max(out[..., c].astype(np.float32)) + 1e-3), 0, 1)
+                    for c in range(3)], axis=0)
+    else:
+        f = out.astype(np.float32)
+        S = np.clip(1.0 - f / (_bg_max(f) + 1e-3), 0, 1)
     S[pap == 0] = np.nan
     H, W = S.shape
-    T5, bh, st, sr = 5 * R, int(band_mm * R), int(step_mm * R), int(round(search_mm * R))
+    T5, bh, st, sr = period_mm * R, int(band_mm * R), int(step_mm * R), int(round(search_mm * R))
     fields = []
     for axis in (0, 1):  # 0: linhas verticais (dx); 1: linhas horizontais (dy)
         A = S if axis == 0 else S.T
@@ -420,7 +447,8 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
                     sub = 0.0
                 off[i, j] = m - sr + float(np.clip(sub, -0.5, 0.5))
                 con[i, j] = w[m] - np.median(w)
-        ok = np.isfinite(off) & (con > max(0.03, 0.5 * np.nanmedian(con[np.isfinite(off)]) if np.isfinite(off).any() else 0.03))
+        cmed = float(np.nanmedian(con[np.isfinite(off)])) if np.isfinite(off).any() else 0.0
+        ok = np.isfinite(off) & (con > max(con_floor, 0.5 * cmed))
         if ok.mean() < 0.4:
             return None
         off[~ok] = np.nan
@@ -429,13 +457,13 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
             med = generic_filter(off, np.nanmedian, size=3, mode="nearest")
-        off[np.abs(off - med) > 0.6 * R] = np.nan
+        off[np.abs(off - med) > outlier_mm * R] = np.nan
         ok = np.isfinite(off)
         if ok.mean() < 0.4:
             return None
         Wt = ok.astype(np.float32)
-        sm = _fill_nan(off, Wt, 0.8)
-        cov = cv2.GaussianBlur(Wt, (0, 0), 0.8)
+        sm = _fill_nan(off, Wt, smooth)
+        cov = cv2.GaussianBlur(Wt, (0, 0), smooth)
         sm = np.where(cov > 1e-3, sm, 0.0).astype(np.float32)
         # amostras em (centro da banda, k*5R) -> campo denso por interpolação bilinear
         yc = np.array(b0s, float) + bh / 2
