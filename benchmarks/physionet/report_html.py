@@ -90,6 +90,20 @@ ol.fix{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:8px;ma
 """
 
 
+def _npz_snr(art: Path):
+    """SNR de cada imagem recalculado dos sinais salvos (250 Hz), com a mesma métrica para as
+    duas rodadas de uma comparação (o results.json antigo usava passo de alinhamento grosso)."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from eval_snr import _snr_record
+    out = {}
+    for f in sorted((art / "sig").glob("*.npz")):
+        z = np.load(f)
+        rid, t = f.stem.split("-")
+        out[(rid, t)] = _snr_record(z["gt"].astype(float), z["pred"].astype(float), float(z["fs"]))[0]
+    return out
+
+
 def _b64(p: Path) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(p.read_bytes()).decode()
 
@@ -214,6 +228,14 @@ def build(art: Path, before: Path | None, out: Path, findings_md: Path | None = 
     res = R["results"]
     dec = json.loads((art / "decomposition.json").read_text()) if (art / "decomposition.json").exists() else []
     B = json.loads((before / "results.json").read_text())["results"] if before else None
+    if B:  # mesma métrica nas duas rodadas
+        na, nb = _npz_snr(art), _npz_snr(before)
+        for r in res:
+            if (r["id"], r["type"]) in na:
+                r["snr"] = na[(r["id"], r["type"])]
+        for r in B:
+            if (r["id"], r["type"]) in nb:
+                r["snr"] = nb[(r["id"], r["type"])]
 
     by = defaultdict(list)
     for r in res:

@@ -15,7 +15,7 @@ from .geometry import rectify
 from .extract import (ink_map, binarize, find_rows, row_extent, detect_pulse,
                       column_runs, viterbi_track, selected_envelopes, envelope_edges,
                       centerline_from_envelopes, calibrate_pen, mark_occlusions, horizontal_halfwidth,
-                      trace_likeness, strip_line_fragments)
+                      trace_likeness)
 
 from .layouts import LEADS, LIBRARY as LAYOUTS, is_limb
 from .layout_engine import Ctx as _LayoutCtx
@@ -213,8 +213,7 @@ def _rows_pulses(B, pap, R):
         peaks = peaks[(peaks > ys[0] + 5 * R) & (peaks < ys[-1] - 5 * R)]
     spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else 40 * R
     half = 0.45 * spacing
-    Bx = strip_line_fragments(B, R)
-    ext = [row_extent(Bx, y, half, R) for y in peaks]
+    ext = [row_extent(B, y, half, R) for y in peaks]
     pulses = []
     for i, (y, e) in enumerate(zip(peaks, ext)):
         up_sp = (y - peaks[i - 1]) if i > 0 else spacing
@@ -329,10 +328,11 @@ def _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad=0.0, return_weak=False
     tm = getattr(_edge_rows, "text_mask", None)
     if tm is not None and tm.shape == D.shape:
         D = np.where(tm, 0.0, D).astype(np.float32)
-    # só tinta que sobreviveu à binarização (perto dela): pontilhado de scan P&B e
-    # sal-e-pimenta passam do nível no perfil máximo e "estendem" o traço até a borda
-    Bd = cv2.dilate(B.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
-    D = np.where(Bd, D, 0.0).astype(np.float32)
+    if getattr(_edge_rows, "speckle", False):
+        # grade escura (scan P&B): o pontilhado passa do nível no perfil máximo e "estende" o
+        # traço até a borda; vale só a tinta que sobreviveu à binarização (e o entorno)
+        Bd = cv2.dilate(B.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+        D = np.where(Bd, D, 0.0).astype(np.float32)
     H, W = D.shape
     lev_rad_hint = [rad]
     weak = []
@@ -604,6 +604,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     lev0 = 0.5 * float(np.percentile(band_vals[band_vals > 0.1], 90)) if (band_vals > 0.1).any() else 0.35
 
     _edge_rows.text_mask = text_like_mask(B, R)
+    _edge_rows.speckle = bool(getattr(ink_map, "dark_grid", False))
 
     # ---------------------------------------------------- velocidade e duração
     xlr0, xer0, wkr0 = _edge_rows(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2, return_weak=True)

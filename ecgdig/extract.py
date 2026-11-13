@@ -49,7 +49,8 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
     # grade escura (scan P&B, fotocópia): as linhas grossas são tão pretas quanto o traço.
     # O molde precisa descer até elas (senão a linha da grade vira "tinta" contínua que
     # estende as linhas até a borda da folha e cria linhas falsas)
-    dark_grid = float(tmpl.min()) < 0.45
+    dark_grid = float(tmpl.min()) < 0.15
+    ink_map.dark_grid = dark_grid
     if tmin is None:
         tmin = 0.05 if dark_grid else 0.3
     tmpl = np.clip(tmpl, tmin, 1.0)
@@ -141,19 +142,6 @@ def find_rows(B: np.ndarray, R: float):
 def _runs(mask_1d):
     d = np.diff(np.concatenate([[0], mask_1d.astype(np.int8), [0]]))
     return np.nonzero(d == 1)[0], np.nonzero(d == -1)[0] - 1
-
-
-def strip_line_fragments(B, R, thin_mm=0.6, min_len_mm=2.0):
-    """Remove componentes isoladas que são só um risco reto e fino (horizontal ou vertical):
-    pedaços de linha da grade que vazaram, borda da área impressa, dobra do papel. O traço
-    de verdade é uma componente com excursões; um pedaço de linha de base isolado e plano
-    também sai, por isso o resultado serve para medir extensões, não para extrair o sinal."""
-    n, lab, st, _ = cv2.connectedComponentsWithStats(B.astype(np.uint8), connectivity=8)
-    w, h = st[:, cv2.CC_STAT_WIDTH], st[:, cv2.CC_STAT_HEIGHT]
-    thin, long_ = thin_mm * R, min_len_mm * R
-    bad = ((h <= thin) & (w >= long_)) | ((w <= thin) & (h >= long_))
-    bad[0] = False
-    return B & ~bad[lab]
 
 
 def row_extent(B, y0, half, R, max_gap_mm=3.0):

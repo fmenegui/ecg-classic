@@ -356,7 +356,9 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
                 cy_ = cv2.remap(my, gx + lx, gy + ly, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
                 out_p = cv2.remap(out, cx_, cy_, cv2.INTER_CUBIC, borderValue=(255, 255, 255))
                 pap_p = cv2.remap(pap, cx_, cy_, cv2.INTER_NEAREST)
-        if mx is not None and major_snap:
+        # imagem de baixa resolução (< 6 px/mm): a linha grossa mal se distingue da fina e o
+        # ajuste vira ruído
+        if mx is not None and major_snap and ppmm >= 6.0:
             if cx_ is None:
                 cx_, cy_ = mx, my
             snp = _major_snap(out_p, pap_p, R)
@@ -374,7 +376,7 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
     return out, pap, info
 
 
-def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_mm=0.12):
+def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_mm=0.15, max_rms_mm=0.8):
     """Ajuste fino pelas LINHAS GROSSAS (5 mm), localizadas uma a uma.
 
     Depois do polinômio e do campo por células, a grade ainda pode estar fora do lugar numa
@@ -444,7 +446,10 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
         dense = cv2.remap(sm, GX, GY, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
         fields.append((dense if axis == 0 else dense.T, off))
     rms = float(np.sqrt(np.nanmean(fields[0][1] ** 2) + np.nanmean(fields[1][1] ** 2)) / R)
-    if rms < min_rms_mm:
+    # < 0,15 mm: nada a corrigir além do ruído. > 0,8 mm depois do polinômio e das células não
+    # é papel deslocado, é a linha fina sendo tomada pela grossa (imagem de baixa resolução,
+    # grade sem linhas grossas distintas)
+    if not (min_rms_mm <= rms <= max_rms_mm):
         return None
     return fields[0][0].astype(np.float32), fields[1][0].astype(np.float32), rms
 
