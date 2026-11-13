@@ -40,6 +40,8 @@ class Config:
     # papel não plano: "poly" (polinômio cúbico global), "cell" (+ campo local em células de
     # 5 mm, acompanha vincos e dobras) ou "none"
     nonrigid: str = "cell"
+    major_snap: bool = True   # ajuste pelas linhas grossas (5 mm)
+    fine_snap: bool = True    # ajuste pelas linhas finas (1 mm)
 
 
 def _pick_rows(peaks, cov, n_expected):
@@ -587,7 +589,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     if img is None:
         raise FileNotFoundError(image)
     R = cfg.R
-    rect, pap, ginfo = rectify(img, R, cfg.ppmm, cfg.nonrigid)
+    rect, pap, ginfo = rectify(img, R, cfg.ppmm, cfg.nonrigid, major_snap=cfg.major_snap,
+                               fine_snap=cfg.fine_snap)
     D, glev = ink_map(rect, pap, R, return_grid_level=True)
     B = binarize(D, R, glev)
     (rect, pap, D, B), rot = _orient([rect, pap, D, B], R)
@@ -1025,7 +1028,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                gain_mm_per_mv=levels[0][0] if levels else None, gains=gains_seg, duration_s=duration,
                speed_mm_per_s=speed_nominal, speed_source=speed_src, duration_assumed=duration_assumed,
                horizontal_scale=speed / speed_nominal, ppmm=ginfo["ppmm"], angle=ginfo["angle"],
-               grid_residual_mm=ginfo["residual_rms_mm"], grid_residual_cell_mm=ginfo.get("residual_cell_rms_mm"), line_width_px=lw, line_width_h_px=2 * rad_h,
+               grid_residual_mm=ginfo["residual_rms_mm"], grid_residual_cell_mm=ginfo.get("residual_cell_rms_mm"),
+               grid_snap_mm=ginfo.get("major_snap_mm"), grid_fine_mm=ginfo.get("fine_snap_mm"), line_width_px=lw, line_width_h_px=2 * rad_h,
                pulses_found=sum(p is not None for p in pulses),
                pulses_right=sum(p is not None for p in rpulses), gain_rows_inferred=gain_flags)
     if return_debug:

@@ -410,8 +410,19 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
     if out.ndim == 3:
         # escuridão no canal em que a grade mais aparece (grade vermelha/rosa: verde e azul);
         # a média dos canais quase apaga a linha fina
-        S = np.max([np.clip(1.0 - out[..., c].astype(np.float32) / (_bg_max(out[..., c].astype(np.float32)) + 1e-3), 0, 1)
-                    for c in range(3)], axis=0)
+        dk = [np.clip(1.0 - out[..., c].astype(np.float32) / (_bg_max(out[..., c].astype(np.float32)) + 1e-3), 0, 1)
+              for c in range(3)]
+        S = np.max(dk, axis=0)
+        # o traço (escuro em TODOS os canais) sai da medida: um QRS alto cobre boa parte da
+        # faixa de 20 mm e a mediana o tomaria pela linha da grade, justo onde o tempo mais
+        # importa. Em grade preta (P&B) não dá para separar por cor: fica como está
+        # traço = escuro e neutro (preto/cinza); linha de grade = colorida (vermelha/rosa:
+        # escura em verde/azul, clara em vermelho), mesmo quando a foto a escurece
+        mn, mxk = np.min(dk, axis=0), np.max(dk, axis=0)
+        ink = (mn > 0.35) & ((mxk - mn) < 0.25) & (pap > 0)
+        if ink.sum() < 0.08 * max(1, int((pap > 0).sum())):
+            ink = cv2.dilate(ink.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+            S = np.where(ink, np.nan, S)
     else:
         f = out.astype(np.float32)
         S = np.clip(1.0 - f / (_bg_max(f) + 1e-3), 0, 1)
@@ -474,6 +485,7 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
         dense = cv2.remap(sm, GX, GY, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
         fields.append((dense if axis == 0 else dense.T, off))
     rms = float(np.sqrt(np.nanmean(fields[0][1] ** 2) + np.nanmean(fields[1][1] ** 2)) / R)
+    _major_snap.last = [dict(off=f[1], ok_frac=float(np.isfinite(f[1]).mean())) for f in fields]
     # < 0,15 mm: nada a corrigir além do ruído. > 0,8 mm depois do polinômio e das células não
     # é papel deslocado, é a linha fina sendo tomada pela grossa (imagem de baixa resolução,
     # grade sem linhas grossas distintas)

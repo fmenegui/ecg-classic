@@ -124,6 +124,7 @@ def _work(job):
                    confidence=float((r.get("layout_info") or {}).get("confidence") or 0),
                    ppmm=r.get("ppmm"), angle=r.get("angle"), rotation=r.get("rotation"),
                    grid_residual=r.get("grid_residual_mm"), grid_residual_cell=r.get("grid_residual_cell_mm"),
+                   grid_snap=r.get("grid_snap_mm"), grid_fine=r.get("grid_fine_mm"),
                    pulses_left=r.get("pulses_found"), pulses_right=r.get("pulses_right"),
                    x0_rows=[float(v) for v in it.get("x0_rows", [])], scale_rows=[float(v) for v in it.get("scale_rows", [])],
                    image_shape=list(cv2.imread(str(img_p)).shape[:2]))
