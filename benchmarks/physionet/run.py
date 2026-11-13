@@ -164,7 +164,11 @@ def main():
             for nm in [f"train/{rid}/{rid}.csv"] + [f"train/{rid}/{rid}-{t}.png" for t in
                                                      ("0001", "0003", "0004", "0005", "0006", "0009", "0010", "0011", "0012")]:
                 try:
+                    have = any(q.is_file() for q in (cache / rid).rglob(Path(nm).name)) if (cache / rid).exists() else False
                     download(nm, cache / rid)
+                    if not have:
+                        import time as _t
+                        _t.sleep(3)  # devagar: o limite de requisições do Kaggle derruba rajadas
                 except Exception as e:  # noqa: BLE001
                     miss += 1
                     print("falhou", nm, str(e)[:120], flush=True)
