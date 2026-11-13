@@ -177,7 +177,8 @@ def evaluate(a):
     meta_p = download("train.csv", cache)
     rows = list(csv.DictReader(open(meta_p)))
     random.Random(2026).shuffle(rows)
-    rows = rows[: a.n]
+    ids = [x for x in getattr(a, "ids", "").split(",") if x]
+    rows = [r for r in rows if r["id"] in ids] if ids else rows[: a.n]
     keep = getattr(a, "keep_raw", 5)
     results = []
     with ProcessPoolExecutor(max_workers=max(1, a.jobs)) as ex:

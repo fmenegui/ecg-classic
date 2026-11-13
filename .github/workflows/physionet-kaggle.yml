@@ -18,6 +18,11 @@ on:
         required: false
         default: ''
         type: string
+      ids:
+        description: 'Registros específicos separados por vírgula (opcional; guarda as imagens brutas de todos)'
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
 jobs:
@@ -45,7 +50,7 @@ jobs:
         run: python benchmarks/physionet/run.py inspect --out results/physionet
       - name: Avaliar
         if: inputs.mode == 'eval'
-        run: python benchmarks/physionet/run.py eval --n "${{ inputs.n }}" --out results/physionet ${{ inputs.config && format('--config {0}', inputs.config) || '' }}
+        run: python benchmarks/physionet/run.py eval --n "${{ inputs.n }}" --out results/physionet ${{ inputs.config && format('--config {0}', inputs.config) || '' }} ${{ inputs.ids && format('--ids {0} --keep-raw 99', inputs.ids) || '' }}
       - name: Resumo
         if: always()
         run: cat results/physionet/report.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true

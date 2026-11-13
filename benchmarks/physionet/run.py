@@ -137,6 +137,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--keep-raw", type=int, default=5, help="registros cujas imagens brutas vão no artefato")
     ap.add_argument("--config", action="append", default=[])
+    ap.add_argument("--ids", default="", help="registros específicos, separados por vírgula")
     a = ap.parse_args()
     if a.mode == "inspect":
         inspect(a.out)
