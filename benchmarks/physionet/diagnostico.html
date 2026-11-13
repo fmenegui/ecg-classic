@@ -38,4 +38,12 @@
     <h3>5. A própria medida tinha ruído de ±6 dB<span>avaliação</span></h3>
     <p>A reimplementação da métrica testava deslocamentos em passos de 4 ms. Um render bom variava de 24,7 para 17,4 dB com um deslocamento de 1 ms. Agora o passo é de 1 amostra. As comparações antes/depois deste relatório recalculam as duas rodadas com a mesma métrica, a partir dos sinais salvos a 250 Hz.</p>
   </div>
+
+  <h3 style="margin-top:8px">O que ainda falta (gráfico abaixo)</h3>
+  <ol class="fix">
+    <li><b>Distorção horizontal local</b> (≈ 1 dB, 45% das imagens): sobra de tempo escorregando em janelas de 0,5 s, sobretudo nos scans e nas fotos amassadas. Próximo passo: ancorar cada coluna da página 3x4 nas marcas separadoras de derivação, e não só na origem e no fim da linha.</li>
+    <li><b>Layout ou derivação trocada</b> (≈ 0,9 dB, 18%): ainda há troca Cabrera ↔ padrão e tira de ritmo mal nomeada em algumas fotos.</li>
+    <li><b>Fotos de celular (0005)</b> continuam bem abaixo das outras capturas (≈ 3,4 dB). O teto de 9,7 dB mostra que, além do tempo, o próprio traço sai errado: grade vazando perto da borda da folha e sombra.</li>
+    <li><b>Ganho</b> (≈ 0,5 dB): amplitude subestimada em 5–15% nas fotos em perspectiva.</li>
+  </ol>
 </section>
