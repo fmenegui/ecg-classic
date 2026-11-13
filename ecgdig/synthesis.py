@@ -107,8 +107,7 @@ def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5):
         dx = px - fx[:, None]; dy = py - fy[:, None]
         gv = a * np.exp(-0.5 * (dx * dx + dy * dy) / (sig * sig))
         inside = (px >= 0) & (px < w) & (py >= 0) & (py < h)
-        S = np.zeros(h * w)
-        np.add.at(S, (py * w + px)[inside], gv[inside])
+        S = np.bincount((py * w + px)[inside], weights=gv[inside], minlength=h * w)
         return S.reshape(h, w), px, py, dx, dy, gv, inside
 
     prev = None
@@ -120,6 +119,8 @@ def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5):
         loss = float((r * r).sum())
         if prev is not None and loss > prev * 0.9999 and it > 5:
             lr *= 0.5
+            if lr < 1e-3 / (a * a + 1e-9):
+                break
         prev = loss
         # dL/dc_k = sum_p 2 r(p) (1 - M(p)) * gv * (p - c_k)/sig^2
         coef = np.zeros_like(gv)
