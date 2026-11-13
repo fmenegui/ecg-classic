@@ -903,6 +903,37 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             pe = pulses[rr].get("x_fall", pulses[rr].get("x_end"))
             if pe is not None:
                 lo_cut = max(lo_cut, float(pe) + tr)
+        # marca separadora na troca de derivação: barra vertical mais larga que a pena em
+        # scans e fotos (borrão). As colunas da marca têm o traço "alto" (topo-base de vários
+        # mm) colado na fronteira; corta até o fim dela, para não virar um degrau de 0,3 mV
+        hh = j["bot"] - j["top"]
+        tall = hh > 1.2 * R
+
+        def _tick_span(xb):
+            # trecho contíguo de colunas "altas" que contém a fronteira (±0,4 mm) e não passa
+            # de 1,2 mm de largura: é a marca, não um QRS que por acaso cai ali
+            c = int(np.argmin(np.abs(xs - xb)))
+            win = int(0.4 * R)
+            cand = [q for q in range(max(0, c - win), min(len(xs), c + win + 1)) if tall[q]]
+            if not cand:
+                return None
+            a_ = b_ = cand[len(cand) // 2]
+            while a_ - 1 >= 0 and tall[a_ - 1]:
+                a_ -= 1
+            while b_ + 1 < len(xs) and tall[b_ + 1]:
+                b_ += 1
+            if xs[b_] - xs[a_] > 1.2 * R:
+                return None
+            return float(xs[a_]), float(xs[b_])
+
+        if j["n0"] > 0:
+            sp_ = _tick_span(xs_s)
+            if sp_ is not None:
+                lo_cut = max(lo_cut, sp_[1] + 1.0)
+        if j["n1"] < N:
+            sp_ = _tick_span(xs_e)
+            if sp_ is not None:
+                hi_cut = min(hi_cut, sp_[0] - 1.0)
         good = valid & (xs > lo_cut) & (xs < hi_cut)
         if good.sum() < 10:
             good = valid
@@ -919,6 +950,12 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         # amostra é desconhecida: uma rampa inventada estraga o 1º batimento e Einthoven
         ext_max = 2.0 * tr
         yn = np.where((xn < xg[0] - ext_max) | (xn > xg[-1] + ext_max), np.nan, yn)
+        # na troca de derivação o trecho escondido pela marca é curto (poucos ms): vale o
+        # primeiro/último valor limpo, constante (melhor que vazio, que a métrica lê como zero)
+        if j["n0"] > 0:
+            yn = np.where((xn < xg[0]) & (xn >= xs_s - 1.0), yg[0], yn)
+        if j["n1"] < N:
+            yn = np.where((xn > xg[-1]) & (xn <= xs_e + 1.0), yg[-1], yn)
         v = (base - yn) / (gain * R)
         if j["n0"] == 0:
             v = _cut_leading_pulse(v, cfg.fs)
