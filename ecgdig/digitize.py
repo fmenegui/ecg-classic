@@ -15,7 +15,7 @@ from .geometry import rectify
 from .extract import (ink_map, binarize, find_rows, row_extent, detect_pulse,
                       column_runs, viterbi_track, selected_envelopes, envelope_edges,
                       centerline_from_envelopes, calibrate_pen, mark_occlusions, horizontal_halfwidth,
-                      trace_likeness)
+                      trace_likeness, refine_steep)
 
 from .layouts import LEADS, LIBRARY as LAYOUTS, is_limb
 from .layout_engine import Ctx as _LayoutCtx
@@ -42,6 +42,7 @@ class Config:
     nonrigid: str = "cell"
     major_snap: bool = True   # ajuste pelas linhas grossas (5 mm)
     fine_snap: bool = True    # ajuste pelas linhas finas (1 mm)
+    steep_subpx: bool = False  # instante sub-pixel nos trechos íngremes (teste)
 
 
 def _pick_rows(peaks, cov, n_expected):
@@ -1024,6 +1025,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         if good.sum() < 10:
             good = valid
         xg, yg = xs[good], yc[good]
+        if cfg.steep_subpx and len(xg) > 4:
+            xg, yg = refine_steep(D, xg, yg, rad_h)
         tn = np.arange(j["n0"], j["n1"]) / cfg.fs
         xn = x0_r[rr] + sc_r[rr] * tn * speed * R
         yn = np.interp(xn, xg, yg)

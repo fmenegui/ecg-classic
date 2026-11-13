@@ -480,6 +480,73 @@ def centerline_from_envelopes(top, bot, r, U=4, rh=None):
     return y, ok
 
 
+def refine_steep(D, xs, yc, rh, min_dy=2.0):
+    """Média a posteriori do INSTANTE nos trechos íngremes (QRS).
+
+    Numa coluna, o traço quase vertical ocupa um run alto e o centro dele só diz o x com
+    resolução de 1 coluna (0,1 mm = 4 ms a 25 mm/s); num QRS de 50 mV/s isso já é 0,2 mV
+    de erro. Aqui o papel de x e y se inverte: em cada linha de pixel que o traço íngreme
+    cruza, o centróide horizontal da tinta (pesado pela densidade, sub-pixel) é a estimativa
+    de mínimo erro quadrático do instante em que a curva passa por aquela altura.
+    Trechos planos ficam com o centro por coluna. Devolve (x, y) ordenados em x."""
+    xs = np.asarray(xs, float); yc = np.asarray(yc, float)
+    n = len(xs)
+    if n < 4:
+        return xs, yc
+    H, W = D.shape
+    dy = np.diff(yc)
+    contig = np.diff(xs) == 1
+    sgn = np.sign(dy)
+    steep = (np.abs(dy) >= min_dy) & contig & np.isfinite(dy)
+    # mesmo sentido nos vizinhos: longe da volta do pico (onde subida e descida se fundem)
+    same = np.zeros_like(steep)
+    same[1:-1] = (sgn[1:-1] == sgn[:-2]) & (sgn[1:-1] == sgn[2:])
+    steep &= same
+    w = int(np.ceil(rh)) + 2
+    px, py = [], []
+    for i in np.nonzero(steep)[0]:
+        y0, y1 = yc[i], yc[i + 1]
+        lo, hi = (y0, y1) if y0 < y1 else (y1, y0)
+        rows = np.arange(int(np.floor(lo + 1.0)) + 1, int(np.ceil(hi - 1.0)))
+        for Y in rows:
+            if Y < 0 or Y >= H:
+                continue
+            x0 = xs[i] + (Y - y0) / (y1 - y0)
+            a, b = max(0, int(np.floor(x0)) - w), min(W, int(np.ceil(x0)) + w + 1)
+            prof = D[Y, a:b].astype(float)
+            if prof.size < 3 or prof.max() < 0.2:
+                continue
+            thr = 0.3 * prof.max()
+            on = prof > thr
+            k = int(np.clip(round(x0) - a, 0, len(prof) - 1))
+            if not on[k]:
+                cand = np.nonzero(on)[0]
+                k = int(cand[np.argmin(np.abs(cand - (x0 - a)))])
+            l_, r_ = k, k
+            while l_ - 1 >= 0 and on[l_ - 1]:
+                l_ -= 1
+            while r_ + 1 < len(prof) and on[r_ + 1]:
+                r_ += 1
+            if l_ == 0 or r_ == len(prof) - 1 or (r_ - l_ + 1) > 2 * rh + 4:
+                continue  # encostado na janela ou largo demais: dois traços/borrão
+            wt = prof[l_:r_ + 1] - thr
+            xc = a + l_ + float((wt * np.arange(r_ - l_ + 1)).sum() / max(wt.sum(), 1e-9))
+            if abs(xc - x0) > 1.5:
+                continue
+            if not (min(xs[i], xs[i + 1]) < xc < max(xs[i], xs[i + 1])):
+                continue  # fora do intervalo entre as duas colunas: quebraria a monotonia
+            px.append(xc); py.append(float(Y))
+    if not px:
+        return xs, yc
+    # os pontos de coluna ficam (no pico/vale a inversão da pena é exata); os de linha entram
+    # entre eles e dão o instante sub-coluna das subidas e descidas
+    X = np.concatenate([xs, px]); Y = np.concatenate([yc, py])
+    o = np.argsort(X, kind="stable")
+    X, Y = X[o], Y[o]
+    ok = np.r_[True, np.diff(X) > 1e-3]
+    return X[ok], Y[ok]
+
+
 def mark_occlusions(jobs, lw, margin=1.0):
     """Traços sobrepostos (linhas vizinhas que se cruzam): a borda superior/inferior
     de um traço que cai dentro da tinta de OUTRO traço não é confiável -> NaN.
