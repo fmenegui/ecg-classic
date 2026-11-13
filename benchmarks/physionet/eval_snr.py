@@ -41,7 +41,9 @@ def _snr_record(gt, pred, fs, align=True, max_shift_s=0.2):
         p = np.nan_to_num(pred[i], nan=0.0)
         gi = g[m]
         best = None
-        shifts = range(-ms, ms + 1, max(1, ms // 40)) if align else [0]
+        # passo de 1 amostra: com passo grosso (4 ms) o SNR de um render varia ~6 dB com
+        # um deslocamento de 1 ms (QRS íngreme), o que torna a comparação entre versões ruído
+        shifts = range(-ms, ms + 1) if align else [0]
         idx = np.nonzero(m)[0]
         for s in shifts:
             j = idx + s

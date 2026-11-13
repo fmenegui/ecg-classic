@@ -15,7 +15,7 @@ from .geometry import rectify
 from .extract import (ink_map, binarize, find_rows, row_extent, detect_pulse,
                       column_runs, viterbi_track, selected_envelopes, envelope_edges,
                       centerline_from_envelopes, calibrate_pen, mark_occlusions, horizontal_halfwidth,
-                      trace_likeness)
+                      trace_likeness, strip_line_fragments)
 
 from .layouts import LEADS, LIBRARY as LAYOUTS, is_limb
 from .layout_engine import Ctx as _LayoutCtx
@@ -153,6 +153,27 @@ def _mask_label_edges(job, boxes):
             t[(t >= y0) & (t <= y1)] = np.nan
             b[(b >= y0) & (b <= y1)] = np.nan
 
+def _excursions(B, y, half, R, dev_mm=3.0):
+    """Quantos trechos da linha têm tinta a >= dev_mm do eixo (dentro da faixa da linha)."""
+    H, W = B.shape
+    a, b = max(0, int(y - half)), min(H, int(y + half))
+    d = int(dev_mm * R)
+    band = B[a:b]
+    yy = np.arange(a, b)[:, None]
+    far = (band & (np.abs(yy - y) >= d)).any(0)
+    near = band[max(0, y - a - int(1.5 * R)):y - a + int(1.5 * R)].any(0)
+    far &= cv2.dilate(near.astype(np.uint8).reshape(1, -1), np.ones((1, int(2 * R) | 1), np.uint8)).ravel() > 0
+    runs = np.diff(np.r_[0, far.astype(np.int8), 0])
+    st, en = np.nonzero(runs == 1)[0], np.nonzero(runs == -1)[0]
+    # trechos separados por menos de 2 mm contam como um
+    n, last = 0, -10 ** 9
+    for s_, e_ in zip(st, en):
+        if s_ - last > 2 * R:
+            n += 1
+        last = e_
+    return n
+
+
 def _rows_pulses(B, pap, R):
     """Linhas de traçado candidatas (sem texto/bordas), extensões e pulsos."""
     H, W = B.shape
@@ -192,11 +213,41 @@ def _rows_pulses(B, pap, R):
         peaks = peaks[(peaks > ys[0] + 5 * R) & (peaks < ys[-1] - 5 * R)]
     spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else 40 * R
     half = 0.45 * spacing
-    ext = [row_extent(B, y, half, R) for y in peaks]
+    Bx = strip_line_fragments(B, R)
+    ext = [row_extent(Bx, y, half, R) for y in peaks]
     pulses = []
     for i, (y, e) in enumerate(zip(peaks, ext)):
         up_sp = (y - peaks[i - 1]) if i > 0 else spacing
         pulses.append(detect_pulse(B, y, half, e[0], R, up=max(half, min(0.95 * up_sp, 25 * R))) if e else None)
+    # linha nas pontas do bloco sem pulso, quando as outras têm, e quase sem excursões
+    # verticais: borda da área impressa / sombra da folha numa foto / régua de texto
+    has = [p is not None for p in pulses]
+    if sum(has) >= 3:
+        # "pulso" longe da coluna dos outros (QR code, caixa do cabeçalho) não conta
+        xs_p = np.array([p["x_start"] for p in pulses if p is not None], float)
+        med_x = float(np.median(xs_p))
+        has = [p is not None and abs(p["x_start"] - med_x) < 10 * R for p in pulses]
+    if sum(has) >= 3 and len(peaks) > sum(has):
+        exc = [_excursions(B, int(y), half, R) for y in peaks]
+        ref = float(np.median([x for x, h in zip(exc, has) if h]))
+        pk_p = np.array([y for y, h in zip(peaks, has) if h])
+        sp_p = float(np.median(np.diff(pk_p))) if len(pk_p) > 1 else spacing
+        len_p = float(np.median([e[1] - e[0] for e, h in zip(ext, has) if h and e]))
+        keep = np.ones(len(peaks), bool)
+        for order in (range(len(peaks)), range(len(peaks) - 1, -1, -1)):
+            for i in order:
+                if has[i]:
+                    break
+                gap = float(np.min(np.abs(pk_p - peaks[i])))
+                short = not ext[i] or (ext[i][1] - ext[i][0]) < 0.6 * len_p
+                # quase plana, curta (texto do rodapé) ou isolada do bloco (cabeçalho)
+                if exc[i] < 0.4 * ref or short or gap > 1.6 * sp_p:
+                    keep[i] = False
+        if not keep.all():
+            peaks = peaks[keep]
+            ext = [e for e, k in zip(ext, keep) if k]
+            pulses = [p for p, k in zip(pulses, keep) if k]
+            spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else spacing
     return peaks, cov, ext, pulses, spacing
 
 
@@ -253,6 +304,17 @@ def _edge_cands(D, B, rows, ext, pulses, half, lev, R, rad=0.0):
     return [v for v in xl if not np.isnan(v)], [v for v in xe if not np.isnan(v)]
 
 
+def _origin_cands(D, B, rows, ext, pulses, half, lev, R, rad):
+    """Candidatos à origem do tempo: inícios de traço (fortes), finais de linha e, nas linhas
+    sem início destacado, o fim da descida do pulso (fraca: escolhe o grupo, não dá o valor).
+    Sem as fracas, só os finais de linha ou uma borda espúria decidiriam, e a grade escura,
+    o ruído ou a borda da folha numa foto podem estar a dezenas de mm do traço."""
+    xl, xe, wk = _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad, return_weak=True)
+    xl = [float(v) for v in xl if not np.isnan(v)]
+    xe = [float(v) for v in xe if not np.isnan(v)]
+    return xl, xe, [float(v) for v in wk if np.isfinite(v)]
+
+
 def text_like_mask(B, R):
     """Componentes pequenas e isoladas (rótulos, números, marcas): não pertencem ao traço,
     que é uma componente longa. Usado para que bordas não sejam medidas em texto."""
@@ -267,6 +329,10 @@ def _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad=0.0, return_weak=False
     tm = getattr(_edge_rows, "text_mask", None)
     if tm is not None and tm.shape == D.shape:
         D = np.where(tm, 0.0, D).astype(np.float32)
+    # só tinta que sobreviveu à binarização (perto dela): pontilhado de scan P&B e
+    # sal-e-pimenta passam do nível no perfil máximo e "estendem" o traço até a borda
+    Bd = cv2.dilate(B.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+    D = np.where(Bd, D, 0.0).astype(np.float32)
     H, W = D.shape
     lev_rad_hint = [rad]
     weak = []
@@ -458,10 +524,13 @@ def _estimate_speed(B, D, rows, R, x_left, width_px, return_scores=False):
     return (v, sc) if return_scores else v
 
 
-def _vote_x0(xl, xe, rad, span_px, R):
+def _vote_x0(xl, xe, rad, span_px, R, weak=()):
     """Votação: cada borda propõe um x0; vence o grupo com mais apoio (+-0.8 mm).
-    Com bordas dos dois lados, a média cancela o viés da ponta do traço."""
-    c = [(v + rad, "L") for v in xl] + [(v - rad - span_px, "R") for v in xe]
+    Com bordas dos dois lados, a média cancela o viés da ponta do traço.
+    weak: âncoras fracas (fim da descida do pulso) — votam na escolha do grupo, mas só dão
+    o valor quando o grupo não tem nenhuma borda de verdade (elas têm viés de ~0,1 mm)."""
+    c = [(v + rad, "L") for v in xl] + [(v - rad - span_px, "R") for v in xe] + \
+        [(v + rad, "W") for v in weak]
     _vote_x0.both_sided = False
     if not c:
         return None
@@ -471,10 +540,13 @@ def _vote_x0(xl, xe, rad, span_px, R):
     v0 = vals[int(np.argmax(sup))]
     grp = [(v, t) for v, t in c if abs(v - v0) < 0.8 * R]
     Ls = [v for v, t in grp if t == "L"]; Rs = [v for v, t in grp if t == "R"]
+    Ws = [v for v, t in grp if t == "W"]
     _vote_x0.both_sided = bool(Ls and Rs)
     if Ls and Rs:
         return 0.5 * (np.median(Ls) + np.median(Rs))
-    return float(np.median(Ls or Rs))
+    if Ls or Rs:
+        return float(np.median(Ls or Rs))
+    return float(np.median(Ws))
 
 
 def digitize(image, cfg: Config | None = None, return_debug: bool = False):
@@ -534,7 +606,9 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     _edge_rows.text_mask = text_like_mask(B, R)
 
     # ---------------------------------------------------- velocidade e duração
-    xlr0, xer0 = _edge_rows(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2)
+    xlr0, xer0, wkr0 = _edge_rows(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2, return_weak=True)
+    # início por linha: borda do traço, ou o fim do pulso quando o traço sai colado nele
+    xlr0 = np.where(np.isnan(xlr0), wkr0 + lw0 / 2, xlr0)
     xl_ok = xlr0[~np.isnan(xlr0)]
     xr_ok = xer0[~np.isnan(xer0)]
     left = float(np.median(xl_ok)) if len(xl_ok) else float(np.median([e[0] for e in ext if e]))
@@ -579,8 +653,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     span_px = (N - 1) / cfg.fs * speed * R
 
     # ------------------------------------------------------- origem temporal
-    xl, xe = _edge_cands(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2)
-    x0 = _vote_x0(xl, xe, lw0 / 2, span_px, R)
+    xl, xe, wk_ = _origin_cands(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2)
+    x0 = _vote_x0(xl, xe, lw0 / 2, span_px, R, weak=wk_)
     if x0 is None:
         x0 = float(np.median([e[0] for e in ext if e])) if any(ext) else 0.0
     # registro por batimentos: traço rápido de cada linha inteira -> QRS -> afim por linha
@@ -772,8 +846,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
 
     # origem temporal final com o nível de 50% e o raio medidos
     lev = 0.5 * dfull
-    xl, xe = _edge_cands(D, B, rows, ext, pulses, half, lev, R, rad)
-    x0f = _vote_x0(xl, xe, rad, span_px, R)
+    xl, xe, wk_ = _origin_cands(D, B, rows, ext, pulses, half, lev, R, rad)
+    x0f = _vote_x0(xl, xe, rad, span_px, R, weak=wk_)
     if x0f is not None:
         x0 = float(x0f)
     xlr, _, wkr = _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad, return_weak=True)
@@ -861,7 +935,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     if cfg.einthoven and names is LEADS:
         sig = einthoven_fuse(sig, nmeas, fill=cfg.fill_limb)
 
-    gains_seg = {f"{r_}:{nm}": seg_gain(r_, nm) for r_, row in enumerate(rows_spec) for nm in row}
+    gains_seg = {f"{r_}:{nm}": seg_gain(r_, nm) for r_, row in enumerate(rows_spec[:len(levels)]) for nm in row}
     res = dict(signals=sig, fs=cfg.fs, leads=list(names), layout=layout, layout_rows=rows_spec,
                layout_info=layout_info, rotation=str(rot),
                gain_mm_per_mv=levels[0][0] if levels else None, gains=gains_seg, duration_s=duration,

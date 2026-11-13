@@ -284,7 +284,7 @@ def _correspondences(Gc, T_major, T_minor, use_major, tile, step):
 
 
 def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, nonrigid: str = "cell",
-            cell_min_mm: float = 0.06):
+            cell_min_mm: float = 0.06, major_snap: bool = True):
     """Retorna (img_ret, paper_ret, info). img_ret tem R px/mm e linhas grossas em múltiplos de 5R.
 
     nonrigid: "poly" (polinômio cúbico global), "cell" (polinômio + campo local por células de
@@ -335,9 +335,10 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
     pap = cv2.warpPerspective(paper, T_total, (Wo, Ho), flags=cv2.INTER_NEAREST | cv2.WARP_INVERSE_MAP)
 
     # refinamento não-rígido: resíduo de fase -> polinômio cúbico -> remap
-    rms, rms_cell = float("nan"), float("nan")
+    rms, rms_cell, snap_mm = float("nan"), float("nan"), 0.0
     if nonrigid in ("poly", "cell"):
         out_p, pap_p, rms, mx, my = _refine_nonrigid(out, pap, R, return_map=True)
+        cx_ = cy_ = None
         if nonrigid == "cell" and mx is not None:
             loc = _local_field(out_p, pap_p, R)
             # só aplica o campo local quando ele se destaca do papel plano: em scans e
@@ -355,10 +356,97 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
                 cy_ = cv2.remap(my, gx + lx, gy + ly, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
                 out_p = cv2.remap(out, cx_, cy_, cv2.INTER_CUBIC, borderValue=(255, 255, 255))
                 pap_p = cv2.remap(pap, cx_, cy_, cv2.INTER_NEAREST)
+        if mx is not None and major_snap:
+            if cx_ is None:
+                cx_, cy_ = mx, my
+            snp = _major_snap(out_p, pap_p, R)
+            if snp is not None:
+                sx, sy, snap_mm = snp
+                H, W = out.shape[:2]
+                gx, gy = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32))
+                cx2 = cv2.remap(cx_, gx + sx, gy + sy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+                cy2 = cv2.remap(cy_, gx + sx, gy + sy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+                out_p = cv2.remap(out, cx2, cy2, cv2.INTER_CUBIC, borderValue=(255, 255, 255))
+                pap_p = cv2.remap(pap, cx2, cy2, cv2.INTER_NEAREST)
         out, pap = out_p, pap_p
     info = dict(angle=ang, ppmm=ppmm, has_major=has_major, n_corr=int(len(src)),
-                residual_rms_mm=rms, residual_cell_rms_mm=rms_cell, T=T_total)
+                residual_rms_mm=rms, residual_cell_rms_mm=rms_cell, major_snap_mm=snap_mm, T=T_total)
     return out, pap, info
+
+
+def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_mm=0.12):
+    """Ajuste fino pelas LINHAS GROSSAS (5 mm), localizadas uma a uma.
+
+    Depois do polinômio e do campo por células, a grade ainda pode estar fora do lugar numa
+    faixa da folha: scans com o papel escorregando/emendado deslocam a grade em 0,3-1,5 mm
+    (às vezes em degrau) e a fase de 1 mm é ambígua nesses valores. A linha grossa é
+    inequívoca dentro de ±2,5 mm: em faixas de 20 mm, a mediana das linhas da imagem dá o
+    perfil da grade sem o traço; o máximo perto de cada múltiplo de 5 mm é a linha.
+    Retorna (dx, dy, rms_mm) densos (amostrar em x+dx, y+dy) ou None."""
+    import warnings
+    f = out.astype(np.float32).mean(2) if out.ndim == 3 else out.astype(np.float32)
+    S = np.clip(1.0 - f / (_bg_max(f) + 1e-3), 0, 1)
+    S[pap == 0] = np.nan
+    H, W = S.shape
+    T5, bh, st, sr = 5 * R, int(band_mm * R), int(step_mm * R), int(round(search_mm * R))
+    fields = []
+    for axis in (0, 1):  # 0: linhas verticais (dx); 1: linhas horizontais (dy)
+        A = S if axis == 0 else S.T
+        n_par, n_len = A.shape  # bandas ao longo de n_par, perfil ao longo de n_len
+        b0s = list(range(0, max(1, n_par - bh + 1), st))
+        ks = [k for k in range(1, int(n_len // T5)) if sr + 1 <= k * T5 < n_len - sr - 1]
+        off = np.full((len(b0s), len(ks)), np.nan)
+        con = np.zeros_like(off)
+        for i, b0 in enumerate(b0s):
+            band = A[b0:b0 + bh]
+            if np.isnan(band).mean() > 0.5:
+                continue
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                prof = np.nanmedian(band, axis=0)
+            for j, k in enumerate(ks):
+                x = int(round(k * T5))
+                w = prof[x - sr:x + sr + 1]
+                if np.isnan(w).any():
+                    continue
+                m = int(np.argmax(w))
+                if 0 < m < len(w) - 1:
+                    a, b, c = w[m - 1], w[m], w[m + 1]
+                    den = a - 2 * b + c
+                    sub = 0.5 * (a - c) / den if den < -1e-9 else 0.0
+                else:
+                    sub = 0.0
+                off[i, j] = m - sr + float(np.clip(sub, -0.5, 0.5))
+                con[i, j] = w[m] - np.median(w)
+        ok = np.isfinite(off) & (con > max(0.03, 0.5 * np.nanmedian(con[np.isfinite(off)]) if np.isfinite(off).any() else 0.03))
+        if ok.mean() < 0.4:
+            return None
+        off[~ok] = np.nan
+        # vizinhos (3x3) que discordam muito: linha fina/traço/texto tomado pela grossa
+        from scipy.ndimage import generic_filter
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            med = generic_filter(off, np.nanmedian, size=3, mode="nearest")
+        off[np.abs(off - med) > 0.6 * R] = np.nan
+        ok = np.isfinite(off)
+        if ok.mean() < 0.4:
+            return None
+        Wt = ok.astype(np.float32)
+        sm = _fill_nan(off, Wt, 0.8)
+        cov = cv2.GaussianBlur(Wt, (0, 0), 0.8)
+        sm = np.where(cov > 1e-3, sm, 0.0).astype(np.float32)
+        # amostras em (centro da banda, k*5R) -> campo denso por interpolação bilinear
+        yc = np.array(b0s, float) + bh / 2
+        xc = np.array(ks, float) * T5
+        gy = np.clip(np.interp(np.arange(n_par), yc, np.arange(len(yc))), 0, len(yc) - 1)
+        gx = np.clip(np.interp(np.arange(n_len), xc, np.arange(len(xc))), 0, len(xc) - 1)
+        GX, GY = np.meshgrid(gx.astype(np.float32), gy.astype(np.float32))
+        dense = cv2.remap(sm, GX, GY, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+        fields.append((dense if axis == 0 else dense.T, off))
+    rms = float(np.sqrt(np.nanmean(fields[0][1] ** 2) + np.nanmean(fields[1][1] ** 2)) / R)
+    if rms < min_rms_mm:
+        return None
+    return fields[0][0].astype(np.float32), fields[1][0].astype(np.float32), rms
 
 
 def _fill_nan(F: np.ndarray, W: np.ndarray, sigma: float) -> np.ndarray:

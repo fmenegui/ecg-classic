@@ -35,7 +35,7 @@ def _bg(ch, R):
     return cv2.resize(s, (W, H), interpolation=cv2.INTER_LINEAR)
 
 
-def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bool = False):
+def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bool = False, tmin: float | None = None):
     f = rect.astype(np.float32)
     n = np.stack([f[..., c] / (_bg(f[..., c], R) + 1e-3) for c in range(3)], -1)
     t = np.clip(n.max(-1), 0, 1.2)  # transmitância no canal mais claro
@@ -46,7 +46,13 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
     pm = paper[: ny * P, : nx * P].reshape(ny, P, nx, P).min(axis=(1, 3)) > 0
     tiles = blk.transpose(0, 2, 1, 3)[pm]  # (k, P, P)
     tmpl = np.median(tiles, axis=0) if len(tiles) > 10 else np.ones((P, P), np.float32)
-    tmpl = np.clip(tmpl, 0.3, 1.0)
+    # grade escura (scan P&B, fotocópia): as linhas grossas são tão pretas quanto o traço.
+    # O molde precisa descer até elas (senão a linha da grade vira "tinta" contínua que
+    # estende as linhas até a borda da folha e cria linhas falsas)
+    dark_grid = float(tmpl.min()) < 0.45
+    if tmin is None:
+        tmin = 0.05 if dark_grid else 0.3
+    tmpl = np.clip(tmpl, tmin, 1.0)
     reps = (int(np.ceil(H / P)), int(np.ceil(W / P)))
     T = np.tile(tmpl, reps)[:H, :W]
     # molde LOCAL: mediana por fase (mod 5 mm) numa vizinhança de 5x5 células (25 mm).
@@ -57,7 +63,7 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
         cells = blk.transpose(0, 2, 1, 3).copy()               # (ny, nx, P, P)
         cells[~pm] = tmpl                                        # fora do papel: global
         loc = median_filter(cells, size=(5, 5, 1, 1), mode="nearest")
-        loc = np.clip(loc, 0.3, 1.0)
+        loc = np.clip(loc, tmin, 1.0)
         TL = np.ones((reps[0] * P, reps[1] * P), np.float32)
         TL[: ny * P, : nx * P] = loc.transpose(0, 2, 1, 3).reshape(ny * P, nx * P)
         TL = TL[:H, :W]
@@ -78,6 +84,10 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
             lh = np.nan_to_num(np.nanpercentile(tt, 80, axis=1), nan=1.0)
     lv = np.where(lv < 0.92, lv, 1.0); lh = np.where(lh < 0.92, lh, 1.0)
     T = T * np.clip(lh[:, None] * lv[None, :], 0.2, 1.0)
+    if dark_grid:
+        # grade escura (scan P&B): o molde precisa cobrir o pequeno erro de posição das
+        # linhas (±1 px) ou as bordas delas vazam como tinta
+        T = cv2.erode(T.astype(np.float32), np.ones((3, 3), np.uint8))
     D = 1.0 - np.clip(t / T, 0, 1)
     pe = cv2.erode(paper.astype(np.uint8), np.ones((int(2 * R), int(2 * R)), np.uint8))
     D[pe == 0] = 0
@@ -131,6 +141,19 @@ def find_rows(B: np.ndarray, R: float):
 def _runs(mask_1d):
     d = np.diff(np.concatenate([[0], mask_1d.astype(np.int8), [0]]))
     return np.nonzero(d == 1)[0], np.nonzero(d == -1)[0] - 1
+
+
+def strip_line_fragments(B, R, thin_mm=0.6, min_len_mm=2.0):
+    """Remove componentes isoladas que são só um risco reto e fino (horizontal ou vertical):
+    pedaços de linha da grade que vazaram, borda da área impressa, dobra do papel. O traço
+    de verdade é uma componente com excursões; um pedaço de linha de base isolado e plano
+    também sai, por isso o resultado serve para medir extensões, não para extrair o sinal."""
+    n, lab, st, _ = cv2.connectedComponentsWithStats(B.astype(np.uint8), connectivity=8)
+    w, h = st[:, cv2.CC_STAT_WIDTH], st[:, cv2.CC_STAT_HEIGHT]
+    thin, long_ = thin_mm * R, min_len_mm * R
+    bad = ((h <= thin) & (w >= long_)) | ((w <= thin) & (h >= long_))
+    bad[0] = False
+    return B & ~bad[lab]
 
 
 def row_extent(B, y0, half, R, max_gap_mm=3.0):
