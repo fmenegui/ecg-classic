@@ -44,6 +44,15 @@ class Config:
     fine_snap: bool = True    # ajuste pelas linhas finas (1 mm)
     steep_subpx: bool = False  # instante sub-pixel nos trechos íngremes (teste)
     synth: bool = True         # ajuste por síntese: pena + borrão gaussianos (traço fino)
+    bridge: bool = True        # Viterbi: salto vertical ligado por tinta fraca custa pouco
+    synth_max_shift: float = 1.5
+    synth_order: str = "sort"
+    fit_kw: dict = None
+    rigid_edges: bool = True     # Viterbi: traço íngreme que translada inteiro não paga a continuidade das bordas
+    pulse_retry: bool = True     # pulso procurado também a partir da margem comum das linhas
+    row_beats: bool = True       # linhas nas pontas sem QRS simultâneos aos das outras saem
+    band_sp: float = 1.6        # faixa de busca do traço: +-band_sp espaçamentos de linha
+    fit: str = "none"          # "lsf": renderização inversa com o perfil de pena medido
 
 
 def _pick_rows(peaks, cov, n_expected):
@@ -193,6 +202,90 @@ def _mask_label_edges(job, boxes):
             t[(t >= y0) & (t <= y1)] = np.nan
             b[(b >= y0) & (b <= y1)] = np.nan
 
+def _beat_xs(B, y, half, R, ext=None):
+    """Posições x dos complexos (QRS) de uma linha: colunas em que a tinta da faixa se estende
+    na vertical bem além do traço típico (subida/descida rápida)."""
+    H, W = B.shape
+    a, b = max(0, int(y - half)), min(H, int(y + half))
+    band = B[a:b]
+    if ext:
+        band = band[:, max(0, int(ext[0])):min(W, int(ext[1]))]
+        x_off = max(0, int(ext[0]))
+    else:
+        x_off = 0
+    has = band.any(0)
+    if has.sum() < 20 * R:
+        return np.array([])
+    idx = np.arange(band.shape[0])[:, None]
+    top = np.where(band, idx, 10 ** 6).min(0)
+    bot = np.where(band, idx, -1).max(0)
+    span = np.where(has, bot - top, 0).astype(float)
+    base = float(np.median(span[has]))
+    thr = max(2.0 * R, 3.0 * base)
+    sp = span > thr
+    runs = np.diff(np.r_[0, sp.astype(np.int8), 0])
+    st, en = np.nonzero(runs == 1)[0], np.nonzero(runs == -1)[0]
+    xs, last = [], -10 ** 9
+    for s_, e_ in zip(st, en):
+        if e_ - s_ > 6 * R:      # largo demais para um QRS (bloco de texto, borda)
+            continue
+        c = 0.5 * (s_ + e_)
+        if c - last > 5 * R:
+            xs.append(c + x_off)
+            last = c
+    return np.array(xs)
+
+
+def _beat_coherence_drop(B, peaks, ext, half, R):
+    """Linhas nas pontas do bloco cujos complexos não coincidem no tempo com os das outras
+    linhas: no ECG multicanal as linhas são simultâneas, então os QRS caem nas mesmas colunas.
+    Cabeçalho, barra de menu de tela, moldura e régua de texto não seguem esse ritmo.
+    Concordância entre duas linhas = F1 dos complexos casados (+-2,5 mm): uma linha de ritmo
+    com ruído (moiré) tem complexos a mais, mas contém os da outra (revocação alta)."""
+    n = len(peaks)
+    keep = np.ones(n, bool)
+    if n < 4:
+        return keep
+    bx = [_beat_xs(B, y, half, R, e) for y, e in zip(peaks, ext)]
+
+    def f1(i, j):
+        if len(bx[i]) < 2 or len(bx[j]) < 2:
+            return 0.0
+        d = np.abs(bx[i][:, None] - bx[j][None, :])
+        p_ = float(np.mean(d.min(1) < 2.5 * R)); r_ = float(np.mean(d.min(0) < 2.5 * R))
+        return 2 * p_ * r_ / max(p_ + r_, 1e-9)
+
+    F = np.array([[f1(i, j) if i != j else np.nan for j in range(n)] for i in range(n)])
+    cand = [i for i in range(n) if len(bx[i]) >= 3]
+    if len(cand) < 3:
+        return keep
+    # consenso: linhas que concordam (F1 >= 0,5) com a maioria das outras candidatas
+    cons = [i for i in cand if np.nanmedian([F[i, j] for j in cand if j != i]) >= 0.5]
+    if len(cons) < 3:
+        return keep
+    sp_c = float(np.median(np.diff(np.sort(peaks[cons]))))
+    for order in (range(n), range(n - 1, -1, -1)):
+        for i in order:
+            if i in cons:
+                break
+            sc = np.nanmedian([F[i, j] for j in cons])
+            if _ROW_BEAT_DEBUG:
+                print("beat-row", int(peaks[i]), round(float(sc), 2), len(bx[i]))
+            # só sai se, além de fora do ritmo, estiver fora do espaçamento do bloco (uma
+            # derivação legítima de QRS pequeno fica no passo normal das linhas)
+            kp = [j for j in range(n) if keep[j] and j != i]
+            gap = float(np.min(np.abs(peaks[kp] - peaks[i]))) if kp else np.inf
+            odd = gap < 0.75 * sp_c or gap > 1.5 * sp_c
+            # nenhum complexo numa ponta, com todas as linhas do consenso cheias de QRS:
+            # faixa de grade/mancha/moldura (uma linha de ECG real quase sempre tem algum)
+            odd = odd or (len(bx[i]) == 0 and min(len(bx[j]) for j in cons) >= 5)
+            if sc < _ROW_BEAT_THR[0] and odd and keep.sum() > 3:
+                keep[i] = False
+            else:
+                break
+    return keep
+
+
 def _excursions(B, y, half, R, dev_mm=3.0):
     """Quantos trechos da linha têm tinta a >= dev_mm do eixo (dentro da faixa da linha)."""
     H, W = B.shape
@@ -255,9 +348,41 @@ def _rows_pulses(B, pap, R):
     half = 0.45 * spacing
     ext = [row_extent(B, y, half, R) for y in peaks]
     pulses = []
+    starts = [e[0] for e in ext if e]
+    xs_med = float(np.median(starts)) if starts else None
     for i, (y, e) in enumerate(zip(peaks, ext)):
         up_sp = (y - peaks[i - 1]) if i > 0 else spacing
-        pulses.append(detect_pulse(B, y, half, e[0], R, up=max(half, min(0.95 * up_sp, 25 * R))) if e else None)
+        p_ = detect_pulse(B, y, half, e[0], R, up=max(half, min(0.95 * up_sp, 25 * R))) if e else None
+        # traço fraco/partido no começo da linha (foto, tela): a extensão começa depois do
+        # pulso. As linhas começam na mesma margem: tenta de novo a partir da margem comum
+        if p_ is None and e and xs_med is not None and _PULSE_RETRY[0] and 10 * R < e[0] - xs_med < 60 * R:
+            p_ = detect_pulse(B, y, half, xs_med, R, up=max(half, min(0.95 * up_sp, 25 * R)))
+        if p_ is None and e and _PULSE_RETRY[0]:
+            # bordas verticais do pulso claras e partidas (foto de tela, traço fino): fecha
+            # quebras maiores na vertical
+            p_ = detect_pulse(B, y, half, min(e[0], xs_med) if xs_med is not None else e[0], R,
+                              up=max(half, min(0.95 * up_sp, 25 * R)), close_mm=2.5)
+            if p_ is not None:
+                p_ = dict(p_, retry=True)
+        pulses.append(p_)
+    # pulso achado só na segunda tentativa vale se concordar com os achados na primeira
+    # (altura e coluna); sem nenhum da primeira, vale sozinho
+    first = [p for p in pulses if p is not None and not p.get("retry")]
+    if first:
+        h0 = float(np.median([p["foot"] - p["top"] for p in first]))
+        x0_ = float(np.median([p["x_start"] for p in first]))
+        pulses = [None if (p is not None and p.get("retry") and
+                           (abs((p["foot"] - p["top"]) - h0) > 0.2 * h0 or abs(p["x_start"] - x0_) > 3 * R))
+                  else p for p in pulses]
+    else:
+        rt = [p for p in pulses if p is not None]
+        # só da segunda tentativa: precisa de pelo menos dois, de mesma altura e coluna
+        ok_ = False
+        if len(rt) >= 2:
+            hs = np.array([p["foot"] - p["top"] for p in rt]); xs_ = np.array([p["x_start"] for p in rt])
+            ok_ = np.ptp(hs) <= 0.2 * np.median(hs) and np.ptp(xs_) <= 3 * R
+        if not ok_:
+            pulses = [None] * len(pulses)
     # linha nas pontas do bloco sem pulso, quando outras têm: cabeçalho isolado, régua de
     # texto colada ao bloco, borda da área impressa/sombra da folha numa foto (quase plana)
     has = [p is not None for p in pulses]
@@ -289,7 +414,20 @@ def _rows_pulses(B, pap, R):
             ext = [e for e, k in zip(ext, keep) if k]
             pulses = [p for p, k in zip(pulses, keep) if k]
             spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else spacing
+    if _ROW_BEAT_RULE[0] and len(peaks) >= 4:
+        keep = _beat_coherence_drop(B, peaks, ext, half, R)
+        if not keep.all():
+            peaks = peaks[keep]
+            ext = [e for e, k in zip(ext, keep) if k]
+            pulses = [p for p, k in zip(pulses, keep) if k]
+            spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else spacing
     return peaks, cov, ext, pulses, spacing
+
+
+_ROW_BEAT_RULE = [True]
+_PULSE_RETRY = [True]
+_ROW_BEAT_THR = [0.3]
+_ROW_BEAT_DEBUG = False
 
 
 def _orient(arrs, R):
@@ -607,6 +745,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     if img is None:
         raise FileNotFoundError(image)
     R = cfg.R
+    _ROW_BEAT_RULE[0] = cfg.row_beats
+    _PULSE_RETRY[0] = cfg.pulse_retry
     rect, pap, ginfo = rectify(img, R, cfg.ppmm, cfg.nonrigid, major_snap=cfg.major_snap,
                                fine_snap=cfg.fine_snap)
     D, glev = ink_map(rect, pap, R, return_grid_level=True)
@@ -843,7 +983,19 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     # ------------------------------------------------------- extração por segmento
     meas = {l: [] for l in names}  # lista de arrays (N) com NaN
     wts = {l: [] for l in names}   # pesos de confiança correspondentes
+    # nível de referência da tinta do traço (para a ponte entre segmentos no Viterbi)
+    _bref = None
+    if cfg.bridge:
+        vb = D[B]
+        _bref = float(np.percentile(vb, 75)) if vb.size > 100 else None
+
+    def br_kw(xa_):
+        kw_ = dict(D=D, xa=xa_, bridge_ref=_bref, bridge_floor=min(glev, 0.6 * _bref)) if _bref else {}
+        kw_['rigid'] = cfg.rigid_edges
+        return kw_
+
     traces_dbg = []
+    jobs_dbg = []
     seg_jobs = []
     for r, (y, spec) in enumerate(zip(rows, rows_spec)):
         base0 = base_q[r]
@@ -852,8 +1004,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         # faixa de busca generosa: ondas grandes (R de 3-5 mV) invadem a linha vizinha;
         # a primeira/última linha pode ir até a borda. O Viterbi + prior de linha de base
         # mantém o traço certo mesmo com os vizinhos dentro da faixa.
-        ya = 0 if r == 0 else max(0, int(y - 1.6 * up))
-        yb = H if r == len(rows) - 1 else min(H, int(y + 1.6 * dn))
+        ya = 0 if r == 0 else max(0, int(y - cfg.band_sp * up))
+        yb = H if r == len(rows) - 1 else min(H, int(y + cfg.band_sp * dn))
         k = len(spec)
         for c, lead in enumerate(spec):
             n0, n1 = c * N // k, (c + 1) * N // k
@@ -867,7 +1019,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             others = [float(v) for i2, v in enumerate(rows) if i2 != r]
             # na extração final, continuidade das bordas (letras de rótulo coladas ao traço);
             # os traços rápidos usados no layout ficam como antes
-            sel = viterbi_track(runs, base0, R, others=others, lw=lw0, w_edge=0.3)
+            sel = viterbi_track(runs, base0, R, others=others, lw=lw0, w_edge=0.3, **br_kw(xa))
             # restrição fisiológica: o ECG volta à linha de base a cada batimento. Um caminho
             # que passa > 0,8 s inteiro a mais de 4 mm dela seguiu outra coisa (borda da folha,
             # régua de texto, traço vizinho): esses segmentos saem e o rastreio é refeito
@@ -892,7 +1044,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                 for a_, b_ in bad:
                     for i in range(a_, b_):
                         runs[i] = [rr_ for rr_ in runs[i] if abs(rr_[2] - base0) <= 4 * R]
-                sel = viterbi_track(runs, base0, R, others=others, lw=lw0, w_edge=0.3)
+                sel = viterbi_track(runs, base0, R, others=others, lw=lw0, w_edge=0.3, **br_kw(xa))
             seg_jobs.append(dict(lead=lead, row=r, n0=n0, n1=n1, xa=xa, runs=runs, sel=sel))
 
     # nível de "tinta cheia" e raio do traço (meia espessura) em trechos planos
@@ -1030,7 +1182,10 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             xg, yg = refine_steep(D, xg, yg, rad_h)
         if cfg.synth and len(xg) > 20:
             from .synthesis import synth_refine
-            xg, yg = synth_refine(D, xg, yg, rad)
+            xg, yg = synth_refine(D, xg, yg, rad, max_shift=cfg.synth_max_shift, order=cfg.synth_order)
+        if cfg.fit == "lsf" and len(xg) > 30:
+            from .fit import lsf_refine
+            xg, yg = lsf_refine(D, xg, yg, **(cfg.fit_kw or {}))
         tn = np.arange(j["n0"], j["n1"]) / cfg.fs
         xn = x0_r[rr] + sc_r[rr] * tn * speed * R
         yn = np.interp(xn, xg, yg)
@@ -1068,6 +1223,9 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         w[j["n0"]:j["n1"]] = np.where(sh, 0.05, 1.0)
         wts[lead].append(w)
         traces_dbg.append((xs, yc, valid))
+        if return_debug:
+            jobs_dbg.append(dict(lead=lead, row=rr, n0=j["n0"], n1=j["n1"], xn=xn, yn=(base - v * gain * R) if lead == j["lead"] else None,
+                                 xg=xg, yg=yg, base=base, gain=gain, top=j["top"], bot=j["bot"], xa=j["xa"]))
     lw = 2 * rad
 
     sig = np.full((len(names), N), np.nan, np.float32)
@@ -1108,6 +1266,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                                 xl=xl, xe=xe, ext=ext,
                                 rows=list(map(int, rows)), pulses=pulses, rad=rad, rad_h=rad_h)
         res["rectified"] = rect
+        res["jobs"] = jobs_dbg
         res["ink"] = D
     return res
 

@@ -459,8 +459,8 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
                 off[i, j] = m - sr + float(np.clip(sub, -0.5, 0.5))
                 con[i, j] = w[m] - np.median(w)
         cmed = float(np.nanmedian(con[np.isfinite(off)])) if np.isfinite(off).any() else 0.0
-        ok = np.isfinite(off) & (con > max(con_floor, 0.5 * cmed))
-        if ok.mean() < 0.4:
+        ok = np.isfinite(off) & (con > max(con_floor, _SNAP_CON[0] * cmed))
+        if ok.mean() < _SNAP_OKMIN[0]:
             return None
         off[~ok] = np.nan
         # vizinhos (3x3) que discordam muito: linha fina/traço/texto tomado pela grossa
@@ -470,7 +470,7 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
             med = generic_filter(off, np.nanmedian, size=3, mode="nearest")
         off[np.abs(off - med) > outlier_mm * R] = np.nan
         ok = np.isfinite(off)
-        if ok.mean() < 0.4:
+        if ok.mean() < _SNAP_OKMIN[0]:
             return None
         Wt = ok.astype(np.float32)
         sm = _fill_nan(off, Wt, smooth)
@@ -492,6 +492,11 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
     if not (min_rms_mm <= rms <= max_rms_mm):
         return None
     return fields[0][0].astype(np.float32), fields[1][0].astype(np.float32), rms
+
+
+import os as _os
+_SNAP_CON = [float(_os.environ.get("ECGDIG_SNAP_CON", 0.5))]
+_SNAP_OKMIN = [float(_os.environ.get("ECGDIG_SNAP_OKMIN", 0.4))]
 
 
 def _fill_nan(F: np.ndarray, W: np.ndarray, sigma: float) -> np.ndarray:

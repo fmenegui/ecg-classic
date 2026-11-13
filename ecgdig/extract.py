@@ -159,7 +159,7 @@ def row_extent(B, y0, half, R, max_gap_mm=3.0):
     return int(s[i]), int(e[i])
 
 
-def detect_pulse(B, y0, half, xa, R, up=None):
+def detect_pulse(B, y0, half, xa, R, up=None, close_mm=0.8):
     """Pulso de calibração (retângulo) no início da linha.
     Exige: duas bordas verticais altas (4..25 mm) separadas por 1.5..12 mm, de alturas,
     topos e pés alinhados (< 1 mm), topo horizontal coberto de tinta entre elas e pé
@@ -172,7 +172,7 @@ def detect_pulse(B, y0, half, xa, R, up=None):
     # 30 mm: em fotos a extensão da linha pode começar na borda da folha/grade, antes do pulso
     x1 = min(W, int(xa + 30 * R))
     sub = B[a:b, x0s:x1].astype(np.uint8)
-    kv = max(3, int(0.8 * R) | 1)  # fecha quebras verticais (resolução baixa / JPEG)
+    kv = max(3, int(close_mm * R) | 1)  # fecha quebras verticais (resolução baixa / JPEG)
     sub = cv2.morphologyEx(sub, cv2.MORPH_CLOSE, np.ones((kv, 1), np.uint8)) > 0
     n = sub.shape[1]
     tops = np.full(n, np.nan); bots = np.full(n, np.nan)
@@ -281,10 +281,33 @@ def column_runs(B, D, ya, yb, xa, xb):
     return out
 
 
-def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_edge=0.0):
-    """Escolhe um segmento por coluna (ou falha) minimizando custo de continuidade."""
+def _bridge_table(D, xa, n, R, floor=0.0):
+    """Soma acumulada (em y) da tinta máxima em 3 colunas (x-2..x): evidência de um traço
+    fraco ligando dois segmentos na vertical (subida/descida rápida do QRS)."""
+    from scipy.ndimage import maximum_filter1d
+    H, W = D.shape
+    a, b = max(0, xa - 2), min(W, xa + n)
+    Dm = maximum_filter1d(np.clip(D[:, a:b].astype(np.float32) - floor, 0, None), 3, axis=1, origin=1)
+    Dm = Dm[:, xa - a:xa - a + n] if xa - a >= 0 else Dm
+    cs = np.vstack([np.zeros((1, Dm.shape[1]), np.float32), np.cumsum(Dm, 0)])
+    return cs
+
+
+def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_edge=0.0,
+                  D=None, xa=0, bridge_ref=None, rigid=False, bridge_floor=0.0):
+    """Escolhe um segmento por coluna (ou falha) minimizando custo de continuidade.
+
+    Com D: um salto vertical entre segmentos que a tinta (mesmo fraca, abaixo do limiar da
+    binarização) liga custa pouco. A pena é contínua: a subida e a descida do QRS, finas e
+    claras no scan/foto, se partem no binário, e sem isso o rastreio pulava o pico do R ou o
+    vale do S (o erro dominante nos picos)."""
     INF = 1e18
     n = len(runs)
+    cs_br = None
+    if D is not None and bridge_ref is not None and bridge_ref > 0 and n > 0:
+        cs_br = _bridge_table(D, xa, n, R, bridge_floor)
+        bridge_ref = bridge_ref - bridge_floor
+        Hb = cs_br.shape[0] - 1
     states = []  # por coluna: lista de (top, bot, center)
     costs, backs = [], []
     flat_h = 3.0 * (lw if lw else 0.3 * R)
@@ -311,13 +334,28 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
         return e
 
     _we = w_edge
+    _rigid = rigid
 
-    def trans(pt, pb, pc, t, b, c):
+    def trans(pt, pb, pc, t, b, c, i=None):
         g = max(0.0, t - pb, pt - b) / R
+        g0 = g
+        if g > 0.2 and cs_br is not None and i is not None and i < cs_br.shape[1]:
+            # intervalo vertical vazio entre os segmentos
+            y0, y1 = (int(pb) + 1, int(t)) if t > pb else (int(b) + 1, int(pt))
+            y0, y1 = max(0, y0), min(Hb, y1)
+            if y1 > y0:
+                ev = float(cs_br[y1, i] - cs_br[y0, i]) / (y1 - y0) / bridge_ref
+                if ev > 0.35:
+                    g *= max(0.05, 1.0 - (ev - 0.35) / 0.35)
         # continuidade das BORDAS: num traço desenhado por pena, de uma coluna para a
         # outra pelo menos uma das bordas (topo/base) anda pouco; letra colada ao traço
         # (rótulo atravessado por um R) fica no meio e quebra as duas
-        return 2.0 * g + 0.5 * g * g + 0.02 * abs(c - pc) / R + _we * min(abs(t - pt), abs(b - pb)) / R
+        # (traço íngreme: o segmento inteiro translada de uma coluna para a outra, as duas
+        # bordas andam juntas; só a letra colada muda topo e base de forma desigual)
+        ed = min(abs(t - pt), abs(b - pb))
+        if _rigid and g0 == 0.0:  # só com sobreposição: o mesmo traço continuando
+            ed = min(ed, abs((t - pt) - (b - pb)))
+        return 2.0 * g + 0.5 * g * g + 0.02 * abs(c - pc) / R + _we * ed / R
 
     prev_states = [(base, base, base)]
     prev_cost = np.array([0.0])
@@ -329,7 +367,7 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
         for (t, b, c), m in zip(cur, ms):
             best, arg = INF, -1
             for k, (pt, pb, pc) in enumerate(prev_states):
-                v = prev_cost[k] + trans(pt, pb, pc, t, b, c)
+                v = prev_cost[k] + trans(pt, pb, pc, t, b, c, i)
                 if v < best:
                     best, arg = v, k
             cs.append(best + emis(t, b, c, m))
