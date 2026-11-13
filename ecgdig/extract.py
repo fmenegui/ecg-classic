@@ -289,8 +289,8 @@ def _bridge_table(D, xa, n, R, floor=0.0):
     a, b = max(0, xa - 2), min(W, xa + n)
     Dm = maximum_filter1d(np.clip(D[:, a:b].astype(np.float32) - floor, 0, None), 3, axis=1, origin=1)
     Dm = Dm[:, xa - a:xa - a + n] if xa - a >= 0 else Dm
-    cs = np.vstack([np.zeros((1, Dm.shape[1]), np.float32), np.cumsum(Dm, 0)])
-    return cs
+    from scipy.ndimage import uniform_filter1d
+    return uniform_filter1d(Dm, 3, axis=0)  # média vertical de 3 px: buraco de 1 px no traço fraco não conta
 
 
 def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_edge=0.0,
@@ -307,7 +307,7 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
     if D is not None and bridge_ref is not None and bridge_ref > 0 and n > 0:
         cs_br = _bridge_table(D, xa, n, R, bridge_floor)
         bridge_ref = bridge_ref - bridge_floor
-        Hb = cs_br.shape[0] - 1
+        Hb = cs_br.shape[0]
     states = []  # por coluna: lista de (top, bot, center)
     costs, backs = [], []
     flat_h = 3.0 * (lw if lw else 0.3 * R)
@@ -344,7 +344,9 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
             y0, y1 = (int(pb) + 1, int(t)) if t > pb else (int(b) + 1, int(pt))
             y0, y1 = max(0, y0), min(Hb, y1)
             if y1 > y0:
-                ev = float(cs_br[y1, i] - cs_br[y0, i]) / (y1 - y0) / bridge_ref
+                # quantil baixo ao longo do vão: um traço fraco é contínuo; mancha/pontilhado
+                # de scan tem buracos (a média sozinha atravessava manchas escuras)
+                ev = float(cs_br[y0:y1, i].min()) / bridge_ref
                 if ev > 0.35:
                     g *= max(0.05, 1.0 - (ev - 0.35) / 0.35)
         # continuidade das BORDAS: num traço desenhado por pena, de uma coluna para a
