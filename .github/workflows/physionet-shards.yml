@@ -1,0 +1,60 @@
+name: PhysioNet (Kaggle) em paralelo
+on:
+  workflow_dispatch:
+    inputs:
+      config:
+        description: 'Campos do Config, ex.: "synth=False bridge=False" (opcional)'
+        required: false
+        default: ''
+        type: string
+      tag:
+        description: 'Rótulo do artefato'
+        required: false
+        default: 'run'
+        type: string
+permissions:
+  contents: read
+jobs:
+  shard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        ids:
+          - '119693645,1257259783,1280609341,1449491391,1962423499'
+          - '2295597388,235672018,2587667307,2841936136,3042142152'
+          - '322694441,3275080079,3574249147,3646789790,3879757040'
+          - '4050029009,426433979,644026427,994226251,996604037'
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ vars.KAGGLE_USERNAME }}
+      COMP: physionet-ecg-image-digitization
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e . kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0 pandas
+      - name: Cache dos dados do Kaggle
+        uses: actions/cache@v4
+        with:
+          path: results/physionet/data
+          key: physionet-shard-${{ matrix.ids }}-v1
+      - name: Avaliar
+        env:
+          PHYSIONET_KEEP_DATA: '1'
+        run: |
+          ARGS=""
+          for kv in ${{ inputs.config }}; do ARGS="$ARGS --config $kv"; done
+          python benchmarks/physionet/run.py eval --n 5 --jobs 4 --keep-raw 0 --ids "${{ matrix.ids }}" --out results/physionet $ARGS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shard-${{ inputs.tag }}-${{ strategy.job-index }}-${{ github.run_id }}
+          path: |
+            results/physionet/
+            !results/physionet/data/**
+            !results/physionet/raw/**/*.png
+          retention-days: 14
