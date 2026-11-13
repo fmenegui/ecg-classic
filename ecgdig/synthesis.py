@@ -83,6 +83,8 @@ def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_
     if psf is None:
         return xg, yg
     A, sig = psf
+    if sig > 3.0:
+        return xg, yg  # borrão maior que a própria pena: o modelo não separa curva e mancha
     a = A * ds / (np.sqrt(2 * np.pi) * sig)
     H, W = D.shape
     cx0, cy0 = _densify(xg, yg, ds)
@@ -105,20 +107,28 @@ def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_
     delta = np.zeros(K)
     lr = 0.5 / (a * a + 1e-9)
 
-    def render(cx, cy):
-        fx = cx - x0; fy = cy - y0
+    CH = max(1, 400000 // len(ox))  # pontos por bloco: limita a memória (~400 mil pares)
+
+    def _block(fx, fy):
         ix = np.floor(fx).astype(int); iy = np.floor(fy).astype(int)
         px = ix[:, None] + ox[None, :]; py = iy[:, None] + oy[None, :]
         dx = px - fx[:, None]; dy = py - fy[:, None]
         gv = a * np.exp(-0.5 * (dx * dx + dy * dy) / (sig * sig))
         inside = (px >= 0) & (px < w) & (py >= 0) & (py < h)
-        S = np.bincount((py * w + px)[inside], weights=gv[inside], minlength=h * w)
-        return S.reshape(h, w), px, py, dx, dy, gv, inside
+        return px, py, dx, dy, gv, inside
+
+    def render(cx, cy):
+        fx = cx - x0; fy = cy - y0
+        S = np.zeros(h * w)
+        for c0 in range(0, K, CH):
+            px, py, dx, dy, gv, inside = _block(fx[c0:c0 + CH], fy[c0:c0 + CH])
+            S += np.bincount((py * w + px)[inside], weights=gv[inside], minlength=h * w)
+        return S.reshape(h, w)
 
     prev = None
     for it in range(n_iter):
         cx = cx0 + delta * nx; cy = cy0 + delta * ny
-        S, px, py, dx, dy, gv, inside = render(cx, cy)
+        S = render(cx, cy)
         M = 1.0 - np.exp(-S)
         r = np.where(tube, M - Dp, 0.0)
         loss = float((r * r).sum())
@@ -127,13 +137,15 @@ def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_
             if lr < 1e-3 / (a * a + 1e-9):
                 break
         prev = loss
-        # dL/dc_k = sum_p 2 r(p) (1 - M(p)) * gv * (p - c_k)/sig^2
-        coef = np.zeros_like(gv)
-        flat_idx = np.where(inside, py * w + px, 0)
-        rr = (2 * r * (1 - M)).ravel()[flat_idx] * inside
-        coef = rr * gv / (sig * sig)
-        gx = (coef * dx).sum(1); gy = (coef * dy).sum(1)
-        grad = gx * nx + gy * ny
+        # dL/dc_k = sum_p 2 r(p) (1 - M(p)) * a g(p - c_k) * (p - c_k)/sig^2
+        G2 = (2 * r * (1 - M)).ravel()
+        fx = cx - x0; fy = cy - y0
+        grad = np.empty(K)
+        for c0 in range(0, K, CH):
+            px, py, dx, dy, gv, inside = _block(fx[c0:c0 + CH], fy[c0:c0 + CH])
+            rr = G2[np.where(inside, py * w + px, 0)] * inside
+            coef = rr * gv / (sig * sig)
+            grad[c0:c0 + CH] = (coef * dx).sum(1) * nx[c0:c0 + CH] + (coef * dy).sum(1) * ny[c0:c0 + CH]
         # regularização de 2ª ordem (curva suave na escala de ~1 px de arco)
         lap = np.r_[0.0, delta[:-2] - 2 * delta[1:-1] + delta[2:], 0.0]
         delta = delta - lr * grad + lr * lam * a * a * lap
