@@ -101,3 +101,13 @@ Dois testes contra o erro de instante no QRS:
 - **Batimento médio como prior global:** piora de 0,1 a 0,9 dB e não entra.
 
 Onde ainda há espaço: as fotos (0006, 0009, 0010) quase não ganham com a síntese. O limite delas é a geometria e a iluminação, não o traço.
+
+### Quarta rodada (13/11/2026): rastreio e linhas, +0,9 dB
+
+- **Diagnóstico do resto:** depois do oráculo, 40–48% do erro está nos picos, que ficam aquém do verdadeiro (nas fotos, 20–50% de perda nos 10% piores).
+- **Translação rígida no Viterbi:** QRS gigante que cruza linhas não paga a regra de continuidade das bordas. Num render, 10,3 → 29,9 dB.
+- **Ritmo comum entre linhas:** as linhas de um ECG multicanal são simultâneas, então uma linha da ponta sem QRS nas mesmas colunas e fora do espaçamento sai. Resolve fotos de tela e cabeçalhos sem depender do pulso.
+- **Ponte por tinta contínua** e **segunda busca do pulso**, validada contra os outros pulsos.
+- **Resultado em 135 imagens locais:** 13,64 → 14,57 dB. LITFL e sintéticos idênticos.
+- **Piso da impressão:** nos scans, ±3 ms por batimento no instante do QRS, o mesmo em todas as capturas da mesma folha. A grade está certa; é o sinal impresso que saiu deslocado. Nenhum método recupera isso.
+- **O que falta no clássico:** fotos com sombra/curvatura (resíduo de grade 0,35–0,5 mm por célula), ganho em fotos em perspectiva e o traço fraco de fotos de tela. O próximo salto de leitura do traço é o híbrido: um segmentador de traço aprendido sem template, com o resto clássico.
