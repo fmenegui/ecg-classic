@@ -43,6 +43,7 @@ class Config:
     major_snap: bool = True   # ajuste pelas linhas grossas (5 mm)
     fine_snap: bool = True    # ajuste pelas linhas finas (1 mm)
     steep_subpx: bool = False  # instante sub-pixel nos trechos íngremes (teste)
+    synth: bool = False        # ajuste por síntese pena + borrão (teste)
 
 
 def _pick_rows(peaks, cov, n_expected):
@@ -1027,6 +1028,9 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         xg, yg = xs[good], yc[good]
         if cfg.steep_subpx and len(xg) > 4:
             xg, yg = refine_steep(D, xg, yg, rad_h)
+        if cfg.synth and len(xg) > 20:
+            from .synthesis import synth_refine
+            xg, yg = synth_refine(D, xg, yg, rad)
         tn = np.arange(j["n0"], j["n1"]) / cfg.fs
         xn = x0_r[rr] + sc_r[rr] * tn * speed * R
         yn = np.interp(xn, xg, yg)
