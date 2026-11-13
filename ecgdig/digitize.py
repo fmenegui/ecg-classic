@@ -982,15 +982,15 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         yn = np.where((xn < xg[0] - ext_max) | (xn > xg[-1] + ext_max), np.nan, yn)
         # na troca de derivação o trecho escondido pela marca é curto (poucos ms): vale o
         # primeiro/último valor limpo, constante (melhor que vazio, que a métrica lê como zero)
-        # extrapolação linear com a inclinação das primeiras amostras limpas (um QRS colado
-        # à fronteira continua subindo/descendo por baixo da marca)
+        # extrapolação com metade da inclinação das primeiras amostras limpas (um QRS colado
+        # à fronteira continua por baixo da marca, mas a curva costuma fazer a volta ali)
         K4 = min(4, len(xg))
         if j["n0"] > 0 and K4 >= 2:
             sl = np.polyfit(xg[:K4], yg[:K4], 1)[0]
-            yn = np.where((xn < xg[0]) & (xn >= xs_s - 1.0), yg[0] + sl * (xn - xg[0]), yn)
+            yn = np.where((xn < xg[0]) & (xn >= xs_s - 1.0), yg[0] + 0.5 * sl * (xn - xg[0]), yn)
         if j["n1"] < N and K4 >= 2:
             sl = np.polyfit(xg[-K4:], yg[-K4:], 1)[0]
-            yn = np.where((xn > xg[-1]) & (xn <= xs_e + 1.0), yg[-1] + sl * (xn - xg[-1]), yn)
+            yn = np.where((xn > xg[-1]) & (xn <= xs_e + 1.0), yg[-1] + 0.5 * sl * (xn - xg[-1]), yn)
         v = (base - yn) / (gain * R)
         if j["n0"] == 0:
             v = _cut_leading_pulse(v, cfg.fs)
