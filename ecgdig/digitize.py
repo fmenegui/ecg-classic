@@ -642,7 +642,16 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                 duration = d_
                 break
         else:
-            if len(rows) >= 3:
+            # a mediana dos finais de linha pode cair num artefato (borda, sombra) em metade
+            # das linhas: procura a duração padrão que o maior número de finais confirma
+            sup = {}
+            for d_ in (2.5, 5.0, 10.0):
+                exp_ = left + lw0 + d_ * speed * R
+                sup[d_] = int((np.abs(xr_ok - exp_) < 1.5 * R).sum())
+            d_best = max(sup, key=sup.get) if sup else None
+            if d_best is not None and sup[d_best] >= max(1, int(np.ceil(0.25 * len(xr_ok)))):
+                duration = d_best
+            elif len(rows) >= 3:
                 # página de várias linhas fora de qualquer duração padrão: quase sempre a
                 # escala horizontal está errada (imagem da web redimensionada sem manter a
                 # proporção, grade só com linhas grossas). A página padrão tem 10 s; o eixo

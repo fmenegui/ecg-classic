@@ -24,12 +24,12 @@ TYPE_NAMES = {
     "0010": "foto com sombra",
 }
 TYPE_ORDER = ["0001", "0003", "0004", "0011", "0012", "0005", "0006", "0009", "0010"]
-STEPS = ["cobertura", "origem", "deriva", "deriva local", "ganho", "linha de base"]
+STEPS = ["rótulos", "cobertura", "origem", "deriva", "deriva local", "ganho", "linha de base"]
 STEP_LABEL = {
-    "cobertura": "trechos vazios", "origem": "origem do tempo", "deriva": "escala horizontal",
+    "rótulos": "layout / derivação trocada", "cobertura": "trechos vazios", "origem": "origem do tempo", "deriva": "escala horizontal",
     "deriva local": "distorção horizontal local", "ganho": "ganho (mV/mm)", "linha de base": "linha de base",
 }
-STEP_VAR = {"cobertura": "--s1", "origem": "--s2", "deriva": "--s3", "deriva local": "--s4",
+STEP_VAR = {"rótulos": "--s0", "cobertura": "--s1", "origem": "--s2", "deriva": "--s3", "deriva local": "--s4",
             "ganho": "--s5", "linha de base": "--s6"}
 
 CSS = """
@@ -38,7 +38,7 @@ CSS = """
   --bg:#f6f7f8; --panel:#ffffff; --fg:#1d2429; --muted:#5d6871; --line:#d9dee2;
   --grid1:#f3d6d6; --grid5:#e7a9a9; --gt:#1f5fbf; --pred:#c2272d; --accent:#b0262c;
   --good:#1e7a46; --bad:#b0262c;
-  --s1:#8a96a3; --s2:#d18b2c; --s3:#3f7fd0; --s4:#1f4f99; --s5:#3c9a6a; --s6:#9a6bbf;
+  --s0:#c2272d; --s1:#8a96a3; --s2:#d18b2c; --s3:#3f7fd0; --s4:#1f4f99; --s5:#3c9a6a; --s6:#9a6bbf;
   --f-head:"Archivo",system-ui,sans-serif; --f-text:"IBM Plex Sans",system-ui,sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,monospace;
 }
@@ -46,12 +46,12 @@ CSS = """
   --bg:#14181b; --panel:#1b2024; --fg:#e4e8eb; --muted:#9aa5ae; --line:#2e353a;
   --grid1:#3a2426; --grid5:#5e3236; --gt:#6fa6ff; --pred:#ff6b6f; --accent:#ff6b6f;
   --good:#5fd394; --bad:#ff7a7e;
-  --s1:#7d8894; --s2:#e6a54a; --s3:#5c9cf0; --s4:#9cbcf5; --s5:#57c08a; --s6:#bb93de; color-scheme:dark}}
+  --s0:#ff6b6f; --s1:#7d8894; --s2:#e6a54a; --s3:#5c9cf0; --s4:#9cbcf5; --s5:#57c08a; --s6:#bb93de; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#14181b; --panel:#1b2024; --fg:#e4e8eb; --muted:#9aa5ae; --line:#2e353a;
   --grid1:#3a2426; --grid5:#5e3236; --gt:#6fa6ff; --pred:#ff6b6f; --accent:#ff6b6f;
   --good:#5fd394; --bad:#ff7a7e;
-  --s1:#7d8894; --s2:#e6a54a; --s3:#5c9cf0; --s4:#9cbcf5; --s5:#57c08a; --s6:#bb93de; color-scheme:dark}
+  --s0:#ff6b6f; --s1:#7d8894; --s2:#e6a54a; --s3:#5c9cf0; --s4:#9cbcf5; --s5:#57c08a; --s6:#bb93de; color-scheme:dark}
 body{background:var(--bg);color:var(--fg);font:15px/1.55 var(--f-text);
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px}
 main{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:40px}
@@ -86,6 +86,7 @@ svg text{fill:var(--muted);font:11px var(--f-mono)}
 .tabs button{font:500 .8rem var(--f-text);border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:5px 10px;border-radius:4px;cursor:pointer}
 .tabs button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
 .tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.finding ul{margin:0;padding-left:1.2em;max-width:68ch}
 ol.fix{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:8px;max-width:72ch}
 """
 
@@ -122,7 +123,7 @@ def _decomp_chart(dec_by_type):
     types = [t for t in TYPE_ORDER if t in dec_by_type]
     W, lh, left, right = 900, 30, 170, 20
     H = 30 + lh * len(types) + 26
-    lo = min(0.0, min(dec_by_type[t]["métrica"] for t in types))
+    lo = float(np.floor(min(0.0, min(dec_by_type[t]["métrica"] for t in types)) / 5) * 5)
     hi = max(dec_by_type[t]["linha de base"] for t in types)
     hi = float(np.ceil(max(hi, 20) / 5) * 5)
     sx = lambda v: left + (v - lo) / (hi - lo) * (W - left - right)  # noqa: E731
@@ -135,9 +136,9 @@ def _decomp_chart(dec_by_type):
         d = dec_by_type[t]
         y = 24 + k * lh
         out.append(f'<text x="{left-8}" y="{y+15}" text-anchor="end" style="fill:var(--fg)">{t} {TYPE_NAMES.get(t, "")}</text>')
-        x0 = sx(0)
+        x0 = sx(lo)
         x1 = sx(d["métrica"])
-        out.append(f'<rect x="{min(x0,x1):.1f}" y="{y+3}" width="{abs(x1-x0):.1f}" height="{lh-10}" fill="var(--fg)" opacity=".85"/>')
+        out.append(f'<rect x="{x0:.1f}" y="{y+3}" width="{max(0.5, x1-x0):.1f}" height="{lh-10}" fill="var(--fg)" opacity=".85"/>')
         prev = d["métrica"]
         for s in STEPS:
             cur = max(prev, d[s])
@@ -152,22 +153,28 @@ def _decomp_chart(dec_by_type):
     return '<div class="chart">' + "".join(out) + '</div><div class="legend">' + "".join(leg) + "</div>"
 
 
-def _ecg_strip(g, p, fs, lead, seconds=(0, 10), h_mv=(-1.6, 2.2)):
+def _ecg_strip(g, p, fs, lead, win=None):
     """Uma derivação sobre papel milimetrado (25 mm/s, 10 mm/mV): verdade × ecgdig."""
     m = np.isfinite(g)
     if m.sum() < 10:
         return ""
     idx = np.nonzero(m)[0]
     a, b = idx[0], idx[-1] + 1
+    if win is not None:
+        a, b = max(a, win[0]), min(b, win[1])
     t0 = a / fs
     dur = (b - a) / fs
     mm_w = dur * 25
     gg = g[a:b] - np.nanmedian(g[a:b])
     pp = p[a:b] - (np.nanmedian(p[a:b]) if np.isfinite(p[a:b]).any() else 0)
-    lo = min(h_mv[0], np.nanpercentile(gg, 0.5) - 0.2)
-    hi = max(h_mv[1] * 0.5, np.nanpercentile(gg, 99.5) + 0.2)
+    both = np.concatenate([gg[np.isfinite(gg)], pp[np.isfinite(pp)]])
+    lo = min(-0.5, np.percentile(both, 1) - 0.15)
+    hi = max(0.5, np.percentile(both, 99) + 0.15)
+    if hi - lo > 3.5:  # mantém a faixa legível; o que sai fica cortado na borda
+        c = float(np.median(gg[np.isfinite(gg)]))
+        lo, hi = max(lo, c - 1.75), min(hi, c + 1.75)
     mm_h = (hi - lo) * 10
-    sc = 3.0  # px por mm
+    sc = 6.0  # px por mm
     W, H = mm_w * sc, mm_h * sc
     out = [f'<svg class="strip" viewBox="0 0 {W:.0f} {H:.0f}" role="img" aria-label="Derivação {lead}">',
            f'<rect width="{W:.0f}" height="{H:.0f}" fill="var(--panel)"/>']
@@ -184,7 +191,7 @@ def _ecg_strip(g, p, fs, lead, seconds=(0, 10), h_mv=(-1.6, 2.2)):
         step = max(1, int(fs / 125))
         for i in range(0, len(v), step):
             if np.isfinite(v[i]):
-                pts.append(f"{i/fs*25*sc:.1f},{H-(v[i]-lo)*10*sc:.1f}")
+                pts.append(f"{i/fs*25*sc:.1f},{H-(min(max(v[i], lo), hi)-lo)*10*sc:.1f}")
             elif pts:
                 segs.append(pts)
                 pts = []
@@ -192,10 +199,10 @@ def _ecg_strip(g, p, fs, lead, seconds=(0, 10), h_mv=(-1.6, 2.2)):
             segs.append(pts)
         return "".join(f'<polyline points="{" ".join(s)}" fill="none" stroke="{color}" stroke-width="{wdt}" stroke-linejoin="round"/>' for s in segs)
 
-    out.append(poly(gg, "var(--gt)", 1.6))
-    out.append(poly(pp, "var(--pred)", 1.1))
-    out.append(f'<text x="4" y="13" style="fill:var(--fg);font-weight:600">{lead}</text>'
-               f'<text x="{W-4:.0f}" y="13" text-anchor="end">{t0:.1f}–{t0+dur:.1f} s</text></svg>')
+    out.append(poly(gg, "var(--gt)", 2.6))
+    out.append(poly(pp, "var(--pred)", 1.7))
+    out.append(f'<text x="6" y="16" style="fill:var(--fg);font-weight:600;font-size:13px">{lead}</text>'
+               f'<text x="{W-6:.0f}" y="16" text-anchor="end" style="font-size:12px">{t0:.1f}–{t0+dur:.1f} s</text></svg>')
     return "".join(out)
 
 
@@ -306,29 +313,35 @@ def build(art: Path, before: Path | None, out: Path, findings_md: Path | None = 
              '<p class="muted">“Teto (oráculo)” é o SNR depois de corrigir com o gabarito todas as fontes de erro medidas abaixo; '
              "o que sobra é erro de forma (traçado, picos cortados, derivações trocadas).</p></section>")
 
-    # decomposição
-    if dec:
-        agg = {}
-        for t, v in dby.items():
-            agg[t] = {k: _mean([d[k] for d in v]) for k in ["métrica"] + STEPS}
-        H.append('<section><div class="eyebrow">Diagnóstico</div><h2>Para onde vai o SNR</h2>'
-                 "<p>Cada correção usa o gabarito só para o seu tipo de erro, cumulativamente e nesta ordem. "
-                 "O tamanho de cada segmento é quanto SNR aquele erro custa hoje.</p>" + _decomp_chart(agg))
+    def decomp_block(dec_, eyebrow, title, lead):
+        by_ = defaultdict(list)
+        for d in dec_:
+            by_[d["type"]].append(d)
+        agg = {t: {k: _mean([d[k] for d in v]) for k in ["métrica"] + STEPS} for t, v in by_.items()}
         tot = defaultdict(list)
-        for d in dec:
+        for d in dec_:
             prev = d["métrica"]
-            for s in STEPS:
-                cur = max(prev, d[s])
-                tot[s].append(cur - prev)
+            for s_ in STEPS:
+                cur = max(prev, d[s_])
+                tot[s_].append(cur - prev)
                 prev = cur
-        H.append('<div class="tw"><table><thead><tr><th>Fonte de erro</th><th class="n">perda média</th>'
-                 '<th class="n">imagens com perda &gt; 1 dB</th></tr></thead><tbody>' +
-                 "".join(f"<tr><td><i style='display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:8px;background:var({STEP_VAR[s]})'></i>{STEP_LABEL[s]}</td>"
-                         f"<td class='n'>{np.mean(tot[s]):.2f} dB</td><td class='n'>{100*np.mean(np.array(tot[s]) > 1):.0f}%</td></tr>"
-                         for s in sorted(STEPS, key=lambda s: -np.mean(tot[s]))) + "</tbody></table></div></section>")
+        return (f'<section><div class="eyebrow">{eyebrow}</div><h2>{title}</h2><p>{lead}</p>' + _decomp_chart(agg) +
+                '<div class="tw"><table><thead><tr><th>Fonte de erro</th><th class="n">perda média</th>'
+                '<th class="n">imagens com perda &gt; 1 dB</th></tr></thead><tbody>' +
+                "".join(f"<tr><td><i style='display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:8px;background:var({STEP_VAR[s_]})'></i>{STEP_LABEL[s_]}</td>"
+                        f"<td class='n'>{np.mean(tot[s_]):.2f} dB</td><td class='n'>{100*np.mean(np.array(tot[s_]) > 1):.0f}%</td></tr>"
+                        for s_ in sorted(STEPS, key=lambda s_: -np.mean(tot[s_]))) + "</tbody></table></div></section>")
 
+    how = ("Cada correção usa o gabarito só para o seu tipo de erro, cumulativamente e nesta ordem; "
+           "o segmento colorido é quanto SNR aquele erro custa. A barra escura é o SNR medido.")
+    dec_b = json.loads((before / "decomposition.json").read_text()) if before and (before / "decomposition.json").exists() else None
+    if dec_b:
+        H.append(decomp_block(dec_b, "Diagnóstico · antes", "Para onde ia o SNR", how))
     if findings_md and findings_md.exists():
         H.append(findings_md.read_text())
+    if dec:
+        H.append(decomp_block(dec, "Diagnóstico · agora" if dec_b else "Diagnóstico",
+                              "O que ainda custa SNR" if dec_b else "Para onde vai o SNR", how))
 
     # por derivação
     perl = defaultdict(list)
@@ -365,8 +378,11 @@ def build(art: Path, before: Path | None, out: Path, findings_md: Path | None = 
         z = np.load(sigp)
         G, P, fs = z["gt"].astype(float), z["pred"].astype(float), float(z["fs"])
         wl = _worst_lead(r)
-        strips = _ecg_strip(G[LEADS.index("II")], P[LEADS.index("II")], fs, "II (ritmo)") + \
-            _ecg_strip(G[LEADS.index(wl)], P[LEADS.index(wl)], fs, wl)
+        gi = G[LEADS.index(wl)]
+        ix = np.nonzero(np.isfinite(gi))[0]
+        win = (ix[0], ix[-1] + 1) if len(ix) else None
+        strips = _ecg_strip(G[LEADS.index("II")], P[LEADS.index("II")], fs, "II (ritmo)", win) + \
+            _ecg_strip(gi, P[LEADS.index(wl)], fs, wl, win)
         d = dmap.get((rid, t))
         dd = ""
         if d:
