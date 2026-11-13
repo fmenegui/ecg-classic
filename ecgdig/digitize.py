@@ -362,6 +362,10 @@ def _rows_pulses(B, pap, R):
             # quebras maiores na vertical
             p_ = detect_pulse(B, y, half, min(e[0], xs_med) if xs_med is not None else e[0], R,
                               up=max(half, min(0.95 * up_sp, 25 * R)), close_mm=2.5)
+            # na segunda tentativa só o retângulo simples: o fechamento largo pode emendar o
+            # pulso ao começo do traço e fabricar um "degrau" (ganho dividido falso)
+            if p_ is not None and (p_.get("step") or p_.get("half")):
+                p_ = None
             if p_ is not None:
                 p_ = dict(p_, retry=True)
         pulses.append(p_)
