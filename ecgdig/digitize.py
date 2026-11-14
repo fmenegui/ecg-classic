@@ -54,6 +54,7 @@ class Config:
     row_beats: bool = True       # linhas nas pontas sem QRS simultâneos aos das outras saem
     ink_model: str = ""         # caminho do ONNX do segmentador de traço (modo híbrido)
     ink_mix: float = 1.0        # 1 = só a rede; <1 mistura com o mapa clássico
+    prewarp: bool = False          # perspectiva grosseira pelo contorno da área quadriculada
     adaptive_threshold: bool = True  # traço claro: refaz a binarização com limiar menor
     pulse_rows: bool = True       # linhas de base pelos pulsos de calibração quando há >= 3
     row_chain: bool = True        # extensão da linha atravessa o vão entre colunas
@@ -377,7 +378,16 @@ def _rows_pulses(B, pap, R):
         prow, _pp = pulse_rows(B, R)
         if prow is not None:
             spp = float(np.median(np.diff(prow)))
-            extra = [p for p in peaks if np.min(np.abs(prow - p)) > 0.6 * spp]
+            xp_ = float(np.median([q["x_start"] for q in _pp]))
+            extra = []
+            for p in peaks:
+                if np.min(np.abs(prow - p)) <= 0.6 * spp:
+                    continue
+                # linha sem pulso só conta se começar na margem das outras: um trecho que
+                # começa no meio da página é uma coluna deslocada de uma linha existente
+                e_ = row_extent(B, p, 0.3 * spp, R)
+                if e_ is not None and e_[0] <= xp_ + 30 * R:
+                    extra.append(p)
             peaks = np.sort(np.concatenate([prow, np.array(extra, float)])).astype(int)
     ys = np.nonzero(pap.any(1))[0]
     if len(ys):  # bordas da folha / moldura não são linhas de traçado
@@ -805,6 +815,9 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         img = cv2.resize(img, None, fx=f, fy=f, interpolation=cv2.INTER_AREA)
         if cfg.ppmm:
             cfg = dataclasses.replace(cfg, ppmm=cfg.ppmm * f)
+    if cfg.prewarp:
+        from .geometry import prewarp_quad
+        img, _ = prewarp_quad(img)
     R = cfg.R
     _ROW_BEAT_RULE[0] = cfg.row_beats
     _PULSE_RETRY[0] = cfg.pulse_retry

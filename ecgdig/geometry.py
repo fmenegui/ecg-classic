@@ -283,6 +283,68 @@ def _correspondences(Gc, T_major, T_minor, use_major, tile, step):
     return src, dst, w
 
 
+def prewarp_quad(img: np.ndarray, min_dev_deg: float = 2.0):
+    """Correção de perspectiva grosseira pelo contorno da área quadriculada.
+
+    Em fotos inclinadas, a fase da grade de 5 mm deriva tanto ao longo da folha que o ajuste
+    por fases (ambíguo a cada 5 mm) se perde. A área quadriculada é um retângulo no papel:
+    acha a região de textura de grade (variância local), aproxima por um quadrilátero e
+    leva-o a um retângulo. Só atua se o quadrilátero se afasta do retângulo (> min_dev_deg).
+    Devolve (img_corrigida, H) ou (img, None)."""
+    H0, W0 = img.shape[:2]
+    f = 800.0 / max(H0, W0)
+    sm = cv2.resize(img, (int(W0 * f), int(H0 * f)), interpolation=cv2.INTER_AREA)
+    paper = paper_mask(sm)
+    G = grid_map(sm, paper)
+    k = max(5, int(0.02 * max(sm.shape[:2])) | 1)
+    m1 = cv2.blur(G, (k, k)); m2 = cv2.blur(G * G, (k, k))
+    sd = np.sqrt(np.clip(m2 - m1 * m1, 0, None))
+    if sd.max() <= 0:
+        return img, None
+    from skimage.filters import threshold_otsu
+    th = threshold_otsu(sd[paper > 0]) if (paper > 0).sum() > 100 else threshold_otsu(sd)
+    mask = (sd > th).astype(np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((k, k), np.uint8))
+    n, lab, st, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    if n < 2:
+        return img, None
+    i = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
+    if st[i, cv2.CC_STAT_AREA] < 0.15 * mask.size:
+        return img, None
+    cnts, _ = cv2.findContours((lab == i).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    hull = cv2.convexHull(max(cnts, key=cv2.contourArea))
+    peri = cv2.arcLength(hull, True)
+    quad = None
+    for eps in np.linspace(0.01, 0.08, 15):
+        ap = cv2.approxPolyDP(hull, eps * peri, True)
+        if len(ap) == 4:
+            quad = ap.reshape(4, 2).astype(np.float64)
+            break
+    if quad is None:
+        return img, None
+    # ordena: topo-esq, topo-dir, baixo-dir, baixo-esq
+    c = quad.mean(0)
+    ang = np.arctan2(quad[:, 1] - c[1], quad[:, 0] - c[0])
+    quad = quad[np.argsort(ang)]
+    tl = int(np.argmin(quad.sum(1)))
+    quad = np.roll(quad, -tl, axis=0)
+    def angle(a, b, cc):
+        v1, v2 = a - b, cc - b
+        return np.degrees(np.arccos(np.clip(v1 @ v2 / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-9), -1, 1)))
+    angs = [angle(quad[(j - 1) % 4], quad[j], quad[(j + 1) % 4]) for j in range(4)]
+    if max(abs(a - 90) for a in angs) < min_dev_deg:
+        return img, None
+    q = quad / f
+    wt = 0.5 * (np.linalg.norm(q[1] - q[0]) + np.linalg.norm(q[2] - q[3]))
+    ht = 0.5 * (np.linalg.norm(q[3] - q[0]) + np.linalg.norm(q[2] - q[1]))
+    m = 0.08 * max(wt, ht)  # margem: rótulos, pulsos e a folha em volta continuam visíveis
+    dst = np.array([[m, m], [m + wt, m], [m + wt, m + ht], [m, m + ht]], np.float64)
+    Hq = cv2.getPerspectiveTransform(q.astype(np.float32), dst.astype(np.float32))
+    out = cv2.warpPerspective(img, Hq, (int(wt + 2 * m), int(ht + 2 * m)), flags=cv2.INTER_CUBIC,
+                              borderValue=(255, 255, 255))
+    return out, Hq
+
+
 def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, nonrigid: str = "cell",
             cell_min_mm: float = 0.06, major_snap: bool = True, fine_snap: bool = True,
             fine_min_mm: float = 0.06):

@@ -31,15 +31,17 @@ def main():
                 z.extract(n, a.out)
     m = pd.read_csv(os.path.join(a.out, "final_data/metadata.csv"))
     m["scen"] = m["Image relative path"].str.split("/").str[0]
-    if a.shard is not None:
-        sel = list(m[m["Image ID"] % a.nshards == a.shard]["Image relative path"])
-    elif a.per_scenario:
-        rng = np.random.default_rng(a.seed); sel = []
+    if a.per_scenario:
+        rng = np.random.default_rng(a.seed); keep = []
         for _, g in m.groupby("scen"):
             ids = rng.choice(sorted(g["Image ID"].unique()), a.per_scenario, replace=False)
-            sel += list(g[g["Image ID"].isin(ids)]["Image relative path"])
-    else:
-        sel = list(m["Image relative path"])
+            keep += list(g[g["Image ID"].isin(ids)].index)
+        m = m.loc[keep]
+    if a.shard is not None:
+        # fatia por (cenário, Image ID): as páginas de um ECG ficam juntas
+        key = m["scen"].astype("category").cat.codes * 1000 + m["Image ID"]
+        m = m[key % a.nshards == a.shard]
+    sel = list(m["Image relative path"])
     root = os.path.join(a.out, "visual_data")
 
     def get(chunk):
