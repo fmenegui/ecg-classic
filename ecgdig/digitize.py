@@ -856,8 +856,10 @@ def _vote_x0(xl, xe, rad, span_px, R, weak=()):
     if not c:
         return None
     vals = np.array([v for v, _ in c])
+    # empate: vale o início (borda esquerda ou fim do pulso); o fim da linha pode ter marca
+    # de fim de traço ou sobra de coluna
     sup = [(np.abs(vals - v) < 0.8 * R).sum() + 0.1 * len({t for (u, t) in c if abs(u - v) < 0.8 * R})
-           for v in vals]
+           + (0.05 if t0 != "R" else 0.0) for v, (_, t0) in zip(vals, c)]
     v0 = vals[int(np.argmax(sup))]
     grp = [(v, t) for v, t in c if abs(v - v0) < 0.8 * R]
     Ls = [v for v, t in grp if t == "L"]; Rs = [v for v, t in grp if t == "R"]
@@ -970,7 +972,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                 keep_x[a_:b_] = False
             B, D, rect = B[:, keep_x], D[:, keep_x], rect[:, keep_x]
             H, W = B.shape
-            col_cut = cg
+            cum_ = np.cumsum(keep_x)
+            col_cut = [float(cum_[max(0, a_ - 1)]) for a_, _ in cg]  # x do corte na imagem nova
             ext = [row_extent(B, y, half, R) for y in rows]
             pulses = [None if p is None else _shift_pulse(p, keep_x) for p in pulses]
     # pulso no FIM da linha (vários aparelhos imprimem a calibração à direita, ou dos dois
@@ -1187,6 +1190,14 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         layout = cfg.layout if isinstance(cfg.layout, str) else "custom"
     else:
         ctx = _LayoutCtx(B, D, rows, pulses, R, x0_r, sc_r, speed, duration, qfull, base_q, levels)
+        if col_cut:
+            # o vão tirado da imagem era a fronteira de coluna mais forte que existe
+            for r_ in range(len(rows)):
+                for xc in col_cut:
+                    q_ = (xc - x0_r[r_]) / (sc_r[r_] * speed * R * duration)
+                    for qq in ctx.bnd[r_]:
+                        if abs(qq - q_) < 0.015:
+                            ctx.bnd[r_][qq] = 1.0
         layout_info = ctx.choose()
         # caixas de rótulos lidos com confiança: o traço que atravessa um rótulo (ex.: R
         # passando por cima de "V4") não pode ser confundido com as letras
