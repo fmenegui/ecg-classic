@@ -111,3 +111,13 @@ Onde ainda há espaço: as fotos (0006, 0009, 0010) quase não ganham com a sín
 - **Resultado em 135 imagens locais:** 13,64 → 14,57 dB. LITFL e sintéticos idênticos.
 - **Piso da impressão:** nos scans, ±3 ms por batimento no instante do QRS, o mesmo em todas as capturas da mesma folha. A grade está certa; é o sinal impresso que saiu deslocado. Nenhum método recupera isso.
 - **O que falta no clássico:** fotos com sombra/curvatura (resíduo de grade 0,35–0,5 mm por célula), ganho em fotos em perspectiva e o traço fraco de fotos de tela. O próximo salto de leitura do traço é o híbrido: um segmentador de traço aprendido sem template, com o resto clássico.
+
+### Híbrido, primeiro teste (14/11/2026)
+
+- **Montagem:** U-Net pequena (386 mil parâmetros) treinada só com recortes sintéticos genéricos (`hybrid/gen.py`: papel, grade, pena, texto, manchas, moiré e degradações sorteados; nenhuma imagem do PhysioNet/Kaggle). Ela entra no digitalizador como mapa de tinta (`Config(ink_model=..., ink_mix=...)`); o resto é clássico.
+- **Treino:** CPU do GitHub (`hybrid-train.yml`), 5h20 → ~4.700 passos (4 s/passo). Ainda longe de convergir.
+- **Resultado, 135 imagens locais, mistura 50% rede + 50% clássico:** 14,57 → 13,69 dB (67 melhores, 65 piores; mediana da diferença +0,05 dB).
+  - Ganha onde o clássico falha: fotos de tela e amassadas (+8 a +10 dB em casos isolados), scan colorido +1,0 dB.
+  - Perde no que já era bom: render −2,8 dB, foto de celular −3,1 dB, com algumas quebras estruturais (−15 dB).
+- **Melhor dos dois por imagem (oráculo):** 15,49 dB. Há ~0,9 dB a ganhar com uma fusão que decida sem gabarito.
+- **Próximos passos:** (1) usar a rede só na leitura do traço, mantendo o mapa clássico para linhas, layout, pulsos e tempo; (2) escolher ou fundir por imagem com critérios internos (Einthoven, II duplicado, ritmo comum entre linhas); (3) treino em GPU (dezenas de milhares de passos).
