@@ -62,6 +62,9 @@ class Config:
     max_side: int = 4000          # reduz imagens maiores que isso (memória)
     band_sp: float = 1.6        # faixa de busca do traço: +-band_sp espaçamentos de linha
     right_anchor: bool = True   # duração fora do padrão com fins concordantes: ancora no fim
+    extrap_cap: bool = True     # rampa de extrapolação na troca de derivação limitada a 2 mm
+    pulse_col: bool = True      # coluna de pulsos solta do traço: apaga e usa para o ganho
+    col_gap: bool = True        # vão comum entre colunas iguais: sai da imagem
     fit: str = "none"          # "lsf": renderização inversa com o perfil de pena medido
 
 
@@ -317,6 +320,53 @@ def _excursions(B, y, half, R, dev_mm=3.0):
     return n
 
 
+def _shift_pulse(p, keep_x):
+    """Coordenadas x de um pulso depois de tirar colunas de pixel da imagem."""
+    cum = np.cumsum(keep_x) - 1
+    q = dict(p)
+    for k in ("x_start", "x_end", "x_fall"):
+        if k in q and q[k] is not None:
+            q[k] = type(q[k])(cum[int(min(max(q[k], 0), len(cum) - 1))])
+    return q
+
+
+def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
+    """Vãos comuns a todas as linhas (nenhuma tinta na faixa de nenhuma linha), de 2 a 15 mm,
+    que dividem o traço em k colunas de mesma largura (±3%). Devolve [(x0, x1)] ou None."""
+    ex = [e for e in ext if e]
+    if len(ex) < len(rows) or len(rows) < 2:
+        return None
+    L, Rr = int(np.median([e[0] for e in ex])), int(np.median([e[1] for e in ex]))
+    if Rr - L < 60 * R:
+        return None
+    occ = np.zeros(Rr - L, bool)
+    for y in rows:
+        a, b = max(0, int(y - half)), min(B.shape[0], int(y + half))
+        occ |= B[a:b, L:Rr].any(0)
+    d = np.diff(np.concatenate([[1], occ.astype(np.int8), [1]]))
+    s_, e_ = np.nonzero(d == -1)[0], np.nonzero(d == 1)[0]
+    gaps = [(L + a, L + b) for a, b in zip(s_, e_) if min_mm * R <= b - a <= max_mm * R and a > 0 and b < len(occ)]
+    if not gaps or len(gaps) > 5:
+        return None
+    # colunas entre os vãos de mesma largura
+    edges = [L] + [x for g in gaps for x in g] + [Rr]
+    widths = [edges[2 * i + 1] - edges[2 * i] for i in range(len(gaps) + 1)]
+    if len(gaps) >= 2:
+        # as colunas do meio decidem a largura; a primeira e a última podem ter sobra de
+        # pulso, borda ou marca de fim (até 30 mm), nunca falta
+        inner = widths[1:-1]
+        w = float(np.median(inner))
+        if (max(inner) - min(inner)) > 0.03 * w:
+            return None
+        if any(not (0.97 * w <= x <= w + 30 * R) for x in (widths[0], widths[-1])):
+            return None
+    elif (max(widths) - min(widths)) > 0.03 * np.median(widths):
+        return None
+    if min(widths) < 20 * R:
+        return None
+    return gaps
+
+
 def _rows_pulses(B, pap, R):
     """Linhas de traçado candidatas (sem texto/bordas), extensões e pulsos."""
     H, W = B.shape
@@ -503,6 +553,9 @@ def _rows_pulses(B, pap, R):
 _ROW_BEAT_RULE = [True]
 _PULSE_RETRY = [True]
 RIGHT_ANCHOR = [True]
+EXTRAP_CAP = [True]
+PULSE_COL = [True]
+COL_GAP = [True]
 _PULSE_ROWS = [True]
 _ROW_BEAT_THR = [0.3]
 _ROW_BEAT_DEBUG = False
@@ -837,6 +890,9 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     _PULSE_RETRY[0] = cfg.pulse_retry
     _PULSE_ROWS[0] = cfg.pulse_rows
     RIGHT_ANCHOR[0] = cfg.right_anchor
+    EXTRAP_CAP[0] = cfg.extrap_cap
+    PULSE_COL[0] = cfg.pulse_col
+    COL_GAP[0] = cfg.col_gap
     from . import extract as _ex
     _ex.ROW_CHAIN[0] = cfg.row_chain
     rect, pap, ginfo = rectify(img, R, cfg.ppmm, cfg.nonrigid, major_snap=cfg.major_snap,
@@ -882,6 +938,41 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     pulses = [pulses_all[i] for i in idx]
     spacing = float(np.median(np.diff(rows))) if len(rows) > 1 else spacing
     half = 0.45 * spacing
+    # pulsos impressos à parte (na linha nominal, com o traço deslocado pelo nível DC): não
+    # emendam no traço, nenhuma linha os achou. Não são traço: saem de B e D (senão o início
+    # da linha cai no pulso e o eixo do tempo estica); a altura deles dá o ganho padrão
+    pcol = None
+    if PULSE_COL[0] and all(p is None for p in pulses_all):
+        from .extract import pulse_column
+        pcol = pulse_column(B, R)
+        if pcol is not None:
+            B = B.copy(); D = D.copy()
+            xa_, xb_ = max(0, int(pcol["x_start"] - 1 * R)), int(pcol["x_end"] + 1 * R)
+            h_ = pcol["height"]
+            for f_ in pcol["feet"]:
+                # o retângulo do pulso e, no pé, a perninha/quadrado que sai à direita dele
+                ya_, yb_ = max(0, int(f_ - h_ - 1 * R)), int(f_ + 1 * R)
+                B[ya_:yb_, xa_:xb_] = False
+                D[ya_:yb_, xa_:xb_] = 0
+                ya_, yb_ = max(0, int(f_ - 1.5 * R)), int(f_ + 3 * R)
+                B[ya_:yb_, xa_:int(xb_ + 3 * R)] = False
+                D[ya_:yb_, xa_:int(xb_ + 3 * R)] = 0
+            ext = [row_extent(B, y, half, R) for y in rows]
+    # vão comum entre colunas: todas as linhas sem tinta na mesma faixa de x, em posições
+    # que dividem o traço em colunas iguais. O tempo é contínuo de uma coluna à outra, então
+    # o vão sai da imagem (B, D e a retificada) e o resto do programa vê um traço contínuo
+    col_cut = None
+    if COL_GAP[0] and len(rows) >= 2:
+        cg = _column_gaps(B, rows, ext, half, R)
+        if cg:
+            keep_x = np.ones(W, bool)
+            for a_, b_ in cg:
+                keep_x[a_:b_] = False
+            B, D, rect = B[:, keep_x], D[:, keep_x], rect[:, keep_x]
+            H, W = B.shape
+            col_cut = cg
+            ext = [row_extent(B, y, half, R) for y in rows]
+            pulses = [None if p is None else _shift_pulse(p, keep_x) for p in pulses]
     # pulso no FIM da linha (vários aparelhos imprimem a calibração à direita, ou dos dois
     # lados): procurado na imagem espelhada; serve só para ganho, não para o eixo do tempo
     rpulses = [None] * len(rows)
@@ -1048,6 +1139,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         g1def = float(vals[np.argmax(cnts)])
     else:
         g1def = 10.0  # nenhum pulso confiável: 10 mm/mV é o padrão de quase todo aparelho
+        if pcol is not None and _std_ok((pcol["height"] + 1 - lw0) / R, 0.1):
+            g1def = _snap((pcol["height"] + 1 - lw0) / R)
     gain_flags = []
     for r_, g in enumerate(lv1):
         # pulso da direita (menos confiável: costuma encostar no fim do traço) que discorda
@@ -1335,12 +1428,17 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         # extrapolação com metade da inclinação das primeiras amostras limpas (um QRS colado
         # à fronteira continua por baixo da marca, mas a curva costuma fazer a volta ali)
         K4 = min(4, len(xg))
+        # a rampa só vale perto da última amostra limpa (2 mm); traço perdido longe da
+        # fronteira fica no último valor (uma rampa de 0,5 s ia a vários mV)
+        ramp = 2.0 * R if EXTRAP_CAP[0] else np.inf
         if j["n0"] > 0 and K4 >= 2:
             sl = np.polyfit(xg[:K4], yg[:K4], 1)[0]
-            yn = np.where((xn < xg[0]) & (xn >= xs_s - 1.0), yg[0] + 0.5 * sl * (xn - xg[0]), yn)
+            yn = np.where((xn < xg[0]) & (xn >= xs_s - 1.0),
+                          yg[0] + 0.5 * sl * np.maximum(xn - xg[0], -ramp), yn)
         if j["n1"] < N and K4 >= 2:
             sl = np.polyfit(xg[-K4:], yg[-K4:], 1)[0]
-            yn = np.where((xn > xg[-1]) & (xn <= xs_e + 1.0), yg[-1] + 0.5 * sl * (xn - xg[-1]), yn)
+            yn = np.where((xn > xg[-1]) & (xn <= xs_e + 1.0),
+                          yg[-1] + 0.5 * sl * np.minimum(xn - xg[-1], ramp), yn)
         v = (base - yn) / (gain * R)
         if j["n0"] == 0:
             v = _cut_leading_pulse(v, cfg.fs)

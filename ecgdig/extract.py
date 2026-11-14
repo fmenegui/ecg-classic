@@ -263,6 +263,33 @@ def pulse_rows(B: np.ndarray, R: float):
     return np.array(best[1]), best[2]
 
 
+def pulse_column(B: np.ndarray, R: float, P=None):
+    """Coluna de pulsos de calibração que não emendam no traço (impressos à parte, na linha
+    nominal, com o traço deslocado pelo nível DC da derivação). Exige >= 3 pulsos com o
+    mesmo x (±2 mm), a mesma altura (±8%), a mesma largura (±1 mm) e passo vertical regular
+    (±15%): um bloco de texto ou um QR code não forma isso. Devolve dict(x_start, x_end,
+    height, feet) ou None."""
+    P = find_pulses(B, R) if P is None else P
+    best = None
+    for p in P:
+        h = p["foot"] - p["top"]; w = p["x_end"] - p["x_start"]
+        grp = [q for q in P if abs(q["x_start"] - p["x_start"]) <= 2 * R
+               and abs((q["foot"] - q["top"]) - h) <= 0.08 * h
+               and abs((q["x_end"] - q["x_start"]) - w) <= 1 * R]
+        feet = sorted({round(q["foot"]) for q in grp})
+        feet = [f for i, f in enumerate(feet) if i == 0 or f - feet[i - 1] > 3 * R]
+        if len(feet) < 3:
+            continue
+        d = np.diff(feet)
+        if d.min() < 8 * R or (d.max() - d.min()) > 0.15 * np.median(d):
+            continue
+        if best is None or len(feet) > len(best["feet"]):
+            best = dict(x_start=float(np.median([q["x_start"] for q in grp])),
+                        x_end=float(np.median([q["x_end"] for q in grp])),
+                        height=float(np.median([q["foot"] - q["top"] for q in grp])), feet=feet)
+    return best
+
+
 def _runs(mask_1d):
     d = np.diff(np.concatenate([[0], mask_1d.astype(np.int8), [0]]))
     return np.nonzero(d == 1)[0], np.nonzero(d == -1)[0] - 1
