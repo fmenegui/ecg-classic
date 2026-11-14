@@ -39,7 +39,7 @@ def main():
         m = m.loc[keep]
     if a.shard is not None:
         # fatia por (cenário, Image ID): as páginas de um ECG ficam juntas
-        key = m["scen"].astype("category").cat.codes * 1000 + m["Image ID"]
+        key = m["scen"].astype("category").cat.codes.astype(np.int64) * 1000 + m["Image ID"].astype(np.int64)
         m = m[key % a.nshards == a.shard]
     sel = list(m["Image relative path"])
     root = os.path.join(a.out, "visual_data")
