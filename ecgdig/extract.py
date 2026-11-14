@@ -230,6 +230,16 @@ def pulse_rows(B: np.ndarray, R: float):
     """Linhas de base das linhas de traçado pelos pulsos de calibração: o maior grupo de
     pulsos de mesma altura (±12%) na mesma coluna (±5 mm), um por linha. None se < 3."""
     P = find_pulses(B, R)
+    H, W = B.shape
+    # pulso de verdade emenda no traço: logo depois dele há tinta perto do pé por boa parte
+    # dos 25 mm seguintes (bloco de QR code, caixa de texto e cabeçalho não)
+    def _cont(p):
+        a, b = max(0, int(p["foot"] - 4 * R)), min(H, int(p["foot"] + 4 * R))
+        x0, x1 = int(p["x_end"] + 1), min(W, int(p["x_end"] + 25 * R))
+        if x1 - x0 < 5 * R:
+            return False
+        return B[a:b, x0:x1].any(0).mean() >= 0.5
+    P = [p for p in P if _cont(p)]
     best = None
     for p in P:
         h = p["foot"] - p["top"]
@@ -237,6 +247,8 @@ def pulse_rows(B: np.ndarray, R: float):
                abs((q["foot"] - q["top"]) - h) <= 0.12 * h]
         feet = sorted(q["foot"] for q in grp)
         uniq = [f for i, f in enumerate(feet) if i == 0 or f - feet[i - 1] > 3 * R]
+        if len(uniq) >= 2 and np.min(np.diff(uniq)) < 8 * R:
+            continue  # linhas de ECG ficam a >= ~10 mm umas das outras
         key = (len(uniq), -p["x_start"])
         if best is None or key > best[0]:
             best = (key, uniq, grp)

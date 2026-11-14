@@ -390,6 +390,9 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
     u0, v0 = np.floor(pts.min(0) / (5 * R)) * 5 * R - 5 * R
     u1, v1 = np.ceil(pts.max(0) / (5 * R)) * 5 * R + 5 * R
     Wo, Ho = int(u1 - u0), int(v1 - v0)
+    if Wo * Ho > 40e6 or Wo > 12000 or Ho > 12000:
+        # folha de mais de ~1 m: a escala (px/mm) foi mal estimada; seguir estouraria a memória
+        raise RuntimeError(f"escala implausível: quadro retificado {Wo}x{Ho} px")
     Tsh = np.array([[1, 0, u0], [0, 1, v0], [0, 0, 1.0]])
     T_total = T_total @ Tsh  # pixel de saída -> original (linhas grossas em múltiplos de 5R)
 

@@ -318,6 +318,7 @@ def _excursions(B, y, half, R, dev_mm=3.0):
 def _rows_pulses(B, pap, R):
     """Linhas de traçado candidatas (sem texto/bordas), extensões e pulsos."""
     H, W = B.shape
+    _prow_set = [None]
     peaks, cov = find_rows(B, R)
     if len(peaks) == 0:
         return peaks, cov, [], [], 40 * R
@@ -376,6 +377,7 @@ def _rows_pulses(B, pap, R):
         # traço claro (a projeção horizontal se confunde); as linhas de projeção que não
         # coincidem com nenhum pulso e estão longe de todos ficam (linha sem pulso)
         prow, _pp = pulse_rows(B, R)
+        _prow_set[0] = prow
         if prow is not None:
             spp = float(np.median(np.diff(prow)))
             xp_ = float(np.median([q["x_start"] for q in _pp]))
@@ -386,7 +388,10 @@ def _rows_pulses(B, pap, R):
                 # linha sem pulso só conta se começar na margem das outras: um trecho que
                 # começa no meio da página é uma coluna deslocada de uma linha existente
                 e_ = row_extent(B, p, 0.3 * spp, R)
-                if e_ is not None and e_[0] <= xp_ + 30 * R:
+                dn = float(np.min(np.abs(prow - p)))
+                regular = (0.85 * spp <= dn <= 1.15 * spp) and (p < prow.min() or p > prow.max())
+                if e_ is not None and (e_[0] <= xp_ + 30 * R or (regular and e_[1] - e_[0] > 60 * R)):
+                    # (ou continua o passo regular do bloco numa ponta: pulso dessa linha perdido)
                     extra.append(p)
             peaks = np.sort(np.concatenate([prow, np.array(extra, float)])).astype(int)
     ys = np.nonzero(pap.any(1))[0]
@@ -479,6 +484,12 @@ def _rows_pulses(B, pap, R):
             spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else spacing
     if _ROW_BEAT_RULE[0] and len(peaks) >= 4:
         keep = _beat_coherence_drop(B, peaks, ext, half, R)
+        # linha com pulso de calibração é linha de ECG, tenha ou não QRS visíveis
+        if _prow_set[0] is not None:
+            for i, y in enumerate(peaks):
+                if np.min(np.abs(_prow_set[0] - y)) < 3 * R:
+                    keep[i] = True
+        keep = keep | np.array([p is not None for p in pulses], bool)
         if not keep.all():
             peaks = peaks[keep]
             ext = [e for e, k in zip(ext, keep) if k]
