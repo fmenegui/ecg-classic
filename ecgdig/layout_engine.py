@@ -37,6 +37,7 @@ CABRERA_NO_EVIDENCE = [6.0]
 BND_RELATIVE = [True]
 BND_OTHER_ROWS = [True]
 BND_COHERENT = [True]
+LIMB_LOG = [True]
 
 
 def _canon(name):
@@ -410,7 +411,13 @@ class Ctx:
             ratio, ntest = _limb_ratio(V[:, ::2], A)
             if ntest > 20 and np.isfinite(ratio):
                 ref = 0.45
-                parts["limb"] = (ref - ratio) * min(1.0, ntest / (0.25 * T))
+                if LIMB_LOG[0]:
+                    # verossimilhança: resíduo de Einthoven/Goldberger pequeno é quase
+                    # impossível por acaso com os nomes errados; a evidência cresce como log
+                    lr = float(np.clip(np.log(ref / max(ratio, 1e-3)), -1.0, 1.5))
+                    parts["limb"] = lr * min(1.0, ntest / (0.25 * T))
+                else:
+                    parts["limb"] = (ref - ratio) * min(1.0, ntest / (0.25 * T))
         # duplicatas
         for nme, lst in sig.items():
             for i in range(len(lst)):

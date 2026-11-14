@@ -66,6 +66,7 @@ class Config:
     pulse_col: bool = True      # coluna de pulsos solta do traço: apaga e usa para o ganho
     col_gap: bool = True        # vão comum entre colunas iguais: sai da imagem
     col_align: bool = True      # colunas com linhas de base próprias: realinha cada faixa
+    limb_log: bool = True       # física no layout como log-verossimilhança do resíduo
     fit: str = "none"          # "lsf": renderização inversa com o perfil de pena medido
 
 
@@ -896,6 +897,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     EXTRAP_CAP[0] = cfg.extrap_cap
     PULSE_COL[0] = cfg.pulse_col
     COL_GAP[0] = cfg.col_gap
+    from . import layout_engine as _le
+    _le.LIMB_LOG[0] = cfg.limb_log
     from . import extract as _ex
     _ex.ROW_CHAIN[0] = cfg.row_chain
     rect, pap, ginfo = rectify(img, R, cfg.ppmm, cfg.nonrigid, major_snap=cfg.major_snap,
