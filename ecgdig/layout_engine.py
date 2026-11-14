@@ -32,6 +32,7 @@ FAMILIES = ["3x4", "3x4-cabrera", "6x2", "6x2-cabrera", "12x1", "12x1-cabrera",
             "6x1-prec", "6x1-limb", "6x1-limb-cabrera"]
 FRACS = {1: [], 2: [0.5], 3: [1 / 3, 2 / 3], 4: [0.25, 0.5, 0.75]}
 W_OCR, W_BND, W_LIMB, W_DUP = 4.0, 1.5, 15.0, 3.0
+_UNEXPLAINED = [True]
 
 
 def _canon(name):
@@ -299,7 +300,7 @@ class Ctx:
         for (r, k, c, name) in segs:
             xs = float(self.x_of(r, c / k * self.duration)) / R
             lo = xs - (25 if c == 0 else 2.0)
-            w = self.label_near(r, lo, xs + 15, x_ref_mm=xs)
+            w = self.label_near(r, lo, xs + 22, x_ref_mm=xs)
             if w is None:
                 continue
             d = w["dist"]
@@ -312,6 +313,19 @@ class Ctx:
             if w.get("single") and top == "I" and _canon(name) in ("II", "III"):
                 cap = 0.0  # uma barra só não desmente II/III: as outras podem ter colado no traço
             parts["ocr"] += max(-cap, (d.get(name, 0.0) - d[top]) / 0.15)
+        # rótulo confiável sem segmento que o explique: a hipótese ignora uma derivação impressa
+        # (p.ex. 6x1 numa página 6x2 com "V1".."V6" no meio da linha)
+        if _UNEXPLAINED[0]:
+            starts = {}
+            for (r, k, c, name) in segs:
+                xs = float(self.x_of(r, c / k * self.duration)) / R
+                starts.setdefault(r, []).append((xs - (25 if c == 0 else 2.0), xs + 22))
+            for w in self.words:
+                if w.get("single") or w["best"] < 0.55:
+                    continue
+                x0 = w["box"][0] / R
+                if not any(lo <= x0 <= hi for lo, hi in starts.get(w["row"], [])):
+                    parts["ocr"] -= 1.0
         # membros
         sig = {}
         has_grid = any(len(row) > 1 for row in spec)
@@ -384,7 +398,7 @@ class Ctx:
         rest_rows = list(rest_rows)
         # convenção dos fabricantes: 1 tira de ritmo = II (GE, Philips, Mortara, Schiller);
         # 2 = V1 e II; 3 = V1, II, V5. Prior moderado: rótulo lido ou a física podem vencer.
-        canon = {1: [{"II"}], 2: [{"V1", "II"}, {"V1", "II"}], 3: [{"V1"}, {"II"}, {"V5"}]}.get(
+        canon = {1: [{"II"}], 2: [{"V1", "II"}, {"V1", "II"}], 3: [{"V1", "II", "V5"}] * 3}.get(
             len(rest_rows), [set()] * len(rest_rows))
         for j, r in enumerate(rest_rows):
             best, best_n = -np.inf, None

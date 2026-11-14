@@ -8,11 +8,12 @@ Pipeline completo: imagem -> 12 derivações (mV, fs Hz).
 from __future__ import annotations
 
 from dataclasses import dataclass
+import dataclasses
 import numpy as np
 import cv2
 
 from .geometry import rectify
-from .extract import (ink_map, binarize, find_rows, row_extent, detect_pulse,
+from .extract import (ink_map, binarize, find_rows, row_extent, detect_pulse, pulse_rows,
                       column_runs, viterbi_track, selected_envelopes, envelope_edges,
                       centerline_from_envelopes, calibrate_pen, mark_occlusions, horizontal_halfwidth,
                       trace_likeness, refine_steep)
@@ -53,6 +54,9 @@ class Config:
     row_beats: bool = True       # linhas nas pontas sem QRS simultâneos aos das outras saem
     ink_model: str = ""         # caminho do ONNX do segmentador de traço (modo híbrido)
     ink_mix: float = 1.0        # 1 = só a rede; <1 mistura com o mapa clássico
+    pulse_rows: bool = True       # linhas de base pelos pulsos de calibração quando há >= 3
+    row_chain: bool = True        # extensão da linha atravessa o vão entre colunas
+    max_side: int = 4000          # reduz imagens maiores que isso (memória)
     band_sp: float = 1.6        # faixa de busca do traço: +-band_sp espaçamentos de linha
     fit: str = "none"          # "lsf": renderização inversa com o perfil de pena medido
 
@@ -333,6 +337,28 @@ def _rows_pulses(B, pap, R):
                     dmin = np.min(np.abs(acc - peaks[i]))
                     if 0.8 * sp0 <= dmin <= 1.25 * sp0:
                         ok[i] = True; changed = True
+        # linha de traço claro/partido (tl baixo) no passo regular do bloco e com os QRS nas
+        # mesmas colunas das linhas aceitas: é ECG (as linhas são simultâneas)
+        if ok.sum() >= 3 and (~ok).any():
+            sp0 = float(np.median(np.diff(peaks[ok])))
+            hb = 0.45 * sp0
+            bx_ok = [_beat_xs(B, y, hb, R) for y in peaks[ok]]
+            for i in np.nonzero(~ok)[0]:
+                dmin = np.min(np.abs(peaks[ok] - peaks[i]))
+                if not (0.8 * sp0 <= dmin <= 1.25 * sp0):
+                    continue
+                bi = _beat_xs(B, peaks[i], hb, R)
+                if len(bi) < 2:
+                    continue
+                f1s = []
+                for bj in bx_ok:
+                    if len(bj) < 2:
+                        continue
+                    d_ = np.abs(bi[:, None] - bj[None, :])
+                    p_ = float(np.mean(d_.min(1) < 2.5 * R)); r_ = float(np.mean(d_.min(0) < 2.5 * R))
+                    f1s.append(2 * p_ * r_ / max(p_ + r_, 1e-9))
+                if f1s and np.median(f1s) >= 0.5:
+                    ok[i] = True
         # rodapé/cabeçalho de texto: só é "longo" depois de dilatado (raw << tl), fica na
         # ponta do bloco e mais perto do vizinho que o espaçamento normal das linhas.
         # (traço quebrado de scan também tem raw baixo, mas fica no meio ou bem espaçado)
@@ -343,9 +369,27 @@ def _rows_pulses(B, pap, R):
                 if raw[e] < 0.55 * tl[e] and abs(peaks[e] - peaks[nb]) < 0.85 * sp:
                     ok[e] = False
         peaks = peaks[ok]
+    if _PULSE_ROWS[0]:
+        # linhas pelos pulsos de calibração: robusto a QRS gigantes que cruzam as linhas e a
+        # traço claro (a projeção horizontal se confunde); as linhas de projeção que não
+        # coincidem com nenhum pulso e estão longe de todos ficam (linha sem pulso)
+        prow, _pp = pulse_rows(B, R)
+        if prow is not None:
+            spp = float(np.median(np.diff(prow)))
+            extra = [p for p in peaks if np.min(np.abs(prow - p)) > 0.6 * spp]
+            peaks = np.sort(np.concatenate([prow, np.array(extra, float)])).astype(int)
     ys = np.nonzero(pap.any(1))[0]
     if len(ys):  # bordas da folha / moldura não são linhas de traçado
-        peaks = peaks[(peaks > ys[0] + 5 * R) & (peaks < ys[-1] - 5 * R)]
+        near = ~((peaks > ys[0] + 5 * R) & (peaks < ys[-1] - 5 * R))
+        if near.any():
+            # ...mas a primeira linha de ECG pode ficar colada na borda da grade: fica se tiver
+            # complexos (a borda é reta, sem QRS)
+            sp_ = float(np.median(np.diff(peaks))) if len(peaks) > 2 else 40 * R
+            for i in np.nonzero(near)[0]:
+                if peaks[i] > ys[0] + 1.5 * R and peaks[i] < ys[-1] - 1.5 * R and \
+                        len(_beat_xs(B, peaks[i], 0.45 * sp_, R)) >= 3:
+                    near[i] = False
+            peaks = peaks[~near]
     spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else 40 * R
     half = 0.45 * spacing
     ext = [row_extent(B, y, half, R) for y in peaks]
@@ -384,7 +428,9 @@ def _rows_pulses(B, pap, R):
         rt = [p for p in pulses if p is not None]
         # só da segunda tentativa: precisa de pelo menos dois, de mesma altura e coluna
         ok_ = False
-        if len(rt) >= 2:
+        # e em pelo menos metade das linhas: o pulso é impresso em todas; dois "pulsos" em seis
+        # linhas são QRS emendados pelo fechamento largo
+        if len(rt) >= max(2, int(np.ceil(0.5 * len(pulses)))):
             hs = np.array([p["foot"] - p["top"] for p in rt]); xs_ = np.array([p["x_start"] for p in rt])
             ok_ = np.ptp(hs) <= 0.2 * np.median(hs) and np.ptp(xs_) <= 3 * R
         if not ok_:
@@ -432,6 +478,7 @@ def _rows_pulses(B, pap, R):
 
 _ROW_BEAT_RULE = [True]
 _PULSE_RETRY = [True]
+_PULSE_ROWS = [True]
 _ROW_BEAT_THR = [0.3]
 _ROW_BEAT_DEBUG = False
 
@@ -750,9 +797,19 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     img = cv2.imread(image, cv2.IMREAD_COLOR) if isinstance(image, str) else image
     if img is None:
         raise FileNotFoundError(image)
+    if cfg.max_side and max(img.shape[:2]) > cfg.max_side:
+        # imagem enorme (render de 600 dpi): reduz antes de tudo; a retificação trabalha a R
+        # px/mm e uma folha A4 a 4000 px ainda tem ~13 px/mm. Evita estourar a memória.
+        f = cfg.max_side / max(img.shape[:2])
+        img = cv2.resize(img, None, fx=f, fy=f, interpolation=cv2.INTER_AREA)
+        if cfg.ppmm:
+            cfg = dataclasses.replace(cfg, ppmm=cfg.ppmm * f)
     R = cfg.R
     _ROW_BEAT_RULE[0] = cfg.row_beats
     _PULSE_RETRY[0] = cfg.pulse_retry
+    _PULSE_ROWS[0] = cfg.pulse_rows
+    from . import extract as _ex
+    _ex.ROW_CHAIN[0] = cfg.row_chain
     rect, pap, ginfo = rectify(img, R, cfg.ppmm, cfg.nonrigid, major_snap=cfg.major_snap,
                                fine_snap=cfg.fine_snap)
     D, glev = ink_map(rect, pap, R, return_grid_level=True)

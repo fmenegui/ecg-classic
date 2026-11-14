@@ -139,6 +139,65 @@ def find_rows(B: np.ndarray, R: float):
     return pk, cov
 
 
+def find_pulses(B: np.ndarray, R: float):
+    """Todos os pulsos de calibração (retângulos) da página, sem saber onde estão as linhas.
+    Bordas verticais de 4..25 mm (abertura vertical), aos pares separados por 1,5..12 mm, com
+    topos e pés alinhados e platô de tinta entre elas. Devolve lista de dict(x_start, x_end,
+    top, foot)."""
+    H, W = B.shape
+    Bu = B.astype(np.uint8)
+    kc = max(3, int(0.8 * R) | 1)
+    Bc = cv2.morphologyEx(Bu, cv2.MORPH_CLOSE, np.ones((kc, 1), np.uint8))
+    V = cv2.morphologyEx(Bc, cv2.MORPH_OPEN, np.ones((int(4 * R), 1), np.uint8))
+    n, lab, st, _ = cv2.connectedComponentsWithStats(V, connectivity=8)
+    edges = []
+    for i in range(1, n):
+        x, y, w, h, a = st[i]
+        if h > 26 * R or w > 2.5 * R:
+            continue
+        edges.append((x + 0.5 * w, float(y), float(y + h - 1), x, w))
+    edges.sort()
+    out = []
+    for i, (xc1, t1, b1, x1, w1) in enumerate(edges):
+        for xc2, t2, b2, x2, w2 in edges[i + 1:]:
+            sep = (xc2 - xc1) / R
+            if sep > 12:
+                break
+            if sep < 1.5 or abs(t1 - t2) > 1.0 * R:
+                continue
+            h = min(b1, b2) - 0.5 * (t1 + t2)
+            if not (4 * R <= h <= 25 * R) or abs(b1 - b2) > 10 * R:
+                continue
+            ty = int(round(0.5 * (t1 + t2)))
+            band = B[max(0, ty - int(0.5 * R)):ty + int(0.5 * R) + 1, int(x1 + w1):int(x2)]
+            if band.size == 0 or band.any(0).mean() < 0.8:
+                continue
+            # pé: a base do traço logo à esquerda da subida (ou o fim da borda esquerda)
+            out.append(dict(x_start=int(x1), x_end=int(x2 + w2 - 1), top=float(0.5 * (t1 + t2)),
+                            foot=float(b1), x_fall=float(xc2)))
+            break
+    return out
+
+
+def pulse_rows(B: np.ndarray, R: float):
+    """Linhas de base das linhas de traçado pelos pulsos de calibração: o maior grupo de
+    pulsos de mesma altura (±12%) na mesma coluna (±5 mm), um por linha. None se < 3."""
+    P = find_pulses(B, R)
+    best = None
+    for p in P:
+        h = p["foot"] - p["top"]
+        grp = [q for q in P if abs(q["x_start"] - p["x_start"]) <= 5 * R and
+               abs((q["foot"] - q["top"]) - h) <= 0.12 * h]
+        feet = sorted(q["foot"] for q in grp)
+        uniq = [f for i, f in enumerate(feet) if i == 0 or f - feet[i - 1] > 3 * R]
+        key = (len(uniq), -p["x_start"])
+        if best is None or key > best[0]:
+            best = (key, uniq, grp)
+    if best is None or len(best[1]) < 3:
+        return None, P
+    return np.array(best[1]), best[2]
+
+
 def _runs(mask_1d):
     d = np.diff(np.concatenate([[0], mask_1d.astype(np.int8), [0]]))
     return np.nonzero(d == 1)[0], np.nonzero(d == -1)[0] - 1
@@ -156,7 +215,33 @@ def row_extent(B, y0, half, R, max_gap_mm=3.0):
     if len(s) == 0:
         return None
     i = int(np.argmax(e - s))
-    return int(s[i]), int(e[i])
+    lo, hi = int(s[i]), int(e[i])
+    if ROW_CHAIN[0]:
+        # colunas separadas por um vão (pulso de calibração no começo de cada coluna, margem
+        # entre colunas): emenda trechos longos na mesma faixa a até 12 mm de distância
+        # (o traço da outra coluna pode vir partido em pedaços; basta que a sequência de
+        # pedaços seja densa e chegue a um trecho longo)
+        gap, minlen = 12 * R, 15 * R
+        for direction in (-1, 1):
+            j = i + direction; acc = []
+            edge = lo if direction < 0 else hi
+            while 0 <= j < len(s):
+                g_ = (edge - e[j]) if direction < 0 else (s[j] - edge)
+                if g_ > gap:
+                    break
+                acc.append(j)
+                edge = s[j] if direction < 0 else e[j]
+                if (e[j] - s[j]) >= minlen:  # chegou a um trecho longo: aceita a cadeia
+                    if direction < 0:
+                        lo = int(s[j])
+                    else:
+                        hi = int(e[j])
+                    acc = []
+                j += direction
+    return lo, hi
+
+
+ROW_CHAIN = [True]
 
 
 def detect_pulse(B, y0, half, xa, R, up=None, close_mm=0.8):
