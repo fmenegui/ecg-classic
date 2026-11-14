@@ -555,8 +555,6 @@ def _rows_pulses(B, pap, R):
                 it = iter(agree)
                 prot = [p is not None and next(it) for p in pulses]
         keep = keep | np.array(prot, bool)
-        if os.environ.get("ECGDIG_DBG_ROWS"):
-            print("ROWKEEP", list(peaks), list(keep), prot, _prow_set[0])
         if not keep.all():
             peaks = peaks[keep]
             ext = [e for e, k in zip(ext, keep) if k]
