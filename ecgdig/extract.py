@@ -35,11 +35,16 @@ def _bg(ch, R):
     return cv2.resize(s, (W, H), interpolation=cv2.INTER_LINEAR)
 
 
+TEMPLATE_MM = [10.0]
+
+
 def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bool = False, tmin: float | None = None):
     f = rect.astype(np.float32)
     n = np.stack([f[..., c] / (_bg(f[..., c], R) + 1e-3) for c in range(3)], -1)
     t = np.clip(n.max(-1), 0, 1.2)  # transmitância no canal mais claro
-    P = int(round(5 * R))
+    # molde de 10 mm: cobre a periodicidade de 5 mm e também grades com linha extra a cada
+    # 10 mm (as de 5 mm deixavam essa linha como "tinta" e criavam linhas falsas)
+    P = int(round(TEMPLATE_MM[0] * R))
     H, W = t.shape
     ny, nx = H // P, W // P
     blk = t[: ny * P, : nx * P].reshape(ny, P, nx, P)
@@ -103,7 +108,7 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
     return D
 
 
-def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0) -> np.ndarray:
+def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: float = 1.0) -> np.ndarray:
     # Otsu só sobre estruturas finas: tarjas, carimbos e blocos de texto preto (> 2.5 mm
     # de espessura) puxariam o limiar para cima e apagariam traçados claros/finos
     kb = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(2.5 * R) | 1,) * 2)
@@ -114,10 +119,19 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0) -> np.ndar
         B = D > 0.4
     else:
         th = float(np.clip(threshold_otsu(v), 0.2, 0.6))
+        if scale != 1.0:
+            # traço muito claro (opacidade baixa, toner fraco): o Otsu é decidido por texto e
+            # QR pretos; tenta limiares menores, sempre acima do vazamento da grade
+            th = max(grid_level + 0.04, 0.05, th * scale)
         # limiar baixo da histerese acima do vazamento da grade (linhas da grade tocam o
         # traço e seriam "puxadas" junto pela conectividade)
         lo = max(0.55 * th, min(grid_level + 0.08, 0.85 * th))
         B = apply_hysteresis_threshold(D, lo, max(th, lo + 0.05))
+    # linhas retas da grade que sobraram (grade preta grossa, molde 1 px fora): linhas/colunas
+    # de pixel quase todas "tinta" ao longo da página, várias, em passo regular. Um traço
+    # não cobre 70% de uma linha de pixel na página inteira.
+    if GRID_LINE_CLEAN[0]:
+        B = _clean_grid_lines(B, R)
     # remove sal-e-pimenta: componentes minúsculas (< ~0.4 mm²) não são traçado
     n, lab, st, _ = cv2.connectedComponentsWithStats(B.astype(np.uint8), connectivity=8)
     small = st[:, cv2.CC_STAT_AREA] < max(4, int(0.4 * R * R))
@@ -125,6 +139,39 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0) -> np.ndar
     if small.any():
         B = B & ~small[lab]
     return B
+
+
+GRID_LINE_CLEAN = [True]
+
+
+def _clean_grid_lines(B, R, frac=0.7):
+    H, W = B.shape
+    ys, xs = np.nonzero(B.any(1))[0], np.nonzero(B.any(0))[0]
+    if len(ys) < 10 or len(xs) < 10:
+        return B
+    out = B.copy()
+    for axis in (1, 0):
+        span = (xs[-1] - xs[0] + 1) if axis == 1 else (ys[-1] - ys[0] + 1)
+        cov = B.sum(axis) / max(span, 1)
+        lines = np.nonzero(cov > frac)[0]
+        if len(lines) < 3:
+            continue
+        # agrupa pixels vizinhos numa linha só e exige passo regular (múltiplo de ~5 mm)
+        grp = np.split(lines, np.nonzero(np.diff(lines) > 1)[0] + 1)
+        cen = np.array([g.mean() for g in grp])
+        if len(cen) < 3:
+            continue
+        d = np.diff(cen) / R
+        reg = np.mean(np.abs(d / 5.0 - np.round(d / 5.0)) < 0.15)
+        if reg < 0.7:
+            continue
+        for g in grp:
+            lo, hi = max(0, g[0] - 1), g[-1] + 2
+            if axis == 1:
+                out[lo:hi, :] = False
+            else:
+                out[:, lo:hi] = False
+    return out
 
 
 # ------------------------------------------------------------------------ layout

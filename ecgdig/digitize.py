@@ -54,6 +54,7 @@ class Config:
     row_beats: bool = True       # linhas nas pontas sem QRS simultâneos aos das outras saem
     ink_model: str = ""         # caminho do ONNX do segmentador de traço (modo híbrido)
     ink_mix: float = 1.0        # 1 = só a rede; <1 mistura com o mapa clássico
+    adaptive_threshold: bool = True  # traço claro: refaz a binarização com limiar menor
     pulse_rows: bool = True       # linhas de base pelos pulsos de calibração quando há >= 3
     row_chain: bool = True        # extensão da linha atravessa o vão entre colunas
     max_side: int = 4000          # reduz imagens maiores que isso (memória)
@@ -824,6 +825,20 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     (rect, pap, D, B), rot = _orient([rect, pap, D, B], R)
 
     rows_all, cov, ext_all, pulses_all, spacing = _rows_pulses(B, pap, R)
+
+    def _weak(rows_, ext_):
+        # quase nada de traço: < 2 linhas ou linhas curtas (< 40 mm)
+        lens = [e[1] - e[0] for e in ext_ if e]
+        return len(rows_) < 2 or not lens or np.median(lens) < 40 * R
+
+    if cfg.adaptive_threshold and _weak(rows_all, ext_all):
+        for sc_ in (0.5, 0.3):
+            B2 = binarize(D, R, glev, scale=sc_)
+            r2 = _rows_pulses(B2, pap, R)
+            if not _weak(r2[0], r2[2]):
+                B = B2
+                rows_all, cov, ext_all, pulses_all, spacing = r2
+                break
     H, W = B.shape
     if len(rows_all) == 0:
         raise RuntimeError("nenhuma linha de traçado encontrada")
