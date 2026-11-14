@@ -36,6 +36,7 @@ def _bg(ch, R):
 
 
 TEMPLATE_MM = [10.0]
+TEMPLATE_AUTO = [True]
 GLEV_RELATIVE = [False]
 
 
@@ -45,13 +46,28 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
     t = np.clip(n.max(-1), 0, 1.2)  # transmitância no canal mais claro
     # molde de 10 mm: cobre a periodicidade de 5 mm e também grades com linha extra a cada
     # 10 mm (as de 5 mm deixavam essa linha como "tinta" e criavam linhas falsas)
-    P = int(round(TEMPLATE_MM[0] * R))
     H, W = t.shape
-    ny, nx = H // P, W // P
-    blk = t[: ny * P, : nx * P].reshape(ny, P, nx, P)
-    pm = paper[: ny * P, : nx * P].reshape(ny, P, nx, P).min(axis=(1, 3)) > 0
-    tiles = blk.transpose(0, 2, 1, 3)[pm]  # (k, P, P)
-    tmpl = np.median(tiles, axis=0) if len(tiles) > 10 else np.ones((P, P), np.float32)
+
+    def _tmpl(P):
+        ny, nx = H // P, W // P
+        blk = t[: ny * P, : nx * P].reshape(ny, P, nx, P)
+        pm = paper[: ny * P, : nx * P].reshape(ny, P, nx, P).min(axis=(1, 3)) > 0
+        tiles = blk.transpose(0, 2, 1, 3)[pm]  # (k, P, P)
+        tm = np.median(tiles, axis=0) if len(tiles) > 10 else np.ones((P, P), np.float32)
+        return ny, nx, blk, pm, tm
+
+    P = int(round(TEMPLATE_MM[0] * R))
+    ny, nx, blk, pm, tmpl = _tmpl(P)
+    if TEMPLATE_AUTO[0] and TEMPLATE_MM[0] == 10.0:
+        # o molde de 10 mm só vale quando a grade tem mesmo estrutura de 10 mm (linha extra);
+        # senão o de 5 mm, com o dobro de células e vizinhança local de 25 mm, é melhor
+        P5 = int(round(5.0 * R))
+        r5 = _tmpl(P5)
+        if P == 2 * P5:
+            d = np.abs(tmpl - np.tile(r5[4], (2, 2)))
+            if float(np.percentile(d, 95)) < 0.08:
+                P = P5
+                ny, nx, blk, pm, tmpl = r5
     # grade escura (scan P&B, fotocópia): as linhas grossas são tão pretas quanto o traço.
     # O molde precisa descer até elas (senão a linha da grade vira "tinta" contínua que
     # estende as linhas até a borda da folha e cria linhas falsas)

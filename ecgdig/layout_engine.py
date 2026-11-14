@@ -34,6 +34,7 @@ FRACS = {1: [], 2: [0.5], 3: [1 / 3, 2 / 3], 4: [0.25, 0.5, 0.75]}
 W_OCR, W_BND, W_LIMB, W_DUP = 4.0, 1.5, 15.0, 3.0
 _UNEXPLAINED = [True]
 CABRERA_NO_EVIDENCE = [10.0]
+LABEL_HI = [15.0]
 BND_RELATIVE = [True]
 BND_OTHER_ROWS = [True]
 BND_COHERENT = [True]
@@ -345,7 +346,7 @@ class Ctx:
         for (r, k, c, name) in segs:
             xs = float(self.x_of(r, c / k * self.duration)) / R
             lo = xs - (25 if c == 0 else 2.0)
-            w = self.label_near(r, lo, xs + 22, x_ref_mm=xs)
+            w = self.label_near(r, lo, xs + LABEL_HI[0], x_ref_mm=xs)
             if w is None:
                 continue
             d = w["dist"]
@@ -364,7 +365,7 @@ class Ctx:
             starts = {}
             for (r, k, c, name) in segs:
                 xs = float(self.x_of(r, c / k * self.duration)) / R
-                starts.setdefault(r, []).append((xs - (25 if c == 0 else 2.0), xs + 22))
+                starts.setdefault(r, []).append((xs - (25 if c == 0 else 2.0), xs + LABEL_HI[0]))
             for w in self.words:
                 if w.get("single") or w["best"] < 0.55:
                     continue

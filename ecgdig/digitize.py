@@ -966,6 +966,11 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     if PULSE_COL[0] and all(p is None for p in pulses_all):
         from .extract import pulse_column
         pcol = pulse_column(B, R)
+        # só a coluna à esquerda do traço (é ela que estraga a origem do tempo); pulsos no fim
+        # da linha (GE) ficam para o ganho pela busca espelhada
+        ex_ = [e for e in ext if e]
+        if pcol is not None and ex_ and pcol["x_start"] > float(np.median([e[0] for e in ex_])) + 30 * R:
+            pcol = None
         if pcol is not None:
             B = B.copy(); D = D.copy()
             xa_, xb_ = max(0, int(pcol["x_start"] - 1 * R)), int(pcol["x_end"] + 1 * R)
@@ -1082,11 +1087,11 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             n_end = sum(abs(e_ - right) < 3 * R for e_ in ends_)
             sup_ok = d_best is not None and sup[d_best] >= max(1, int(np.ceil(0.25 * len(xr_ok))))
             if RIGHT_ANCHOR[0] and not sup_ok and n_end >= max(2, int(np.ceil(0.5 * len(rows)))):
-                for d_ in (10.0, 5.0, 2.5):
-                    l_ = right - lw0 - d_ * speed * R
-                    if left + 2 * R <= l_ <= left + 30 * R:
-                        anch = d_
-                        break
+                # só a página padrão de 10 s: com durações curtas, um vão de escala errada
+                # (grade lida em outro passo) caía por acaso na janela
+                l_ = right - lw0 - 10.0 * speed * R
+                if left + 2 * R <= l_ <= left + 30 * R:
+                    anch = 10.0
             if anch is not None:
                 duration = anch
                 left = right - lw0 - anch * speed * R
@@ -1161,7 +1166,10 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         g1def = float(vals[np.argmax(cnts)])
     else:
         g1def = 10.0  # nenhum pulso confiável: 10 mm/mV é o padrão de quase todo aparelho
-        if pcol is not None and _std_ok((pcol["height"] + 1 - lw0) / R, 0.1):
+        # só quando os pés dos pulsos seguem o passo das linhas (é a coluna de calibração)
+        pc_ok = pcol is not None and len(rows) > 1 and \
+            abs(float(np.median(np.diff(pcol["feet"]))) - spacing) <= 0.15 * spacing
+        if pc_ok and _std_ok((pcol["height"] + 1 - lw0) / R, 0.1):
             g1def = _snap((pcol["height"] + 1 - lw0) / R)
     gain_flags = []
     for r_, g in enumerate(lv1):
