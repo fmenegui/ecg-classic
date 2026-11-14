@@ -36,6 +36,7 @@ def _bg(ch, R):
 
 
 TEMPLATE_MM = [10.0]
+GLEV_RELATIVE = [True]
 
 
 def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bool = False, tmin: float | None = None):
@@ -101,7 +102,12 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
     if return_grid_level:
         # nível residual da grade: tinta aparente nos pixels de linha da grade (o traço
         # ocupa uma fração mínima deles, então o percentil 95 mede o vazamento da grade)
-        strong = cv2.dilate((D > 0.55).astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
+        # "tinta forte" relativa: traço borrado/claro fica em 0,2-0,4 e, se não for excluído,
+        # o halo dele vira "vazamento da grade" e o limiar sobe até apagar o próprio traço
+        vv = D[D > 0.08]
+        s_th = 0.55 if not GLEV_RELATIVE[0] or vv.size < 100 else min(0.55, max(0.15, 0.5 * float(np.percentile(vv, 90))))
+        kd = 7 if not GLEV_RELATIVE[0] else max(7, int(1.0 * R) | 1)
+        strong = cv2.dilate((D > s_th).astype(np.uint8), np.ones((kd, kd), np.uint8)) > 0
         gp = (T < 0.9) & (pe > 0) & ~strong
         glev = float(np.percentile(D[gp], 95)) if gp.sum() > 1000 else 0.0
         return D, glev
@@ -447,6 +453,8 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
     vale do S (o erro dominante nos picos)."""
     INF = 1e18
     n = len(runs)
+    if n == 0:
+        return []
     cs_br = None
     if D is not None and bridge_ref is not None and bridge_ref > 0 and n > 0:
         cs_br = _bridge_table(D, xa, n, R, bridge_floor)

@@ -33,6 +33,7 @@ FAMILIES = ["3x4", "3x4-cabrera", "6x2", "6x2-cabrera", "12x1", "12x1-cabrera",
 FRACS = {1: [], 2: [0.5], 3: [1 / 3, 2 / 3], 4: [0.25, 0.5, 0.75]}
 W_OCR, W_BND, W_LIMB, W_DUP = 4.0, 1.5, 15.0, 3.0
 _UNEXPLAINED = [True]
+CABRERA_NO_EVIDENCE = [6.0]
 
 
 def _canon(name):
@@ -457,6 +458,10 @@ class Ctx:
                 sc += 3.0  # prior para formatos de fabricante (a hipótese livre depende só do OCR)
                 if "cabrera" in name:
                     sc -= 1.5  # Cabrera é regional (Escandinávia): precisa de alguma evidência
+                    # sem "-aVR" lido em lugar nenhum da página, a física sozinha não basta:
+                    # Goldberger fecha "quase" igual para várias permutações das derivações
+                    if not any(w["dist"].get("-aVR", 0.0) >= 0.5 for w in self.words):
+                        sc -= CABRERA_NO_EVIDENCE[0]
             else:
                 # numa grade cada derivação aparece uma vez (tiras de ritmo são linhas de 1)
                 grid_names = [nm for row in spec if len(row) > 1 for nm in row]
