@@ -65,6 +65,7 @@ class Config:
     extrap_cap: bool = True     # rampa de extrapolação na troca de derivação limitada a 2 mm
     pulse_col: bool = True      # coluna de pulsos solta do traço: apaga e usa para o ganho
     col_gap: bool = True        # vão comum entre colunas iguais: sai da imagem
+    col_align: bool = True      # colunas com linhas de base próprias: realinha cada faixa
     fit: str = "none"          # "lsf": renderização inversa com o perfil de pena medido
 
 
@@ -909,6 +910,9 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         glev = 0.0 if cfg.ink_mix >= 1.0 else glev
     B = binarize(D, R, glev)
     (rect, pap, D, B), rot = _orient([rect, pap, D, B], R)
+    from .colalign import col_align, ENABLED as _CA
+    _CA[0] = cfg.col_align
+    rect, pap, D, B, col_info = col_align(rect, pap, D, B, R)
 
     rows_all, cov, ext_all, pulses_all, spacing = _rows_pulses(B, pap, R)
 

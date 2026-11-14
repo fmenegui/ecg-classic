@@ -34,6 +34,9 @@ FRACS = {1: [], 2: [0.5], 3: [1 / 3, 2 / 3], 4: [0.25, 0.5, 0.75]}
 W_OCR, W_BND, W_LIMB, W_DUP = 4.0, 1.5, 15.0, 3.0
 _UNEXPLAINED = [True]
 CABRERA_NO_EVIDENCE = [6.0]
+BND_RELATIVE = [True]
+BND_OTHER_ROWS = [True]
+BND_COHERENT = [True]
 
 
 def _canon(name):
@@ -82,6 +85,26 @@ class Ctx:
         self.words = self._read_words()
         self.bnd = {r: {q: self._boundary_evidence(r, q) for q in sorted({f for v in FRACS.values() for f in v})}
                     for r in range(self.n)}
+        if BND_RELATIVE[0]:
+            # evidência relativa ao fundo da própria linha: grade vazando, marcas de tempo ou
+            # ruído dão "fronteira" em qualquer x; o que conta é a posição se destacar
+            allf = [f for v in FRACS.values() for f in v]
+            bgq = [q for q in np.arange(0.08, 0.93, 0.05) if min(abs(q - f) for f in allf) > 0.03]
+            for r in range(self.n):
+                bg = float(np.median([self._boundary_evidence(r, q) for q in bgq]))
+                if bg > 0.05:
+                    self.bnd[r] = {q: float(np.clip((e - bg) / (1 - bg + 1e-6), 0, 1))
+                                   for q, e in self.bnd[r].items()}
+        if BND_COHERENT[0] and self.n >= 3:
+            # fronteira de coluna é a mesma em todas as linhas do bloco; um QRS que cai por
+            # acaso na posição só aparece numa linha. Evidência vista em menos da metade das
+            # linhas vale proporcionalmente menos
+            qs = list(self.bnd[0].keys())
+            for q in qs:
+                c = np.mean([self.bnd[r][q] > 0.5 for r in range(self.n)])
+                f = min(1.0, c / 0.5)
+                for r in range(self.n):
+                    self.bnd[r][q] *= f
         self._hp = {}
 
     # ------------------------------------------------------------------ sinais
@@ -261,6 +284,15 @@ class Ctx:
         tm = getattr(self, "_tm", None)
         if tm is None:
             tm = self._tm = self._trace_mask_thin()
+        if BND_OTHER_ROWS[0]:
+            # QRS alto de uma linha vizinha cruza esta linha: é traço, não marca de fronteira
+            st = getattr(self, "_steep", None)
+            if st is None:
+                st = self._steep = [self._trace_mask_steep(k) for k in range(self.n)]
+            tm = tm.copy()
+            for k in range(self.n):
+                if k != r:
+                    tm |= st[k]
         a, b = max(0, int(y - 4 * R)), min(H, int(y + 4 * R))
         xa, xb = max(0, int(x - 1.0 * R)), min(W, int(x + 1.0 * R) + 1)
         if xb > xa and b > a:
@@ -268,6 +300,17 @@ class Ctx:
             col = sub.sum(0).max() if sub.size else 0
             e = max(e, min(1.0, col / (4.0 * R)))
         return e
+
+    def _trace_mask_steep(self, k):
+        H, W = self.B.shape
+        m = np.zeros((H, W), bool)
+        q = self.qtr[k]
+        for i, (t, b) in enumerate(zip(q["top"], q["bot"])):
+            if not np.isnan(t) and b - t >= 3 * self.R:
+                x = q["x0"] + i
+                if 0 <= x < W:
+                    m[max(0, int(t) - 2):min(H, int(b) + 3), max(0, x - 2):x + 3] = True
+        return m
 
     def _trace_mask_thin(self):
         H, W = self.B.shape
