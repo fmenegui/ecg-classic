@@ -255,6 +255,16 @@ def pulse_rows(B: np.ndarray, R: float):
         uniq = [f for i, f in enumerate(feet) if i == 0 or f - feet[i - 1] > 3 * R]
         if len(uniq) >= 2 and np.min(np.diff(uniq)) < 8 * R:
             continue  # linhas de ECG ficam a >= ~10 mm umas das outras
+        # pontas fora do passo do grupo (retângulo de QR code ou carimbo bem abaixo/acima do
+        # bloco): saem
+        while len(uniq) >= 4:
+            dd = np.diff(uniq); md = float(np.median(dd))
+            if dd[-1] > 1.5 * md:
+                uniq = uniq[:-1]
+            elif dd[0] > 1.5 * md:
+                uniq = uniq[1:]
+            else:
+                break
         key = (len(uniq), -p["x_start"])
         if best is None or key > best[0]:
             best = (key, uniq, grp)

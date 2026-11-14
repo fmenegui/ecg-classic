@@ -414,7 +414,9 @@ class Ctx:
                 if LIMB_LOG[0]:
                     # verossimilhança: resíduo de Einthoven/Goldberger pequeno é quase
                     # impossível por acaso com os nomes errados; a evidência cresce como log
-                    lr = float(np.clip(np.log(ref / max(ratio, 1e-3)), -1.0, 1.5))
+                    # piso de 0,2: abaixo disso as hipóteses já cumprem a física e a diferença é
+                    # ruído (Cabrera e padrão com as mesmas derivações empatam)
+                    lr = float(np.clip(np.log(ref / max(ratio, 0.2)), -1.0, 1.5))
                     parts["limb"] = lr * min(1.0, ntest / (0.25 * T))
                 else:
                     parts["limb"] = (ref - ratio) * min(1.0, ntest / (0.25 * T))

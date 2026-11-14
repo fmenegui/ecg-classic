@@ -543,7 +543,20 @@ def _rows_pulses(B, pap, R):
             for i, y in enumerate(peaks):
                 if np.min(np.abs(_prow_set[0] - y)) < 3 * R:
                     keep[i] = True
-        keep = keep | np.array([p is not None for p in pulses], bool)
+        # pulso que destoa do consenso dos outros (altura +-15%, largura +-1,5 mm) não protege
+        # a linha: num QR code ou carimbo um retângulo qualquer passa por pulso
+        prot = [p is not None for p in pulses]
+        okp = [p for p in pulses if p is not None]
+        if PULSE_CONSENSUS[0] and len(okp) >= 3:
+            hs = np.array([p["foot"] - p["top"] for p in okp]); ws = np.array([p["x_end"] - p["x_start"] for p in okp])
+            h0, w0 = float(np.median(hs)), float(np.median(ws))
+            agree = [abs(h - h0) <= 0.15 * h0 and abs(w - w0) <= 1.5 * R for h, w in zip(hs, ws)]
+            if sum(agree) >= 2:
+                it = iter(agree)
+                prot = [p is not None and next(it) for p in pulses]
+        keep = keep | np.array(prot, bool)
+        if os.environ.get("ECGDIG_DBG_ROWS"):
+            print("ROWKEEP", list(peaks), list(keep), prot, _prow_set[0])
         if not keep.all():
             peaks = peaks[keep]
             ext = [e for e, k in zip(ext, keep) if k]
@@ -555,6 +568,7 @@ def _rows_pulses(B, pap, R):
 _ROW_BEAT_RULE = [True]
 _PULSE_RETRY = [True]
 RIGHT_ANCHOR = [True]
+PULSE_CONSENSUS = [True]
 EXTRAP_CAP = [True]
 PULSE_COL = [True]
 COL_GAP = [True]
