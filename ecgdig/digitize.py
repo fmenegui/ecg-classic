@@ -566,6 +566,7 @@ def _rows_pulses(B, pap, R):
 _ROW_BEAT_RULE = [True]
 _PULSE_RETRY = [True]
 RIGHT_ANCHOR = [True]
+ORIENT_T = [True]
 PULSE_CONSENSUS = [True]
 EXTRAP_CAP = [True]
 PULSE_COL = [True]
@@ -573,6 +574,40 @@ COL_GAP = [True]
 _PULSE_ROWS = [True]
 _ROW_BEAT_THR = [0.3]
 _ROW_BEAT_DEBUG = False
+
+
+def _t_after_qrs(Bc, pk, ext, R):
+    # fisiologia: a onda T vem DEPOIS do QRS (e é maior que a P, que vem antes). Numa
+    # página de cabeça para baixo o tempo corre ao contrário. Mede, em cada batimento, o
+    # desvio da linha de base 6-10 mm depois e 6-10 mm antes do QRS
+    if len(pk) < 2:
+        return 0.0
+    half_ = 0.45 * float(np.median(np.diff(pk)))
+    votes = []
+    for y, e in zip(pk, ext):
+        if not e:
+            continue
+        a_, b_ = max(0, int(y - half_)), min(Bc.shape[0], int(y + half_))
+        band = Bc[a_:b_]
+        idx = np.arange(band.shape[0])[:, None]
+        cnt = band.sum(0)
+        cen = np.where(cnt > 0, (band * idx).sum(0) / np.maximum(cnt, 1), np.nan)
+        base = np.nanmedian(cen[e[0]:e[1]]) if np.isfinite(cen[e[0]:e[1]]).any() else np.nan
+        if not np.isfinite(base):
+            continue
+        dev = np.abs(cen - base)
+        for xb in _beat_xs(Bc, y, half_, R, e):
+            xb = int(xb)
+            aft = dev[xb + int(6 * R):xb + int(10 * R)]
+            bef = dev[max(0, xb - int(10 * R)):max(0, xb - int(6 * R))]
+            if len(aft) and len(bef) and np.isfinite(aft).mean() > 0.5 and np.isfinite(bef).mean() > 0.5:
+                da, db = np.nanmean(aft), np.nanmean(bef)
+                if max(da, db) > 0.3 * R:
+                    votes.append(np.sign(da - db))
+    if len(votes) < 6:
+        return 0.0
+    return float(np.mean(votes))
+
 
 
 def _orient(arrs, R):
@@ -613,10 +648,15 @@ def _orient(arrs, R):
     best, best_score = None, -1
     for c in cands:
         Bc, pc = rot(B, c), rot(pap, c)
-        pk, _, _, pulses, _ = _rows_pulses(Bc, pc, R)
+        pk, _, ext_c, pulses, _ = _rows_pulses(Bc, pc, R)
         # pulsos à esquerda + rótulos legíveis (página impressa de cabeça para baixo tem
         # pulsos dos dois lados em alguns aparelhos; o texto desempata)
         score = sum(p is not None for p in pulses) + upright_labels(Bc)
+        if ORIENT_T[0]:
+            # só desempata (vale menos que um pulso ou um rótulo) e só com concordância forte:
+            # em ~1 de cada 10 páginas em pé a T fica menor que o que vem antes (FC alta, P grande)
+            tq = _t_after_qrs(Bc, pk, ext_c, R)
+            score += 0.9 * float(np.sign(tq)) if abs(tq) > 0.3 else 0.0
         if score > best_score:
             best, best_score = c, score
     return [rot(a, best) for a in arrs], best
