@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import dataclasses
+import os
 import numpy as np
 import cv2
 
@@ -60,6 +61,7 @@ class Config:
     row_chain: bool = True        # extensão da linha atravessa o vão entre colunas
     max_side: int = 4000          # reduz imagens maiores que isso (memória)
     band_sp: float = 1.6        # faixa de busca do traço: +-band_sp espaçamentos de linha
+    right_anchor: bool = True   # duração fora do padrão com fins concordantes: ancora no fim
     fit: str = "none"          # "lsf": renderização inversa com o perfil de pena medido
 
 
@@ -500,6 +502,7 @@ def _rows_pulses(B, pap, R):
 
 _ROW_BEAT_RULE = [True]
 _PULSE_RETRY = [True]
+RIGHT_ANCHOR = [True]
 _PULSE_ROWS = [True]
 _ROW_BEAT_THR = [0.3]
 _ROW_BEAT_DEBUG = False
@@ -833,6 +836,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     _ROW_BEAT_RULE[0] = cfg.row_beats
     _PULSE_RETRY[0] = cfg.pulse_retry
     _PULSE_ROWS[0] = cfg.pulse_rows
+    RIGHT_ANCHOR[0] = cfg.right_anchor
     from . import extract as _ex
     _ex.ROW_CHAIN[0] = cfg.row_chain
     rect, pap, ginfo = rectify(img, R, cfg.ppmm, cfg.nonrigid, major_snap=cfg.major_snap,
@@ -957,7 +961,23 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                 sup[d_] = int((np.abs(xr_ok - exp_) < 1.5 * R).sum())
             d_best = max(sup, key=sup.get) if sup else None
             n_pulses = sum(p is not None for p in pulses)
-            if d_best is not None and sup[d_best] >= max(1, int(np.ceil(0.25 * len(xr_ok)))):
+            # nenhum fim confirma uma duração padrão a partir do início medido, mas os fins
+            # das linhas concordam: o início pegou um pulso deformado, uma barra ou a moldura.
+            # Ancora no fim: a maior duração padrão que começa de 2 a 30 mm depois do início
+            anch = None
+            ends_ = [e[1] for e in ext if e]
+            n_end = sum(abs(e_ - right) < 3 * R for e_ in ends_)
+            sup_ok = d_best is not None and sup[d_best] >= max(1, int(np.ceil(0.25 * len(xr_ok))))
+            if RIGHT_ANCHOR[0] and not sup_ok and n_end >= max(2, int(np.ceil(0.5 * len(rows)))):
+                for d_ in (10.0, 5.0, 2.5):
+                    l_ = right - lw0 - d_ * speed * R
+                    if left + 2 * R <= l_ <= left + 30 * R:
+                        anch = d_
+                        break
+            if anch is not None:
+                duration = anch
+                left = right - lw0 - anch * speed * R
+            elif d_best is not None and sup[d_best] >= max(1, int(np.ceil(0.25 * len(xr_ok)))):
                 duration = d_best
             elif n_pulses >= 2 and 10.0 < duration <= 12.5 and len(rows) >= 3:
                 # início ancorado nos pulsos e linhas "longas demais": os finais emendaram na
@@ -975,6 +995,9 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                 duration = round(duration, 1)
     N = int(round(duration * cfg.fs))
     span_px = (N - 1) / cfg.fs * speed * R
+    if os.environ.get("ECGDIG_DBG_SPEED"):
+        print("SPEED", dict(left=left, right=right, R=R, span_mm=span_mm, speed=speed, src=speed_src,
+                            dur=duration, xl=list(np.round(xlr0)), xr=list(np.round(xer0))))
 
     # ------------------------------------------------------- origem temporal
     xl, xe, wk_ = _origin_cands(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2)
