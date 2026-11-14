@@ -36,7 +36,7 @@ def _bg(ch, R):
 
 
 TEMPLATE_MM = [10.0]
-GLEV_RELATIVE = [True]
+GLEV_RELATIVE = [False]
 
 
 def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bool = False, tmin: float | None = None):

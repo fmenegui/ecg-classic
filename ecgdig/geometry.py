@@ -75,7 +75,7 @@ def paper_mask(img: np.ndarray) -> np.ndarray:
     return cv2.resize(mm, (W, H), interpolation=cv2.INTER_NEAREST)
 
 
-def grid_map(img: np.ndarray, paper: np.ndarray) -> np.ndarray:
+def grid_map(img: np.ndarray, paper: np.ndarray, clamp_ink: bool = True) -> np.ndarray:
     """Mapa de 'estrutura escura' normalizado pela iluminação, com a tinta atenuada."""
     f = img.astype(np.float32)
     gray = f.mean(2)
@@ -83,7 +83,8 @@ def grid_map(img: np.ndarray, paper: np.ndarray) -> np.ndarray:
     S = 1.0 - gray / (_bg_max(gray) + 1e-3)
     ink = 1.0 - mx / (_bg_max(mx) + 1e-3)
     G = np.clip(S, 0, 1)
-    G = np.where(ink > 0.5, 0.25, np.minimum(G, 0.5))  # tinta vira constante (não periódica)
+    if clamp_ink:
+        G = np.where(ink > 0.5, 0.25, np.minimum(G, 0.5))  # tinta vira constante (não periódica)
     G[paper == 0] = 0
     return G
 
@@ -345,6 +346,37 @@ def prewarp_quad(img: np.ndarray, min_dev_deg: float = 2.0):
     return out, Hq
 
 
+
+def _refine_long_period(G, angle, ppmm, mm=(10.0, 20.0)):
+    """Refina px/mm pelo pico da autocorrelação do perfil da página em 10 e 20 mm: o erro do
+    período de 1 mm, multiplicado por 5, vira 5% de escala."""
+    H, W = G.shape
+    M = cv2.getRotationMatrix2D((W / 2, H / 2), angle, 1.0)
+    Rg = cv2.warpAffine(G, M, (W, H))
+    est = []
+    for axis in (0, 1):
+        p = Rg.mean(axis).astype(np.float64)
+        p = p - p.mean()
+        n = len(p)
+        f = np.fft.rfft(p, 2 * n)
+        ac = np.fft.irfft(f * np.conj(f))[:n]
+        for L in mm:
+            c = int(round(L * ppmm))
+            h = max(2, int(0.08 * c))
+            if c + h + 2 >= n:
+                continue
+            j = c - h + int(np.argmax(ac[c - h:c + h + 1]))
+            d = ac[j - 1] - 2 * ac[j] + ac[j + 1]
+            jj = j + (0.5 * (ac[j - 1] - ac[j + 1]) / d if d != 0 else 0)
+            est.append(jj / L)
+    if not est:
+        return None
+    v = float(np.median(est))
+    return v if abs(v / ppmm - 1) < 0.1 else None
+
+SCALE_X5 = [True]
+
+
 def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, nonrigid: str = "cell",
             cell_min_mm: float = 0.06, major_snap: bool = True, fine_snap: bool = True,
             fine_min_mm: float = 0.06):
@@ -356,8 +388,25 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
     G = grid_map(img, paper)
     ang = estimate_rotation(G)
     ppmm, has_major = estimate_ppmm(G, ang, paper)
+    rescued = False
     if ppmm_hint:  # escala conhecida (ex.: DPI do scanner / 25.4)
         ppmm = float(ppmm_hint)
+    elif SCALE_X5[0] and max(img.shape[:2]) / ppmm > 600 and max(img.shape[:2]) / (5 * ppmm) >= 100:
+        # imagem "maior que 60 cm": o passo de 1 mm foi tomado pelo de 5 mm. Acontece com grade
+        # pontilhada preta: os pontos grossos são escuros como tinta e saem do mapa da grade.
+        # Refaz o mapa sem atenuar a tinta, liga os pontos em linhas (fechamento de ~1 mm na
+        # escala corrigida) e reestima rotação e escala
+        p5 = 5.0 * ppmm
+        k = int(1.3 * p5) | 1
+        G0 = grid_map(img, paper, clamp_ink=False)
+        G2 = np.maximum(cv2.morphologyEx(G0, cv2.MORPH_CLOSE, np.ones((1, k), np.uint8)),
+                        cv2.morphologyEx(G0, cv2.MORPH_CLOSE, np.ones((k, 1), np.uint8)))
+        G2 = np.minimum(G2, 0.5)
+        ang2 = estimate_rotation(G2)
+        pp2, hm2 = estimate_ppmm(G2, ang2, paper)
+        ang, ppmm = ang2, 5.0 * pp2 if max(img.shape[:2]) / pp2 > 600 else pp2
+        ppmm = _refine_long_period(G0, ang, ppmm) or ppmm
+        rescued = True
 
     H, W = G.shape
     s = 5.0  # px/mm do quadro grosso
@@ -370,8 +419,10 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
     Gc = cv2.warpAffine(G, M, (Wc, Hc), flags=cv2.INTER_AREA if s < ppmm else cv2.INTER_LINEAR)
 
     tile, step = int(25 * s), int(10 * s)
-    src, dst, w = _correspondences(Gc, 5 * s, s, has_major, tile, step)
+    src, dst, w = _correspondences(Gc, 5 * s, s, has_major, tile, step) if not rescued else ([], [], [])
     A3 = np.vstack([M, [0, 0, 1]])
+    # escala resgatada: as correspondências da grade não são confiáveis (passo de 1 mm visto
+    # como 5 mm); fica a rotação + escala
     if len(src) >= 8:
         Hm, inl = cv2.findHomography(dst, src, cv2.RANSAC, 0.6 * s)
         if Hm is None:
@@ -403,7 +454,7 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
     # refinamento não-rígido: resíduo de fase -> polinômio cúbico -> remap
     rms, rms_cell, snap_mm, fine_mm = float("nan"), float("nan"), 0.0, 0.0
     snp = None
-    if nonrigid in ("poly", "cell"):
+    if nonrigid in ("poly", "cell") and not rescued:
         out_p, pap_p, rms, mx, my = _refine_nonrigid(out, pap, R, return_map=True)
         cx_ = cy_ = None
         if nonrigid == "cell" and mx is not None:
