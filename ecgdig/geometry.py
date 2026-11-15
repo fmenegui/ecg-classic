@@ -438,6 +438,31 @@ def _refine_long_period(G, angle, ppmm, mm=(10.0, 20.0)):
 SCALE_X5 = [True]
 
 
+def _homography_sane(Hm, shape, tol=0.35):
+    """Escala local (det. do jacobiano) nos cantos e no centro do quadro dentro de ±tol da do
+    centro, e sem ponto no infinito: uma foto de folha plana não muda mais que isso."""
+    h, w = shape[:2]
+    pts = [(0, 0), (w, 0), (w, h), (0, h), (w / 2, h / 2)]
+
+    def jdet(x, y):
+        v = Hm @ np.array([x, y, 1.0])
+        if v[2] <= 1e-6:
+            return None
+        e = 1.0
+        a = Hm @ np.array([x + e, y, 1.0]); b = Hm @ np.array([x, y + e, 1.0])
+        p0 = v[:2] / v[2]; pa = a[:2] / a[2]; pb = b[:2] / b[2]
+        return abs(np.linalg.det(np.stack([pa - p0, pb - p0])))
+    d = [jdet(x, y) for x, y in pts]
+    if any(x is None or x <= 0 for x in d):
+        return False
+    c = d[-1]
+    return all(abs(x / c - 1) <= tol for x in d[:-1]) and 0.5 <= c <= 2.0
+
+
+H_SANE = [True]
+NONRIGID_CLIP = [True]
+
+
 def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, nonrigid: str = "cell",
             cell_min_mm: float = 0.06, major_snap: bool = True, fine_snap: bool = True,
             fine_min_mm: float = 0.06):
@@ -500,6 +525,13 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
             Hm = np.eye(3)
         elif rescued:
             rescued_ok = True
+        if H_SANE[0] and not _homography_sane(Hm, Gc.shape):
+            # homografia degenerada (RANSAC num conjunto de blocos mal desembrulhado): a escala
+            # local muda > 35% de um canto ao outro. Fica a afim robusta, ou rotação + escala
+            A2, _ = cv2.estimateAffine2D(dst, src, method=cv2.RANSAC, ransacReprojThreshold=0.6 * s)
+            Hm = np.vstack([A2, [0, 0, 1]]) if A2 is not None else np.eye(3)
+            if not _homography_sane(Hm, Gc.shape):
+                Hm = np.eye(3)
     else:
         Hm = np.eye(3)
     # quadro retificado: u,v em mm*R. coarse(x,y) = Hm @ (u/R*s, v/R*s)
@@ -794,8 +826,16 @@ def _refine_nonrigid(out, pap, R, return_map=False):
     rms_before = float(np.sqrt(np.mean(dx[good] ** 2 + dy[good] ** 2)) / R)
     yy, xx = np.mgrid[0:H:8, 0:W:8].astype(np.float32)
     At = _poly_terms((xx / W - 0.5).ravel(), (yy / H - 0.5).ravel())
-    mx = (xx.ravel() + At @ sol[0]).reshape(xx.shape).astype(np.float32)
-    my = (yy.ravel() + At @ sol[1]).reshape(yy.shape).astype(np.float32)
+    fx_, fy_ = At @ sol[0], At @ sol[1]
+    if NONRIGID_CLIP[0]:
+        # o polinômio cúbico extrapola longe dos blocos bons (canto fora de foco, borda): o
+        # deslocamento fica no intervalo que ele tem sobre os blocos medidos (o resíduo medido
+        # é a fase mod 1 mm; nada fora desse intervalo foi observado)
+        for f_, c_ in ((fx_, sol[0]), (fy_, sol[1])):
+            v_ = A @ c_
+            np.clip(f_, v_.min() - 0.1 * R, v_.max() + 0.1 * R, out=f_)
+    mx = (xx.ravel() + fx_).reshape(xx.shape).astype(np.float32)
+    my = (yy.ravel() + fy_).reshape(yy.shape).astype(np.float32)
     mx = cv2.resize(mx, (W, H), interpolation=cv2.INTER_LINEAR) + 0  # aproximação densa
     my = cv2.resize(my, (W, H), interpolation=cv2.INTER_LINEAR)
     # corrige o deslocamento de meio passo do resize
