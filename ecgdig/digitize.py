@@ -950,6 +950,7 @@ def _vote_x0(xl, xe, rad, span_px, R, weak=()):
 
 
 BASELINE_GUARD = [True]
+RPULSE_RARE = [True]
 
 
 def _baseline_guard(sig, fs, win_s=0.6, thr_mv=1.5):
@@ -1318,6 +1319,12 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     # Consenso da página: ganhos são padronizados (2,5/5/10/20/40 mm/mV). Pulso deformado,
     # cortado na borda ou colado ao traço dá 3,7 ou 7 mm/mV; esse nível não vale e a linha
     # herda o ganho padrão mais votado entre as linhas confiáveis (ou 10, se nenhuma for).
+    # 2,5 e 40 mm/mV são raros; só o pulso da esquerda (impresso como calibração) os sustenta.
+    # O "pulso" da direita é o fim do traço achatado por blur e dá 2,5 sem nenhum pulso real
+    if RPULSE_RARE[0]:
+        for r_, g in enumerate(lv1):
+            if g is not None and src[r_] == "R" and _std_ok(g) and _snap(g) in (2.5, 40.0):
+                lv1[r_] = None; lv2[r_] = None; src[r_] = None
     reliable = [_snap(g) for g in lv1 if _std_ok(g)]
     if reliable:
         vals, cnts = np.unique(reliable, return_counts=True)
