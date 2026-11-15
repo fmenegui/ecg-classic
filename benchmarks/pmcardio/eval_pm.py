@@ -49,7 +49,7 @@ def _digitize(job):
         out = dict(ok=True, leads=r["leads"], signals=r["signals"].astype(np.float32),
                    seg={k: [np.nonzero(np.isfinite(m))[0][[0, -1]] if np.isfinite(m).any() else None for m in v]
                         for k, v in r.get("per_segment", {}).items()},
-                   layout=r.get("layout"), sec=time.time() - t0)
+                   layout=r.get("layout"), quality=r.get("quality"), sec=time.time() - t0)
     except Exception as e:  # noqa: BLE001
         out = dict(ok=False, err=f"{type(e).__name__}: {e}", sec=time.time() - t0)
     signal.alarm(0)

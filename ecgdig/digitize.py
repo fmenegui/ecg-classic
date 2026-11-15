@@ -69,6 +69,8 @@ class Config:
     col_align: bool = True      # colunas com linhas de base próprias: realinha cada faixa
     limb_log: bool = True       # física no layout como log-verossimilhança do resíduo
     fit: str = "none"          # "lsf": renderização inversa com o perfil de pena medido
+    direct_resample: bool = False  # retificação com uma interpolação só, a partir da imagem original
+    refuse_below: float | None = None  # derivações com nota de qualidade abaixo disto saem como NaN
 
 
 def _pick_rows(peaks, cov, n_expected):
@@ -1011,7 +1013,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     from . import extract as _ex
     _ex.ROW_CHAIN[0] = cfg.row_chain
     rect, pap, ginfo = rectify(img, R, cfg.ppmm, cfg.nonrigid, major_snap=cfg.major_snap,
-                               fine_snap=cfg.fine_snap)
+                               fine_snap=cfg.fine_snap, direct=cfg.direct_resample)
     D, glev = ink_map(rect, pap, R, return_grid_level=True)
     if cfg.ink_model:
         # modo híbrido: a rede diz onde está a tinta do traço; o resto segue clássico
@@ -1672,10 +1674,37 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             sw = wt.sum(0)
             sig[li] = np.where(sw > 0, np.nansum(st * wt, 0) / np.maximum(sw, 1e-9), np.nan)
             nmeas[li] = sw  # "número efetivo de medidas" (peso total) -> variância na fusão
+    sig_pre = sig.copy()   # antes da fusão: o resíduo de Einthoven só existe aqui
     if cfg.einthoven and names is LEADS:
         sig = einthoven_fuse(sig, nmeas, fill=cfg.fill_limb)
     if BASELINE_GUARD[0]:
         sig = _baseline_guard(sig, cfg.fs)
+    # nota de qualidade por derivação (não altera o sinal, a menos que refuse_below peça)
+    quality = None
+    try:
+        from .quality import assess
+        quality = assess(sig, list(names), cfg.fs, prefusion=sig_pre if names is LEADS else None)
+        n_rows = max(1, len(rows))
+        page = dict(layout_confidence=(layout_info or {}).get("confidence"),
+                    layout_warning=(layout_info or {}).get("warning"),
+                    pulses_ratio=sum(p is not None for p in pulses) / n_rows)
+        ps = 1.0
+        if page["layout_confidence"] is not None:
+            ps *= float(np.clip(page["layout_confidence"] / 0.8, 0.3, 1.0))
+        if page["pulses_ratio"] < 0.5:
+            ps *= 0.7       # sem pulsos de calibração: ganho e 0 mV presumidos
+        page["score"] = ps
+        quality["page"] = page
+        for q_ in quality["leads"].values():
+            q_["score"] = float(q_["score"] * ps)
+        quality["score"] = float(quality["score"] * ps)
+        if cfg.refuse_below is not None:
+            for li, l in enumerate(names):
+                if quality["leads"][l]["score"] < cfg.refuse_below:
+                    sig[li] = np.nan
+                    quality["leads"][l]["flags"].append("recusada")
+    except Exception as e:  # a nota nunca derruba a digitalização
+        quality = dict(error=f"{type(e).__name__}: {e}")
 
     gains_seg = {f"{r_}:{nm}": seg_gain(r_, nm) for r_, row in enumerate(rows_spec[:len(levels)]) for nm in row}
     res = dict(signals=sig, fs=cfg.fs, leads=list(names), layout=layout, layout_rows=rows_spec,
@@ -1686,7 +1715,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                grid_residual_mm=ginfo["residual_rms_mm"], grid_residual_cell_mm=ginfo.get("residual_cell_rms_mm"),
                grid_snap_mm=ginfo.get("major_snap_mm"), grid_fine_mm=ginfo.get("fine_snap_mm"), line_width_px=lw, line_width_h_px=2 * rad_h,
                pulses_found=sum(p is not None for p in pulses),
-               pulses_right=sum(p is not None for p in rpulses), gain_rows_inferred=gain_flags)
+               pulses_right=sum(p is not None for p in rpulses), gain_rows_inferred=gain_flags,
+               quality=quality)
     if return_debug:
         dbg = rect.copy()
         for xs, yi, valid in traces_dbg:
