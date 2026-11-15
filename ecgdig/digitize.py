@@ -589,6 +589,7 @@ PULSE_CONSENSUS = [True]
 EXTRAP_CAP = [True]
 PULSE_COL = [True]
 ADAPT_MORE = [True]
+GLEV_RETRY = [True]
 PULSE_HALF = [True]
 PULSE_MID = [False]   # apagar os pulsos do meio piorou (rotation_35 img_41: 7,6 -> -0,2 dB)
 COL_GAP = [True]
@@ -1013,6 +1014,25 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                 B = B2
                 rows_all, cov, ext_all, pulses_all, spacing = r2
                 break
+        if GLEV_RETRY[0] and _weak(rows_all, ext_all):
+            # traço borrado/claro (0,2-0,4): o halo dele entrou como "vazamento da grade" e o
+            # piso do limiar ficou acima do próprio traço. Refaz o nível da grade excluindo a
+            # tinta relativa ao contraste do traço, e tenta de novo
+            from . import extract as _ex2
+            old_ = _ex2.GLEV_RELATIVE[0]
+            _ex2.GLEV_RELATIVE[0] = True
+            try:
+                _, glev2 = ink_map(rect, pap, R, return_grid_level=True)
+            finally:
+                _ex2.GLEV_RELATIVE[0] = old_
+            if glev2 < glev:
+                for sc_ in (1.0, 0.5, 0.3):
+                    B2 = binarize(D, R, glev2, scale=sc_)
+                    r2 = _rows_pulses(B2, pap, R)
+                    if not _weak(r2[0], r2[2]):
+                        B, glev = B2, glev2
+                        rows_all, cov, ext_all, pulses_all, spacing = r2
+                        break
     elif cfg.adaptive_threshold and ADAPT_MORE[0] and _nlong(ext_all) <= 3:
         # poucas linhas longas (traço claro: só as derivações de amplitude grande passaram do
         # limiar): um limiar menor que revele >= 2 linhas longas a mais, em passo regular, vence
@@ -1434,6 +1454,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         j["top"], j["bot"] = top, bot
         dt = np.abs(np.gradient(top)) + np.abs(np.gradient(bot))
         th.append((bot - top)[dt < 0.3])
+    if not seg_jobs:
+        raise RuntimeError("nenhum segmento de derivação para rastrear")
     th = np.concatenate(th)
     for j in seg_jobs:
         _mask_label_edges(j, label_boxes)
