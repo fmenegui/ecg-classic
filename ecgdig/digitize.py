@@ -433,6 +433,22 @@ def _rows_pulses(B, pap, R):
         # coincidem com nenhum pulso e estão longe de todos ficam (linha sem pulso)
         prow, _pp = pulse_rows(B, R)
         _prow_set[0] = prow
+        if prow is not None and PULSE_HALF[0] and len(prow) >= 2:
+            # pulsos achados só em linhas alternadas (pulso apagado/fraco nas outras): linhas
+            # da projeção no meio do passo dos pulsos, entre eles, são linhas de verdade; o
+            # passo real é a metade. Pontas dos pulsos fora do novo passo saem.
+            spp = float(np.median(np.diff(prow)))
+            mids = [p for p in peaks if prow.min() < p < prow.max()
+                    and 0.35 * spp <= np.min(np.abs(prow - p)) <= 0.65 * spp]
+            if mids:
+                prow = np.sort(np.concatenate([prow, np.array(mids, float)]))
+                sp2 = float(np.median(np.diff(prow)))
+                while len(prow) > 2 and prow[-1] - prow[-2] > 1.5 * sp2 and \
+                        np.min(np.abs(peaks - prow[-1])) > 0.3 * sp2:
+                    prow = prow[:-1]
+                while len(prow) > 2 and prow[1] - prow[0] > 1.5 * sp2 and \
+                        np.min(np.abs(peaks - prow[0])) > 0.3 * sp2:
+                    prow = prow[1:]
         if prow is not None:
             spp = float(np.median(np.diff(prow)))
             xp_ = float(np.median([q["x_start"] for q in _pp]))
@@ -572,6 +588,7 @@ PULSE_CONSENSUS = [True]
 EXTRAP_CAP = [True]
 PULSE_COL = [True]
 ADAPT_MORE = [True]
+PULSE_HALF = [True]
 PULSE_MID = [False]   # apagar os pulsos do meio piorou (rotation_35 img_41: 7,6 -> -0,2 dB)
 COL_GAP = [True]
 _PULSE_ROWS = [True]
