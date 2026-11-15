@@ -120,6 +120,10 @@ def _quad_complete(mm, lab, mc, mb):
     add = (mq > 0) & (mm == 0)
     if add.sum() < 0.005 * mm.sum() or add.sum() > 0.25 * mm.sum():
         return mm
+    # canto cortado é um triângulo grosso; folha curvada dá só lascas finas ao longo dos lados
+    # (os lados são arcos e o quadrilátero passa um pouco além deles, sobre a mesa)
+    if float(cv2.distanceTransform(add.astype(np.uint8), cv2.DIST_L2, 3).max()) < 0.0175 * max(h, w):
+        return mm
     dp = np.linalg.norm(lab[add] - mc, axis=1); db = np.linalg.norm(lab[add] - mb, axis=1)
     if float(np.mean(dp < db)) < 0.7:
         return mm
