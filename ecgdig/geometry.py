@@ -81,6 +81,51 @@ def paper_crop(img: np.ndarray, max_frac: float = 0.3, margin: float = 0.12):
     return img[y0:y1, x0:x1].copy(), (int(x0), int(y0))
 
 
+PAPER_QUAD = [True]
+
+
+def _quad_complete(mm, lab, mc, mb):
+    """A folha é um quadrilátero. Quando ela encosta na borda da foto, a cor "de fundo" da
+    borda inclui papel e o GrabCut corta um canto inteiro (o começo das primeiras linhas some).
+    Os 4 lados mais longos da envoltória, prolongados, dão o quadrilátero; a área que ele
+    acrescenta entra se tiver a cor do papel (e não a do fundo)."""
+    h, w = mm.shape
+    cnts, _ = cv2.findContours(mm, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return mm
+    hull = cv2.convexHull(max(cnts, key=cv2.contourArea))[:, 0, :].astype(np.float64)
+    hull = cv2.approxPolyDP(hull.astype(np.float32), 0.01 * max(h, w), True)[:, 0, :].astype(np.float64)
+    n = len(hull)
+    if n <= 4:
+        return mm
+    L = np.linalg.norm(np.roll(hull, -1, 0) - hull, axis=1)
+    top = np.sort(np.argsort(L)[-4:])
+    if L[top].sum() < 0.6 * L.sum():
+        return mm  # contorno arredondado/irregular: não é um quadrilátero cortado
+    pts = []
+    for a, b in zip(top, np.roll(top, -1)):
+        p1, p2 = hull[a], hull[(a + 1) % n]
+        q1, q2 = hull[b], hull[(b + 1) % n]
+        d1, d2 = p2 - p1, q2 - q1
+        den = d1[0] * d2[1] - d1[1] * d2[0]
+        if abs(den) < 1e-6 * (np.linalg.norm(d1) * np.linalg.norm(d2) + 1e-9):
+            return mm
+        t = ((q1[0] - p1[0]) * d2[1] - (q1[1] - p1[1]) * d2[0]) / den
+        pts.append(p1 + t * d1)
+    quad = np.array(pts)
+    if np.abs(quad).max() > 3 * max(h, w):
+        return mm
+    mq = np.zeros_like(mm)
+    cv2.fillPoly(mq, [np.round(quad).astype(np.int32)], 1)
+    add = (mq > 0) & (mm == 0)
+    if add.sum() < 0.005 * mm.sum() or add.sum() > 0.25 * mm.sum():
+        return mm
+    dp = np.linalg.norm(lab[add] - mc, axis=1); db = np.linalg.norm(lab[add] - mb, axis=1)
+    if float(np.mean(dp < db)) < 0.7:
+        return mm
+    return ((mq > 0) | (mm > 0)).astype(np.uint8)
+
+
 def paper_mask(img: np.ndarray) -> np.ndarray:
     """Máscara da folha. Se a borda da imagem tem a mesma cor do centro, é um scan
     (tudo é papel). Senão: GrabCut (borda = fundo, centro = papel) + envoltória convexa
@@ -132,6 +177,8 @@ def paper_mask(img: np.ndarray) -> np.ndarray:
             mm = mo
     if mm.mean() < (0.03 if PAPER_OTSU[0] else 0.15):  # segmentação implausível -> usa tudo
         return np.ones((H, W), np.uint8)
+    if PAPER_QUAD[0]:
+        mm = _quad_complete(mm, lab, mc, mb)
     mm = cv2.erode(mm, np.ones((3, 3), np.uint8))
     return cv2.resize(mm, (W, H), interpolation=cv2.INTER_NEAREST)
 
