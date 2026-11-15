@@ -571,7 +571,8 @@ ORIENT_T = [True]
 PULSE_CONSENSUS = [True]
 EXTRAP_CAP = [True]
 PULSE_COL = [True]
-PULSE_MID = [True]
+ADAPT_MORE = [True]
+PULSE_MID = [False]   # apagar os pulsos do meio piorou (rotation_35 img_41: 7,6 -> -0,2 dB)
 COL_GAP = [True]
 _PULSE_ROWS = [True]
 _ROW_BEAT_THR = [0.3]
@@ -983,6 +984,9 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         lens = [e[1] - e[0] for e in ext_ if e]
         return len(rows_) < 2 or not lens or np.median(lens) < 40 * R
 
+    def _nlong(ext_):
+        return sum(1 for e in ext_ if e and e[1] - e[0] >= 40 * R)
+
     if cfg.adaptive_threshold and _weak(rows_all, ext_all):
         for sc_ in (0.5, 0.3):
             B2 = binarize(D, R, glev, scale=sc_)
@@ -991,6 +995,17 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                 B = B2
                 rows_all, cov, ext_all, pulses_all, spacing = r2
                 break
+    elif cfg.adaptive_threshold and ADAPT_MORE[0] and _nlong(ext_all) <= 3:
+        # poucas linhas longas (traço claro: só as derivações de amplitude grande passaram do
+        # limiar): um limiar menor que revele >= 2 linhas longas a mais, em passo regular, vence
+        B2 = binarize(D, R, glev, scale=0.5)
+        r2 = _rows_pulses(B2, pap, R)
+        n1, n2 = _nlong(ext_all), _nlong(r2[2])
+        if n2 >= n1 + 2 and n2 <= 16 and len(r2[0]) >= 3:
+            d_ = np.diff(np.sort(np.asarray(r2[0], float)))
+            if d_.min() >= 0.5 * np.median(d_):
+                B = B2
+                rows_all, cov, ext_all, pulses_all, spacing = r2
     H, W = B.shape
     if len(rows_all) == 0:
         raise RuntimeError("nenhuma linha de traçado encontrada")
@@ -1038,7 +1053,15 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         from .extract import pulse_column
         ex_ = [e for e in ext if e]
         if ex_:
-            s0 = float(np.median([e[0] for e in ex_])); e0 = float(np.median([e[1] for e in ex_]))
+            s0 = float(np.median([e[0] for e in ex_]))
+            # fim pela tinta da faixa (a extensão da linha para no vão antes do pulso do meio)
+            ends = []
+            for y in rows:
+                a_, b_ = max(0, int(y - half)), min(B.shape[0], int(y + half))
+                xs_ = np.nonzero(B[a_:b_].any(0))[0]
+                if len(xs_):
+                    ends.append(float(xs_[-1]))
+            e0 = float(np.median(ends)) if ends else float(np.median([e[1] for e in ex_]))
             mids = [g for g in pulse_column(B, R, all_groups=True)
                     if g["x_start"] > s0 + 30 * R and g["x_end"] < e0 - 30 * R
                     and len(g["feet"]) >= max(3, len(rows) - 1)]
