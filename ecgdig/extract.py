@@ -40,10 +40,22 @@ TEMPLATE_AUTO = [True]
 GLEV_RELATIVE = [False]
 
 
+def _median5_cells(cells: np.ndarray) -> np.ndarray:
+    """Mediana 5x5 entre células vizinhas, fase a fase: o mesmo que
+    scipy.ndimage.median_filter(cells, size=(5, 5, 1, 1), mode="nearest"), mas com a mediana 5x5
+    do OpenCV em cada uma das P*P imagens pequenas (ny, nx) — era ~2,5 s por página."""
+    ny, nx, P1, P2 = cells.shape
+    a = np.ascontiguousarray(cells.reshape(ny, nx, P1 * P2).transpose(2, 0, 1), dtype=np.float32)
+    out = np.empty_like(a)
+    for k in range(a.shape[0]):
+        out[k] = cv2.medianBlur(a[k], 5)
+    return out.transpose(1, 2, 0).reshape(ny, nx, P1, P2)
+
+
 def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bool = False, tmin: float | None = None):
     f = rect.astype(np.float32)
-    n = np.stack([f[..., c] / (_bg(f[..., c], R) + 1e-3) for c in range(3)], -1)
-    t = np.clip(n.max(-1), 0, 1.2)  # transmitância no canal mais claro
+    n = [f[..., c] / (_bg(f[..., c], R) + 1e-3) for c in range(3)]
+    t = np.clip(np.maximum(np.maximum(n[0], n[1]), n[2]), 0, 1.2)  # transmitância no canal mais claro
     # molde de 10 mm: cobre a periodicidade de 5 mm e também grades com linha extra a cada
     # 10 mm (as de 5 mm deixavam essa linha como "tinta" e criavam linhas falsas)
     H, W = t.shape
@@ -87,10 +99,9 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
     # Em fotos a nitidez/escuridão da grade varia pela folha; o molde global deixa a
     # grade "vazar" como tinta onde ela é mais escura que a média.
     if ny >= 5 and nx >= 5:
-        from scipy.ndimage import median_filter
         cells = blk.transpose(0, 2, 1, 3).copy()               # (ny, nx, P, P)
         cells[~pm] = tmpl                                        # fora do papel: global
-        loc = median_filter(cells, size=(5, 5, 1, 1), mode="nearest")
+        loc = _median5_cells(cells)
         loc = np.clip(loc, tmin, 1.0)
         TL = np.ones((reps[0] * P, reps[1] * P), np.float32)
         TL[: ny * P, : nx * P] = loc.transpose(0, 2, 1, 3).reshape(ny * P, nx * P)
@@ -481,26 +492,52 @@ def detect_pulse(B, y0, half, xa, R, up=None, close_mm=0.8):
 # ----------------------------------------------------------------- rastreamento
 
 def column_runs(B, D, ya, yb, xa, xb):
-    """Lista por coluna de segmentos (top, bot, centróide, massa)."""
-    out = []
+    """Lista por coluna de segmentos (top, bot, centróide, massa).
+
+    Todas as colunas de uma vez (antes era um laço por coluna em Python). Os valores saem
+    como int/float do Python: o Viterbi faz milhões de contas escalares com eles, e com
+    escalares do NumPy cada uma custa várias vezes mais."""
     sub = B[ya:yb, xa:xb]
-    subD = D[ya:yb, xa:xb]
-    yy = np.arange(ya, yb, dtype=np.float64)
-    for j in range(sub.shape[1]):
-        s, e = _runs(sub[:, j])
-        # funde fragmentos separados por <= 3 px (halo de antialiasing / JPEG)
-        if len(s) > 1:
-            keep = np.r_[True, (s[1:] - e[:-1] - 1) > 3]
-            grp = np.cumsum(keep) - 1
-            s = np.array([s[grp == g].min() for g in range(grp.max() + 1)])
-            e = np.array([e[grp == g].max() for g in range(grp.max() + 1)])
-        col = []
-        for a, b in zip(s, e):
-            w = subD[a:b + 1, j].astype(np.float64)
-            m = w.sum() + 1e-9
-            col.append((a + ya, b + ya, float((w * yy[a:b + 1]).sum() / m), float(m)))
+    h, w = sub.shape
+    if w == 0:
+        return []
+    if h == 0:
+        return [[] for _ in range(w)]
+    pad = np.zeros((w, h + 2), np.int8)
+    pad[:, 1:-1] = sub.T
+    d = np.diff(pad, axis=1)
+    cs, ss = np.nonzero(d == 1)          # coluna, primeira linha do segmento (ordem: coluna, linha)
+    _, ee = np.nonzero(d == -1)
+    ee = ee - 1                           # última linha do segmento
+    if len(ss) == 0:
+        return [[] for _ in range(w)]
+    # funde fragmentos da mesma coluna separados por <= 3 px (halo de antialiasing / JPEG)
+    first = np.r_[True, (cs[1:] != cs[:-1]) | ((ss[1:] - ee[:-1] - 1) > 3)]
+    last = np.r_[first[1:], True]
+    c_, a_, b_ = cs[first], ss[first], ee[last]
+    # massa e centróide de cada segmento fundido (inclui os pixels do vão), em float64
+    Dt = np.zeros(w * h + 1, np.float64)
+    Dt[:-1] = D[ya:yb, xa:xb].T.ravel()
+    idx = np.empty(2 * len(a_), np.int64)
+    idx[0::2] = c_ * h + a_
+    idx[1::2] = c_ * h + b_ + 1
+    m = np.add.reduceat(Dt, idx)[0::2] + 1e-9
+    yy = np.arange(ya, ya + h, dtype=np.float64)   # yb pode passar do fim da imagem
+    Dy = Dt.copy()
+    Dy[:-1] *= np.tile(yy, w)
+    cen = np.add.reduceat(Dy, idx)[0::2] / m
+    top = (a_ + ya).tolist(); bot = (b_ + ya).tolist(); cen = cen.tolist(); m = m.tolist()
+    cnt = np.bincount(c_, minlength=w).tolist()
+    out = []
+    i = 0
+    for n in cnt:
+        if n == 0:
+            out.append([])
+            continue
+        col = [(top[k], bot[k], cen[k], m[k]) for k in range(i, i + n)]
+        i += n
         # descarta fragmentos sem massa quando há alternativa
-        if len(col) > 1:
+        if n > 1:
             big = [c for c in col if c[3] >= 0.6]
             col = big or col
         out.append(col)
@@ -531,14 +568,17 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
     n = len(runs)
     if n == 0:
         return []
+    base, R = float(base), float(R)
+    others = [float(o) for o in others]
     cs_br = None
     if D is not None and bridge_ref is not None and bridge_ref > 0 and n > 0:
         cs_br = _bridge_table(D, xa, n, R, bridge_floor)
-        bridge_ref = bridge_ref - bridge_floor
+        bridge_ref = float(bridge_ref - bridge_floor)
         Hb = cs_br.shape[0]
     states = []  # por coluna: lista de (top, bot, center)
-    costs, backs = [], []
-    flat_h = 3.0 * (lw if lw else 0.3 * R)
+    backs = []
+    flat_h = float(3.0 * (lw if lw else 0.3 * R))
+    w_base, c_gap = float(w_base), float(c_gap)
     mx = [max(m for (_, _, _, m) in col) for col in runs if col]
     m_ref = float(np.median(mx)) if mx else 1.0
 
@@ -561,7 +601,7 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
             e += 0.8
         return e
 
-    _we = w_edge
+    _we = float(w_edge)
     _rigid = rigid
 
     def trans(pt, pb, pc, t, b, c, i=None):
@@ -587,33 +627,39 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
             ed = min(ed, abs((t - pt) - (b - pb)))
         return 2.0 * g + 0.5 * g * g + 0.02 * abs(c - pc) / R + _we * ed / R
 
+    # contas em escalares do Python (float/int): mesmos valores IEEE, sem o custo dos
+    # escalares do NumPy em cada soma
     prev_states = [(base, base, base)]
-    prev_cost = np.array([0.0])
+    prev_cost = [0.0]
+    last_cost = prev_cost
     for i in range(n):
-        cur = [(t, b, c) for (t, b, c, m) in runs[i]]
-        ms = [m for (t, b, c, m) in runs[i]]
+        col = runs[i]
         cs = []
         bk = []
-        for (t, b, c), m in zip(cur, ms):
+        for (t, b, c, m) in col:
             best, arg = INF, -1
-            for k, (pt, pb, pc) in enumerate(prev_states):
+            k = 0
+            for (pt, pb, pc) in prev_states:
                 v = prev_cost[k] + trans(pt, pb, pc, t, b, c, i)
                 if v < best:
                     best, arg = v, k
+                k += 1
             cs.append(best + emis(t, b, c, m))
             bk.append(arg)
         # estado de falha (último índice)
-        kmin = int(np.argmin(prev_cost))
-        cs.append(prev_cost[kmin] + c_gap)
+        pmin = min(prev_cost)
+        kmin = prev_cost.index(pmin)        # primeiro mínimo, como o np.argmin
+        cs.append(pmin + c_gap)
         bk.append(kmin)
-        new_states = cur + [prev_states[kmin] if kmin < len(prev_states) else prev_states[-1]]
+        new_states = [(t, b, c) for (t, b, c, m) in col]
+        new_states.append(prev_states[kmin] if kmin < len(prev_states) else prev_states[-1])
         states.append(new_states)
-        costs.append(np.array(cs))
         backs.append(bk)
-        prev_states, prev_cost = new_states, np.array(cs)
+        prev_states, prev_cost = new_states, cs
+        last_cost = cs
     # backtrack
     sel = [None] * n
-    k = int(np.argmin(costs[-1]))
+    k = last_cost.index(min(last_cost))
     for i in range(n - 1, -1, -1):
         is_gap = k == len(states[i]) - 1
         sel[i] = None if is_gap else k

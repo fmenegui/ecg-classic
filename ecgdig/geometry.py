@@ -186,8 +186,11 @@ def paper_mask(img: np.ndarray) -> np.ndarray:
 def grid_map(img: np.ndarray, paper: np.ndarray, clamp_ink: bool = True) -> np.ndarray:
     """Mapa de 'estrutura escura' normalizado pela iluminação, com a tinta atenuada."""
     f = img.astype(np.float32)
-    gray = f.mean(2)
-    mx = f.max(2)
+    # média e máximo dos 3 canais canal a canal (mesmo resultado de f.mean(2) / f.max(2);
+    # a redução do NumPy num eixo de tamanho 3 é várias vezes mais lenta)
+    c0, c1, c2 = f[..., 0], f[..., 1], f[..., 2]
+    gray = (c0 + c1 + c2) / np.float32(3)
+    mx = np.maximum(np.maximum(c0, c1), c2)
     S = 1.0 - gray / (_bg_max(gray) + 1e-3)
     ink = 1.0 - mx / (_bg_max(mx) + 1e-3)
     G = np.clip(S, 0, 1)
@@ -665,6 +668,28 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
     return out, pap, info
 
 
+def _nanmedian_axis(a: np.ndarray, axis: int = 0) -> np.ndarray:
+    """np.nanmedian ao longo de um eixo, pelo mesmo cálculo (média dos dois valores centrais
+    entre os não-NaN), mas com uma ordenação só: o np.nanmedian cai num caminho lento quando há
+    NaN e era o maior custo dos ajustes pela grade. NaN onde a fatia inteira é NaN."""
+    a = np.moveaxis(a, axis, 0)
+    s = np.sort(a, axis=0)                      # NaN vai para o fim
+    n = (~np.isnan(a)).sum(axis=0)
+    lo = np.maximum((n - 1) // 2, 0)[None]
+    hi = np.maximum(n // 2, 0)[None]
+    with np.errstate(invalid="ignore"):
+        med = (np.take_along_axis(s, lo, 0)[0] + np.take_along_axis(s, hi, 0)[0]) / 2
+    return np.where(n > 0, med, np.nan).astype(a.dtype, copy=False)
+
+
+def _nanmedian3x3(F: np.ndarray) -> np.ndarray:
+    """Mediana 3x3 ignorando NaN, com a borda repetida (igual a
+    scipy.ndimage.generic_filter(F, np.nanmedian, size=3, mode="nearest"))."""
+    win = np.lib.stride_tricks.sliding_window_view(np.pad(F, 1, mode="edge"), (3, 3))
+    return _nanmedian_axis(win.reshape(*F.shape, 9), axis=2)
+
+
+
 def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_mm=0.15, max_rms_mm=0.8,
                 period_mm=5.0, outlier_mm=0.6, smooth=0.8, con_floor=0.03):
     """Ajuste fino pelas LINHAS GROSSAS (5 mm), localizadas uma a uma.
@@ -706,39 +731,39 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
         n_par, n_len = A.shape  # bandas ao longo de n_par, perfil ao longo de n_len
         b0s = list(range(0, max(1, n_par - bh + 1), st))
         ks = [k for k in range(1, int(n_len // T5)) if sr + 1 <= k * T5 < n_len - sr - 1]
+        xk = np.array([int(round(k * T5)) for k in ks], dtype=np.int64)
         off = np.full((len(b0s), len(ks)), np.nan)
         con = np.zeros_like(off)
         for i, b0 in enumerate(b0s):
             band = A[b0:b0 + bh]
             if np.isnan(band).mean() > 0.5:
                 continue
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", RuntimeWarning)
-                prof = np.nanmedian(band, axis=0)
-            for j, k in enumerate(ks):
-                x = int(round(k * T5))
-                w = prof[x - sr:x + sr + 1]
-                if np.isnan(w).any():
-                    continue
-                m = int(np.argmax(w))
-                if 0 < m < len(w) - 1:
-                    a, b, c = w[m - 1], w[m], w[m + 1]
-                    den = a - 2 * b + c
-                    sub = 0.5 * (a - c) / den if den < -1e-9 else 0.0
-                else:
-                    sub = 0.0
-                off[i, j] = m - sr + float(np.clip(sub, -0.5, 0.5))
-                con[i, j] = w[m] - np.median(w)
+            prof = _nanmedian_axis(band, 0)
+            if not ks:
+                continue
+            # todas as linhas da faixa de uma vez: janela de +-sr em torno de cada k*T5
+            Wd = prof[xk[:, None] + np.arange(-sr, sr + 1)[None, :]]
+            okw = ~np.isnan(Wd).any(axis=1)
+            if not okw.any():
+                continue
+            Wv = Wd[okw]
+            m = np.argmax(Wv, axis=1)
+            mi = np.clip(m, 1, Wv.shape[1] - 2)
+            rr_ = np.arange(len(Wv))
+            a, b, c = Wv[rr_, mi - 1], Wv[rr_, mi], Wv[rr_, mi + 1]
+            den = a - 2 * b + c
+            inner = (m > 0) & (m < Wv.shape[1] - 1) & (den < -1e-9)
+            with np.errstate(all="ignore"):
+                sub = np.where(inner, 0.5 * (a - c) / np.where(inner, den, 1.0), 0.0)
+            off[i, okw] = m - sr + np.clip(sub, -0.5, 0.5).astype(np.float64)
+            con[i, okw] = Wv[rr_, m] - np.median(Wv, axis=1)
         cmed = float(np.nanmedian(con[np.isfinite(off)])) if np.isfinite(off).any() else 0.0
         ok = np.isfinite(off) & (con > max(con_floor, _SNAP_CON[0] * cmed))
         if ok.mean() < _SNAP_OKMIN[0]:
             return None
         off[~ok] = np.nan
         # vizinhos (3x3) que discordam muito: linha fina/traço/texto tomado pela grossa
-        from scipy.ndimage import generic_filter
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            med = generic_filter(off, np.nanmedian, size=3, mode="nearest")
+        med = _nanmedian3x3(off)
         off[np.abs(off - med) > outlier_mm * R] = np.nan
         ok = np.isfinite(off)
         if ok.mean() < _SNAP_OKMIN[0]:
