@@ -82,6 +82,10 @@ def paper_crop(img: np.ndarray, max_frac: float = 0.3, margin: float = 0.12):
 
 
 PAPER_QUAD = [True]
+# a borda da foto pode ser papel (folha encostada no quadro): pixels da borda com a cor do
+# papel não viram semente de fundo do GrabCut (senão a margem branca vira fundo e a máscara
+# abraça só a grade, cortando a 1ª linha ou um lado)
+PAPER_SEEDFIX = [True]
 
 
 def _quad_complete(mm, lab, mc, mb):
@@ -151,6 +155,16 @@ def paper_mask(img: np.ndarray) -> np.ndarray:
     gc = np.full((h, w), cv2.GC_PR_FGD, np.uint8)
     gc[:m] = gc[-m:] = cv2.GC_BGD
     gc[:, :m] = gc[:, -m:] = cv2.GC_BGD
+    if PAPER_SEEDFIX[0]:
+        # cor do papel: os pixels mais claros do centro (fora da grade e do traço)
+        cL = center[:, 0]
+        pw = np.median(center[cL >= np.percentile(cL, 80)], 0)
+        if np.linalg.norm(pw - mb) > 25:
+            ring = np.zeros((h, w), bool)
+            ring[:m] = ring[-m:] = True
+            ring[:, :m] = ring[:, -m:] = True
+            near = ring & (np.linalg.norm(lab - pw, axis=2) < 15)
+            gc[near] = cv2.GC_PR_FGD
     # pixels da borda parecidos com a mediana da borda -> fundo provável em toda a imagem
     db = np.linalg.norm(lab - np.median(border, 0), axis=2)
     gc[(db < 12) & (gc == cv2.GC_PR_FGD)] = cv2.GC_PR_BGD
