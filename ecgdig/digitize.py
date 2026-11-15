@@ -956,7 +956,8 @@ def _baseline_guard(sig, fs, win_s=0.6, thr_mv=1.5):
     """Linha de base que anda > 1,5 mV dentro de um trecho contínuo: o rastreio trocou de
     linha ou seguiu uma borda/vinco por um tempo (foto amassada, folha curva). Um ECG não tem
     esse desvio lento; tira a mediana móvel de 0,6 s (mais longa que QRS e T) só nesses
-    trechos. Trechos normais ficam intactos."""
+    trechos. A deriva é medida longe das bordas, onde a janela é truncada e a mediana segue o
+    QRS ou um salto inicial, o que disparava a guarda em ECGs limpos (PhysioNet). Trechos normais ficam intactos."""
     from scipy.ndimage import median_filter
     out = sig.copy()
     k = max(3, int(win_s * fs) | 1)
@@ -970,7 +971,8 @@ def _baseline_guard(sig, fs, win_s=0.6, thr_mv=1.5):
                 continue
             x = s_[seg]
             b = median_filter(x, size=k, mode="nearest")
-            if np.ptp(b) > thr_mv:
+            bi = b[k // 2:len(b) - k // 2]   # só o miolo: nas bordas a mediana pega QRS/saltos de início
+            if len(bi) and np.ptp(bi) > thr_mv:
                 s_[seg] = x - b + np.median(b)
         out[i] = s_.astype(out.dtype)
     return out
