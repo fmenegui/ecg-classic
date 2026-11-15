@@ -42,6 +42,11 @@ LIBRARY = {
     "6x1-prec": [[f"V{i}"] for i in range(1, 7)],
     "6x1-limb": [[l] for l in LEADS[:6]],
     "6x1-limb-cabrera": [[l] for l in _CAB_12[:6]],
+    # aparelhos de 3 canais: 3 tiras de 10 s por folha, um grupo de derivações em cada folha
+    "3x1-limb": [["I"], ["II"], ["III"]],
+    "3x1-aug": [["aVR"], ["aVL"], ["aVF"]],
+    "3x1-v13": [["V1"], ["V2"], ["V3"]],
+    "3x1-v46": [["V4"], ["V5"], ["V6"]],
 }
 
 

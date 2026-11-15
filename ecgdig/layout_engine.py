@@ -30,6 +30,9 @@ from . import ocr
 
 FAMILIES = ["3x4", "3x4-cabrera", "6x2", "6x2-cabrera", "12x1", "12x1-cabrera",
             "6x1-prec", "6x1-limb", "6x1-limb-cabrera"]
+STRIPS3 = [True]
+if STRIPS3[0]:
+    FAMILIES += ["3x1-limb", "3x1-aug", "3x1-v13", "3x1-v46"]
 FRACS = {1: [], 2: [0.5], 3: [1 / 3, 2 / 3], 4: [0.25, 0.5, 0.75]}
 W_OCR, W_BND, W_LIMB, W_DUP = 4.0, 1.5, 15.0, 3.0
 _UNEXPLAINED = [True]
@@ -410,6 +413,14 @@ class Ctx:
             V = np.stack(Vs); A = np.array(As)
             T = len(self.t)
             ratio, ntest = _limb_ratio(V[:, ::2], A)
+            if STRIPS3[0] and not has_grid and len(spec) <= 3 and np.isfinite(ratio):
+                # tiras inteiras: a física tem de fechar em cada quarto da página. Numa 3x4 lida
+                # como 3 tiras o 1º quarto é mesmo I/II/III e fecha; os outros (aVR, V1, V4...) não
+                Vq = V[:, ::2]; qn = Vq.shape[1] // 4
+                rq = [_limb_ratio(Vq[:, i * qn:(i + 1) * qn], A) for i in range(4)]
+                rq = [x for x, nt in rq if nt > 20 and np.isfinite(x)]
+                if len(rq) >= 3:
+                    ratio = max(ratio, max(rq))
             if ntest > 20 and np.isfinite(ratio):
                 ref = 0.45
                 if LIMB_LOG[0]:
@@ -476,8 +487,22 @@ class Ctx:
             if len(grid) > self.n:
                 continue
             rest = self.n - len(grid)
-            if (fam.startswith("12x1") or fam.startswith("6x1")) and rest:
+            if (fam.startswith("12x1") or fam.startswith("6x1") or fam.startswith("3x1")) and rest:
                 continue
+            if fam.startswith("3x1") and not STRIPS3[0]:
+                continue
+            if fam in ("3x1-v13", "3x1-v46"):
+                # precordiais não têm física entre si (nada fecha como Einthoven): só com rótulo
+                # V lido no início de alguma linha; sem isso a hipótese vence só por não ter
+                # termo de física a perder
+                vs = 0
+                for r in range(self.n):
+                    xs = float(self.x_of(r, 0.0)) / self.R
+                    w = self.label_near(r, xs - 25, xs + LABEL_HI[0])
+                    if w and max(w["dist"], key=w["dist"].get).startswith("V"):
+                        vs += 1
+                if vs < 2:
+                    continue
             if rest > 3:
                 continue
             spec = self._best_rhythm_names(grid, range(len(grid), self.n)) if rest else [list(r) for r in grid]
