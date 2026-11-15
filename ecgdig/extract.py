@@ -203,9 +203,7 @@ def _clean_grid_lines(B, R, frac=0.7):
         # grade de verdade: a maioria dos vizinhos a 5 mm (ou 1 mm). Linhas de base planas de
         # traçado longo também cobrem a página e ficam em múltiplos de 5 mm, mas a 25-40 mm
         near = np.mean((np.abs(d - 5.0) < 0.75) | (np.abs(d - 1.0) < 0.3))
-        # (com grade escura e folha empenada parte das linhas fica abaixo de 70% e os vizinhos
-        # achados saem a 10-15 mm: aceita também passo mediano de até 10 mm com >= 8 linhas)
-        if len(cen) < 5 or (near < 0.6 and not (len(cen) >= 8 and np.median(d) <= 10.5)):
+        if len(cen) < 5 or near < 0.6:
             continue
         for g in grp:
             lo, hi = max(0, g[0] - 1), g[-1] + 2
