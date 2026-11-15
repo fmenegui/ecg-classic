@@ -343,9 +343,18 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
     if Rr - L < 60 * R:
         return None
     occ = np.zeros(Rr - L, bool)
+    Bo = B
+    if GAP_IGNORE_TEXT[0]:
+        # rótulos ("V1".."V6") impressos dentro do vão: letras são componentes pequenas e
+        # soltas; o traço é uma componente longa. Só o traço ocupa o vão
+        n_, lab_, st_, _ = cv2.connectedComponentsWithStats(B.astype(np.uint8), connectivity=8)
+        small = (st_[:, cv2.CC_STAT_WIDTH] < 5 * R) & (st_[:, cv2.CC_STAT_HEIGHT] < 5 * R)
+        small[0] = False
+        if small.any():
+            Bo = B & ~small[lab_]
     for y in rows:
         a, b = max(0, int(y - half)), min(B.shape[0], int(y + half))
-        occ |= B[a:b, L:Rr].any(0)
+        occ |= Bo[a:b, L:Rr].any(0)
     d = np.diff(np.concatenate([[1], occ.astype(np.int8), [1]]))
     s_, e_ = np.nonzero(d == -1)[0], np.nonzero(d == 1)[0]
     gaps = [(L + a, L + b) for a, b in zip(s_, e_) if min_mm * R <= b - a <= max_mm * R and a > 0 and b < len(occ)]
@@ -364,7 +373,10 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
         if any(not (0.97 * w <= x <= w + 30 * R) for x in (widths[0], widths[-1])):
             return None
     elif (max(widths) - min(widths)) > 0.03 * np.median(widths):
-        return None
+        # 2 colunas: a primeira pode ter a sobra do pulso de calibração (como no caso de 3+)
+        if not (GAP_PULSE_SLACK[0] and 0 <= widths[0] - widths[1] <= 15 * R
+                and widths[0] - widths[1] - 0.03 * widths[1] <= 15 * R):
+            return None
     if min(widths) < 20 * R:
         return None
     return gaps
@@ -950,6 +962,8 @@ def _vote_x0(xl, xe, rad, span_px, R, weak=()):
 
 
 BASELINE_GUARD = [True]
+GAP_IGNORE_TEXT = [False]  # em teste
+GAP_PULSE_SLACK = [False]  # em teste
 RPULSE_RARE = [True]
 
 
