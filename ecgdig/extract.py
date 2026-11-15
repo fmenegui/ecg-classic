@@ -140,7 +140,13 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: flo
     if v.size < 100:
         B = D > 0.4
     else:
-        th = float(np.clip(threshold_otsu(v), 0.2, 0.6))
+        floor = 0.2
+        if OTSU_FLOOR_REL[0]:
+            # página toda de baixo contraste (gama alto, toner fraco): o traço mais escuro não
+            # passa de ~0,2; o piso fixo de 0,2 apagaria o traço inteiro. O piso passa a ser
+            # relativo ao contraste do próprio traço (p99), sempre acima do vazamento da grade.
+            floor = min(0.2, max(grid_level + 0.05, 0.35 * float(np.percentile(v, 99))))
+        th = float(np.clip(threshold_otsu(v), floor, 0.6))
         if scale != 1.0:
             # traço muito claro (opacidade baixa, toner fraco): o Otsu é decidido por texto e
             # QR pretos; tenta limiares menores, sempre acima do vazamento da grade
@@ -164,6 +170,7 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: flo
 
 
 GRID_LINE_CLEAN = [True]
+OTSU_FLOOR_REL = [True]
 
 
 def _clean_grid_lines(B, R, frac=0.7):
@@ -294,14 +301,14 @@ def pulse_rows(B: np.ndarray, R: float):
     return np.array(best[1]), best[2]
 
 
-def pulse_column(B: np.ndarray, R: float, P=None):
+def pulse_column(B: np.ndarray, R: float, P=None, all_groups: bool = False):
     """Coluna de pulsos de calibração que não emendam no traço (impressos à parte, na linha
     nominal, com o traço deslocado pelo nível DC da derivação). Exige >= 3 pulsos com o
     mesmo x (±2 mm), a mesma altura (±8%), a mesma largura (±1 mm) e passo vertical regular
     (±15%): um bloco de texto ou um QR code não forma isso. Devolve dict(x_start, x_end,
     height, feet) ou None."""
     P = find_pulses(B, R) if P is None else P
-    best = None
+    best, groups = None, []
     for p in P:
         h = p["foot"] - p["top"]; w = p["x_end"] - p["x_start"]
         grp = [q for q in P if abs(q["x_start"] - p["x_start"]) <= 2 * R
@@ -314,11 +321,16 @@ def pulse_column(B: np.ndarray, R: float, P=None):
         d = np.diff(feet)
         if d.min() < 8 * R or (d.max() - d.min()) > 0.15 * np.median(d):
             continue
+        cand = dict(x_start=float(np.median([q["x_start"] for q in grp])),
+                    x_end=float(np.median([q["x_end"] for q in grp])),
+                    height=float(np.median([q["foot"] - q["top"] for q in grp])), feet=feet)
+        if all_groups:
+            if not any(abs(g["x_start"] - cand["x_start"]) <= 3 * R for g in groups):
+                groups.append(cand)
+            continue
         if best is None or len(feet) > len(best["feet"]):
-            best = dict(x_start=float(np.median([q["x_start"] for q in grp])),
-                        x_end=float(np.median([q["x_end"] for q in grp])),
-                        height=float(np.median([q["foot"] - q["top"] for q in grp])), feet=feet)
-    return best
+            best = cand
+    return sorted(groups, key=lambda g: g["x_start"]) if all_groups else best
 
 
 def _runs(mask_1d):

@@ -29,6 +29,55 @@ def _bg_max(ch: np.ndarray, win_frac: float = 0.015, small: int = 900) -> np.nda
     return cv2.resize(s, (W, H), interpolation=cv2.INTER_LINEAR)
 
 
+PAPER_OTSU = [True]
+PAPER_CROP = [True]
+
+
+def _paper_otsu(lab, border):
+    labb = cv2.GaussianBlur(lab, (0, 0), 1.5)
+    db = np.linalg.norm(labb - np.median(border, 0), axis=2)
+    d8 = np.clip(db * 255 / max(1.0, float(db.max())), 0, 255).astype(np.uint8)
+    t, _ = cv2.threshold(d8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    fg = (d8 > t).astype(np.uint8)
+    fg = cv2.morphologyEx(fg, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    fg = cv2.morphologyEx(fg, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    n, lab_, st, _ = cv2.connectedComponentsWithStats(fg)
+    if n < 2:
+        return None
+    k = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
+    comp = (lab_ == k).astype(np.uint8)
+    cnts, _ = cv2.findContours(comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    c = max(cnts, key=cv2.contourArea)
+    hull = cv2.convexHull(c)
+    mm = np.zeros_like(comp)
+    cv2.fillPoly(mm, [hull], 1)
+    (_, _), (rw, rh), _ = cv2.minAreaRect(c)
+    if comp.sum() < 0.95 * mm.sum() or mm.sum() < 0.9 * rw * rh or mm.mean() < 0.03:
+        return None
+    return mm
+
+
+def paper_crop(img: np.ndarray, max_frac: float = 0.6, margin: float = 0.04):
+    """Recorta a foto à folha quando ela ocupa pouco do quadro (fundo largo em volta).
+    Devolve (img, (x0, y0)) — a origem do recorte; sem recorte, (img, (0, 0))."""
+    if not PAPER_CROP[0]:
+        return img, (0, 0)
+    m = paper_mask(img)
+    if m.all():
+        return img, (0, 0)
+    ys, xs = np.nonzero(m)
+    if not len(xs):
+        return img, (0, 0)
+    H, W = m.shape
+    x0, x1, y0, y1 = xs.min(), xs.max() + 1, ys.min(), ys.max() + 1
+    if (x1 - x0) * (y1 - y0) > max_frac * H * W:
+        return img, (0, 0)
+    mx, my = int(margin * (x1 - x0)), int(margin * (y1 - y0))
+    x0, y0 = max(0, x0 - mx), max(0, y0 - my)
+    x1, y1 = min(W, x1 + mx), min(H, y1 + my)
+    return img[y0:y1, x0:x1].copy(), (int(x0), int(y0))
+
+
 def paper_mask(img: np.ndarray) -> np.ndarray:
     """Máscara da folha. Se a borda da imagem tem a mesma cor do centro, é um scan
     (tudo é papel). Senão: GrabCut (borda = fundo, centro = papel) + envoltória convexa
@@ -65,11 +114,20 @@ def paper_mask(img: np.ndarray) -> np.ndarray:
     if n < 2:
         return np.ones((H, W), np.uint8)
     k = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    cnts, _ = cv2.findContours((lab_ == k).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    comp = (lab_ == k).astype(np.uint8)
+    cnts, _ = cv2.findContours(comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     hull = cv2.convexHull(max(cnts, key=cv2.contourArea))
     mm = np.zeros((h, w), np.uint8)
     cv2.fillPoly(mm, [hull], 1)
-    if mm.mean() < 0.15:  # segmentação implausível -> usa tudo
+    solid = comp.sum() / max(1, mm.sum())
+    if PAPER_OTSU[0] and (solid < 0.9 or mm.mean() < 0.15):
+        # GrabCut vazou para um fundo texturizado (papelão, madeira) ou a folha é pequena na
+        # foto: limiar de Otsu na distância de cor ao fundo da borda; aceita só um quadrilátero
+        # compacto (folha inteira, sem buracos).
+        mo = _paper_otsu(lab, border)
+        if mo is not None:
+            mm = mo
+    if mm.mean() < (0.03 if PAPER_OTSU[0] else 0.15):  # segmentação implausível -> usa tudo
         return np.ones((H, W), np.uint8)
     mm = cv2.erode(mm, np.ones((3, 3), np.uint8))
     return cv2.resize(mm, (W, H), interpolation=cv2.INTER_NEAREST)

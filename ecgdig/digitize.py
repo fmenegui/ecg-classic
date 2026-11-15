@@ -59,6 +59,7 @@ class Config:
     adaptive_threshold: bool = True  # traço claro: refaz a binarização com limiar menor
     pulse_rows: bool = True       # linhas de base pelos pulsos de calibração quando há >= 3
     row_chain: bool = True        # extensão da linha atravessa o vão entre colunas
+    paper_crop: bool = True       # recorta à folha quando ela ocupa < 60% do quadro
     max_side: int = 5000          # reduz imagens maiores que isso (memória)
     band_sp: float = 1.6        # faixa de busca do traço: +-band_sp espaçamentos de linha
     right_anchor: bool = True   # duração fora do padrão com fins concordantes: ancora no fim
@@ -570,6 +571,7 @@ ORIENT_T = [True]
 PULSE_CONSENSUS = [True]
 EXTRAP_CAP = [True]
 PULSE_COL = [True]
+PULSE_MID = [True]
 COL_GAP = [True]
 _PULSE_ROWS = [True]
 _ROW_BEAT_THR = [0.3]
@@ -931,6 +933,11 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     img = cv2.imread(image, cv2.IMREAD_COLOR) if isinstance(image, str) else image
     if img is None:
         raise FileNotFoundError(image)
+    if cfg.paper_crop:
+        # folha pequena num fundo largo (foto de longe): recorta antes de reduzir, para não
+        # gastar a resolução com o fundo
+        from .geometry import paper_crop
+        img, _ = paper_crop(img)
     if cfg.max_side and max(img.shape[:2]) > cfg.max_side:
         # imagem enorme (render de 600 dpi): reduz antes de tudo; a retificação trabalha a R
         # px/mm e uma folha A4 a 4000 px ainda tem ~13 px/mm. Evita estourar a memória.
@@ -1024,6 +1031,27 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                 B[ya_:yb_, xa_:int(xb_ + 3 * R)] = False
                 D[ya_:yb_, xa_:int(xb_ + 3 * R)] = 0
             ext = [row_extent(B, y, half, R) for y in rows]
+    # coluna de pulsos NO MEIO do traço (cada coluna de derivações começa com o seu pulso):
+    # marca o começo de uma coluna, não é sinal. Sai de B e D; o vão que fica entre o fim da
+    # coluna anterior e o começo da seguinte é tratado como vão entre colunas, logo abaixo.
+    if PULSE_MID[0] and len(rows) >= 3:
+        from .extract import pulse_column
+        ex_ = [e for e in ext if e]
+        if ex_:
+            s0 = float(np.median([e[0] for e in ex_])); e0 = float(np.median([e[1] for e in ex_]))
+            mids = [g for g in pulse_column(B, R, all_groups=True)
+                    if g["x_start"] > s0 + 30 * R and g["x_end"] < e0 - 30 * R
+                    and len(g["feet"]) >= max(3, len(rows) - 1)]
+            if mids:
+                B = B.copy(); D = D.copy()
+                for g in mids:
+                    xa_, xb_ = max(0, int(g["x_start"] - 1 * R)), int(g["x_end"] + 1 * R)
+                    h_ = g["height"]
+                    for f_ in g["feet"]:
+                        ya_, yb_ = max(0, int(f_ - h_ - 1 * R)), int(f_ + 1 * R)
+                        B[ya_:yb_, xa_:xb_] = False
+                        D[ya_:yb_, xa_:xb_] = 0
+                ext = [row_extent(B, y, half, R) for y in rows]
     # vão comum entre colunas: todas as linhas sem tinta na mesma faixa de x, em posições
     # que dividem o traço em colunas iguais. O tempo é contínuo de uma coluna à outra, então
     # o vão sai da imagem (B, D e a retificada) e o resto do programa vê um traço contínuo
