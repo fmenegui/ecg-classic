@@ -104,8 +104,12 @@ def estimate_psf(D, xs, yc, rad, n_max=400):
     return float(A), float(s)
 
 
+SYNTH_BUDGET = [4.0]
+SYNTH_MAXWORK = [3e7]
+
+
 def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_rad=2.0, order="sort",
-                 time_budget=4.0):
+                 time_budget=None):
     """Refina os pontos (xg, yg) da curva casando o traço renderizado com D.
     Devolve (x, y) novos, ordenados em x, ou os originais se o ajuste não for confiável."""
     xg = np.asarray(xg, float); yg = np.asarray(yg, float)
@@ -164,7 +168,9 @@ def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_
             S += np.bincount((py * w + px)[inside], weights=gv[inside], minlength=h * w)
         return S.reshape(h, w)
 
-    if K * len(ox) > 3e7:
+    if time_budget is None:
+        time_budget = SYNTH_BUDGET[0]
+    if K * len(ox) > SYNTH_MAXWORK[0]:
         return xg, yg  # curva longuíssima com borrão largo: custo proibitivo, ganho incerto
     import time as _time
     t_start = _time.time()

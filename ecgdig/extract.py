@@ -187,6 +187,11 @@ def _clean_grid_lines(B, R, frac=0.7):
         reg = np.mean(np.abs(d / 5.0 - np.round(d / 5.0)) < 0.15)
         if reg < 0.7:
             continue
+        # grade de verdade: a maioria dos vizinhos a 5 mm (ou 1 mm). Linhas de base planas de
+        # traçado longo também cobrem a página e ficam em múltiplos de 5 mm, mas a 25-40 mm
+        near = np.mean((np.abs(d - 5.0) < 0.75) | (np.abs(d - 1.0) < 0.3))
+        if len(cen) < 5 or near < 0.6:
+            continue
         for g in grp:
             lo, hi = max(0, g[0] - 1), g[-1] + 2
             if axis == 1:

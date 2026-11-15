@@ -59,7 +59,7 @@ class Config:
     adaptive_threshold: bool = True  # traço claro: refaz a binarização com limiar menor
     pulse_rows: bool = True       # linhas de base pelos pulsos de calibração quando há >= 3
     row_chain: bool = True        # extensão da linha atravessa o vão entre colunas
-    max_side: int = 4000          # reduz imagens maiores que isso (memória)
+    max_side: int = 5000          # reduz imagens maiores que isso (memória)
     band_sp: float = 1.6        # faixa de busca do traço: +-band_sp espaçamentos de linha
     right_anchor: bool = True   # duração fora do padrão com fins concordantes: ancora no fim
     extrap_cap: bool = True     # rampa de extrapolação na troca de derivação limitada a 2 mm
