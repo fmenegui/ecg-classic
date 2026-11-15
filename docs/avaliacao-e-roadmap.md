@@ -121,3 +121,57 @@ Onde ainda há espaço: as fotos (0006, 0009, 0010) quase não ganham com a sín
   - Perde no que já era bom: render −2,8 dB, foto de celular −3,1 dB, com algumas quebras estruturais (−15 dB).
 - **Melhor dos dois por imagem (oráculo):** 15,49 dB. Há ~0,9 dB a ganhar com uma fusão que decida sem gabarito.
 - **Próximos passos:** (1) usar a rede só na leitura do traço, mantendo o mapa clássico para linhas, layout, pulsos e tempo; (2) escolher ou fundir por imagem com critérios internos (Einthoven, II duplicado, ritmo comum entre linhas); (3) treino em GPU (dezenas de milhares de passos).
+
+## 6. PM-ECG-ID (PMcardio), 14–15/11/2026
+
+**A base:** Zenodo 13617673. São 6.600 imagens de 100 ECGs do PTB-XL em 60 cenários (fotos, JPEG, blur, brilho, contraste, padding, perspectiva, rotação, escala e variantes digitais).
+
+**A métrica:** a mesma do artigo da PMcardio. O alinhamento é de ±0,5 s, com a mediana removida, e cada derivação que falha conta como 0. O script é `benchmarks/pmcardio/compare.py`.
+
+**A referência publicada** (Demolder et al., medRxiv 2024.08.31.24312876) é PCC > 0,91, SNR > 12,5 dB e falha em 6,62% das derivações.
+
+### Amostra de 120 ECGs (2 por cenário)
+
+| versão | SNR | PCC | falha | SNR sem falhas |
+|---|---|---|---|---|
+| dev4 (início) | 4,60 | — | — | — |
+| dev11 | 5,82 | 0,567 | 20,1% | 7,28 |
+| dev16 | **6,99** | **0,632** | **15,7%** | **8,29** |
+| PMcardio (publicado, base inteira) | > 12,5 | > 0,91 | 6,6% | — |
+
+Ainda há ~5,5 dB de distância. Os números do artigo por grupo parecem calculados só sobre as digitalizações bem-sucedidas.
+
+### Correções clássicas desta rodada
+
+- **Particularidades do gerador PM:**
+  - vão comum entre colunas retirado da imagem;
+  - coluna de pulsos solta do traço apagada; ela dá o ganho;
+  - âncora no fim da linha para páginas de 10 s;
+  - rampa de extrapolação limitada.
+- **Layout:**
+  - evidência de fronteira relativa ao fundo da linha e pesada pela coerência entre linhas;
+  - física como log-verossimilhança com piso;
+  - Cabrera só com o rótulo −aVR;
+  - onda T depois do QRS como desempate de 0/180°.
+- **Escala resgatada:** a estimativa global às vezes toma o passo de 5 mm por 1 mm. O resgate ×5 acertava a escala, mas desligava homografia e refinamento. Agora as correspondências usam a fase de 1 mm ou de 5 mm na escala corrigida. Grade preta e pontilhada passaram de −3 para +9 dB e de −0,7 para +22 dB.
+- **Retificação não-rígida:** o polinômio cúbico extrapolava longe dos blocos medidos e deformava a folha. Agora ele fica no intervalo observado, mas só quando a escala local sai de 0,7–1,4. Em fotos com perspectiva forte a extrapolação é necessária. Uma página foi de −0,8 para 17 dB.
+- **Folha pequena sobre papelão:** quando o GrabCut vaza, entra Otsu na cor do fundo. A foto é recortada à folha quando ela ocupa menos de 30% do quadro.
+- **Traço claro:** o piso do Otsu passou a ser relativo ao contraste do traço. Com poucas linhas longas, testa-se um limiar menor, que fica se revelar mais linhas em passo regular.
+- **Pulsos só em linhas alternadas:** as linhas no meio do passo entram, desde que o passo seja ≥ 40 mm.
+- **Avaliador:** `max_tasks_per_child` travava o executor do Python 3.11 após 12 tarefas. Agora um executor novo é criado por lote, com prazo por imagem.
+
+### O que testar sempre
+
+Cada mudança mexe em várias páginas para os dois lados; uma página isolada muda vários dB com 1% de redimensionamento. A decisão é pelo agregado da amostra (~1 h local, 2 núcleos). Cada mudança passa também pelo PhysioNet (135 imagens, 14,57 dB) e pelo LITFL.
+
+Exemplo: relaxar a limpeza de linhas de grade ajudou no PM, mas apagou linhas de base no PhysioNet (11,1 → 3,4 dB) e foi revertido.
+
+### O que ainda falha (amostra)
+
+| família | falha |
+|---|---|
+| blur 31/41 | ~50% |
+| perspectiva 30/40 | ~35% |
+| fotos de grade preta pontilhada | restos da grade 5 mm viram linhas falsas |
+| 6x2 com colunas em alturas próprias ou derivações sobrepostas | — |
+| opacidade digital 0,15 | traço quase invisível |
