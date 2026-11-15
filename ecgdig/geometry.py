@@ -439,8 +439,8 @@ SCALE_X5 = [True]
 
 
 def _homography_sane(Hm, shape, tol=0.35):
-    """Escala local (det. do jacobiano) nos cantos e no centro do quadro dentro de ±tol da do
-    centro, e sem ponto no infinito: uma foto de folha plana não muda mais que isso."""
+    """Escala local (det. do jacobiano) nos cantos dentro de um fator 3 da do centro, e sem
+    ponto no infinito."""
     h, w = shape[:2]
     pts = [(0, 0), (w, 0), (w, h), (0, h), (w / 2, h / 2)]
 
@@ -456,11 +456,14 @@ def _homography_sane(Hm, shape, tol=0.35):
     if any(x is None or x <= 0 for x in d):
         return False
     c = d[-1]
-    return all(abs(x / c - 1) <= tol for x in d[:-1]) and 0.5 <= c <= 2.0
+    # foto com perspectiva forte muda a escala local até ~2x de um canto ao outro; só um
+    # fator > 3 (ou ponto no infinito) é degenerado
+    return all(1 / 3.0 <= x / c <= 3.0 for x in d[:-1]) and 0.33 <= c <= 3.0
 
 
-H_SANE = [True]
+H_SANE = [False]
 NONRIGID_CLIP = [True]
+CLIP_MARGIN = [0.1]
 
 
 def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, nonrigid: str = "cell",
@@ -827,13 +830,23 @@ def _refine_nonrigid(out, pap, R, return_map=False):
     yy, xx = np.mgrid[0:H:8, 0:W:8].astype(np.float32)
     At = _poly_terms((xx / W - 0.5).ravel(), (yy / H - 0.5).ravel())
     fx_, fy_ = At @ sol[0], At @ sol[1]
-    if NONRIGID_CLIP[0]:
+    # o polinômio deforma a folha (escala local fora de 0,7-1,4 em > 2% do papel)?
+    def _bad(fx, fy):
+        gx_ = (xx.ravel() + fx).reshape(xx.shape); gy_ = (yy.ravel() + fy).reshape(yy.shape)
+        dxu, dxv = np.gradient(gx_, 8.0, axis=1), np.gradient(gx_, 8.0, axis=0)
+        dyu, dyv = np.gradient(gy_, 8.0, axis=1), np.gradient(gy_, 8.0, axis=0)
+        det = dxu * dyv - dxv * dyu
+        pm_ = pap[::8, ::8][: det.shape[0], : det.shape[1]] > 0
+        if not pm_.any():
+            return False
+        return float(np.mean((det[pm_] < 0.7) | (det[pm_] > 1.4))) > 0.02
+    if NONRIGID_CLIP[0] and _bad(fx_, fy_):
         # o polinômio cúbico extrapola longe dos blocos bons (canto fora de foco, borda): o
         # deslocamento fica no intervalo que ele tem sobre os blocos medidos (o resíduo medido
         # é a fase mod 1 mm; nada fora desse intervalo foi observado)
         for f_, c_ in ((fx_, sol[0]), (fy_, sol[1])):
             v_ = A @ c_
-            np.clip(f_, v_.min() - 0.1 * R, v_.max() + 0.1 * R, out=f_)
+            np.clip(f_, v_.min() - CLIP_MARGIN[0] * R, v_.max() + CLIP_MARGIN[0] * R, out=f_)
     mx = (xx.ravel() + fx_).reshape(xx.shape).astype(np.float32)
     my = (yy.ravel() + fy_).reshape(yy.shape).astype(np.float32)
     mx = cv2.resize(mx, (W, H), interpolation=cv2.INTER_LINEAR) + 0  # aproximação densa
