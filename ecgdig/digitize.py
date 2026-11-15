@@ -352,12 +352,16 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
         small[0] = False
         if small.any():
             Bo = B & ~small[lab_]
+    occ_raw = np.zeros(Rr - L, bool)
     for y in rows:
         a, b = max(0, int(y - half)), min(B.shape[0], int(y + half))
         occ |= Bo[a:b, L:Rr].any(0)
+        occ_raw |= B[a:b, L:Rr].any(0)
     d = np.diff(np.concatenate([[1], occ.astype(np.int8), [1]]))
     s_, e_ = np.nonzero(d == -1)[0], np.nonzero(d == 1)[0]
-    gaps = [(L + a, L + b) for a, b in zip(s_, e_) if min_mm * R <= b - a <= max_mm * R and a > 0 and b < len(occ)]
+    gaps = [(L + a, L + b) for a, b in zip(s_, e_) if min_mm * R <= b - a <= max_mm * R and a > 0 and b < len(occ)
+            # um rótulo ocupa uma parte do vão; traço partido em pedaços (contraste baixo) ocupa quase todo
+            and occ_raw[a:b].mean() <= 0.5]
     if not gaps or len(gaps) > 5:
         return None
     # colunas entre os vãos de mesma largura
@@ -962,8 +966,8 @@ def _vote_x0(xl, xe, rad, span_px, R, weak=()):
 
 
 BASELINE_GUARD = [True]
-GAP_IGNORE_TEXT = [False]  # em teste
-GAP_PULSE_SLACK = [False]  # em teste
+GAP_IGNORE_TEXT = [True]
+GAP_PULSE_SLACK = [True]
 RPULSE_RARE = [True]
 
 
