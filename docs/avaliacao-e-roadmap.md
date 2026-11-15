@@ -143,6 +143,19 @@ Onde ainda há espaço: as fotos (0006, 0009, 0010) quase não ganham com a sín
 
 Ainda há ~5 dB de distância. O PhysioNet segue em 14,57 dB no dev20. Os números do artigo por grupo parecem calculados só sobre as digitalizações bem-sucedidas.
 
+### Base inteira (6.600 imagens, GitHub Actions, commit 7a60059)
+
+| | SNR | PCC | falha | SNR sem falhas |
+|---|---|---|---|---|
+| ecgdig (clássico) | 6,99 | 0,591 | 22,2% | 8,99 |
+| PMcardio (publicado) | > 12,5 | > 0,91 | 6,6% | — |
+
+Tabela completa por família e cenário: `docs/resultados/pm-ecg-id-7a60059.md`.
+
+- A falha na base inteira (22%) é bem maior que na amostra de 120 (12,6%): 807 ECGs falham inteiros, 487 deles com layout "rows" (nº de linhas detectadas não bate com nenhum formato). Só 24 por tempo esgotado.
+- Por formato, o 6x2 de uma página (31 dos 100 ECGs, 6,0 dB) responde por ~2 dB dos 5,5 dB que faltam; 3x4+1R (29 ECGs, 9,1 dB) ~1 dB; 3x4 de uma página (5,4 dB) ~0,9 dB; 12x1 (3,9 dB) ~0,8 dB.
+- ECGs com deriva de linha de base grande no próprio sinal (> 1,4 mV em 2,5 s) ficam ~5 dB abaixo: os traços sobem inclinados em relação à grade e as linhas vizinhas se cruzam; a detecção de linhas por projeção horizontal supõe linhas retas.
+
 ### Correções clássicas desta rodada
 
 - **Particularidades do gerador PM:**
