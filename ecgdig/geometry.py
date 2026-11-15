@@ -126,81 +126,6 @@ def _quad_complete(mm, lab, mc, mb):
     return ((mq > 0) | (mm > 0)).astype(np.uint8)
 
 
-PAPER_CONTENT = [True]
-
-
-def _cover_content(mm: np.ndarray, img: np.ndarray, side: int = 1000) -> np.ndarray:
-    """A máscara da folha não pode cortar a área quadriculada.
-
-    Quando a folha encosta na borda da foto, a "cor de fundo" tirada da borda mistura papel e
-    fundo, e a segmentação por cor às vezes fica com só uma parte da folha (metade da página,
-    um lado cortado em diagonal). O que a máscara deixa de fora e ainda assim (a) tem a cor do
-    papel de dentro da máscara e (b) tem a mesma densidade de linhas que o miolo dela é página
-    impressa: entra, e a máscara vira a envoltória convexa do conjunto. Fundo (papelão, mesa)
-    falha em (a) ou em (b) e fica de fora. mm: máscara em baixa resolução (0/1)."""
-    h0, w0 = mm.shape
-    H, W = img.shape[:2]
-    f = side / max(H, W)
-    sm = cv2.resize(img, (max(8, int(W * f)), max(8, int(H * f))), interpolation=cv2.INTER_AREA)
-    h, w = sm.shape[:2]
-    m = cv2.resize(mm, (w, h), interpolation=cv2.INTER_NEAREST) > 0
-    core = cv2.erode(m.astype(np.uint8), np.ones((31, 31), np.uint8)) > 0
-    if core.sum() < 0.02 * h * w:
-        return mm
-    gray = cv2.cvtColor(sm, cv2.COLOR_BGR2GRAY).astype(np.float32)
-    # o miolo da máscara tem de ser grade (periódico): se a máscara pegou fundo (papelão em
-    # volta de uma folha pequena), a "cor do papel" seria a do fundo e a extensão só pioraria
-    ys, xs = np.nonzero(core)
-    cy, cx = int(np.median(ys)), int(np.median(xs))
-    q = 128
-    y0, x0 = max(0, cy - q), max(0, cx - q)
-    patch = gray[y0:y0 + 2 * q, x0:x0 + 2 * q]
-    if min(patch.shape) < 96 or core[y0:y0 + 2 * q, x0:x0 + 2 * q].mean() < 0.8:
-        return mm
-    hp = patch - cv2.GaussianBlur(patch, (0, 0), 6)
-    hp = hp * np.outer(np.hanning(hp.shape[0]), np.hanning(hp.shape[1])).astype(np.float32)
-    Fm = np.abs(np.fft.fftshift(np.fft.fft2(hp)))
-    fy, fx = np.mgrid[0:hp.shape[0], 0:hp.shape[1]]
-    fr = np.hypot((fy - hp.shape[0] // 2) / hp.shape[0], (fx - hp.shape[1] // 2) / hp.shape[1])
-    band = (fr > 1 / 60.0) & (fr < 1 / 2.5)
-    if not band.any() or float(Fm[band].max()) < 15.0 * float(np.median(Fm[band])):
-        return mm
-    mag = np.hypot(cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3), cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3))
-    rel = mag / (cv2.GaussianBlur(gray, (0, 0), 10) + 8.0)          # contraste relativo (sombra não conta)
-    thr = float(np.percentile(rel[core], 70))
-    if thr <= 0:
-        return mm
-    dens = cv2.blur((rel > thr).astype(np.float32), (25, 25))       # ~30% dentro do miolo, por construção
-    ref = float(np.median(dens[core]))
-    lab = cv2.cvtColor(sm, cv2.COLOR_BGR2LAB).astype(np.float32)
-    labs = cv2.blur(lab, (9, 9))
-    pc = np.median(labs[core], axis=0)
-    chroma = np.hypot(labs[..., 1] - pc[1], labs[..., 2] - pc[2])
-    cand = (~m) & (dens > 0.6 * ref) & (chroma < 10.0) & (np.abs(labs[..., 0] - pc[0]) < 60.0)
-    cand = cv2.morphologyEx(cand.astype(np.uint8), cv2.MORPH_OPEN, np.ones((9, 9), np.uint8))
-    n, lb, st, _ = cv2.connectedComponentsWithStats(cand)
-    keep = np.zeros((h, w), np.uint8)
-    marea = float(m.sum())
-    for k in range(1, n):
-        if st[k, cv2.CC_STAT_AREA] >= 0.01 * marea:
-            keep[lb == k] = 1
-    # só o que encosta na máscara (a página é uma só)
-    touch = cv2.dilate(m.astype(np.uint8), np.ones((15, 15), np.uint8)) > 0
-    n, lb = cv2.connectedComponents(keep)
-    ok = np.zeros((h, w), np.uint8)
-    for k in range(1, n):
-        if (touch & (lb == k)).any():
-            ok[lb == k] = 1
-    if ok.sum() < 0.03 * marea:
-        return mm
-    both = ((ok > 0) | m).astype(np.uint8)
-    cnts, _ = cv2.findContours(both, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    hull = cv2.convexHull(np.vstack(cnts))
-    out = np.zeros((h, w), np.uint8)
-    cv2.fillPoly(out, [hull], 1)
-    return cv2.resize(out, (w0, h0), interpolation=cv2.INTER_NEAREST)
-
-
 def paper_mask(img: np.ndarray) -> np.ndarray:
     """Máscara da folha. Se a borda da imagem tem a mesma cor do centro, é um scan
     (tudo é papel). Senão: GrabCut (borda = fundo, centro = papel) + envoltória convexa
@@ -254,8 +179,6 @@ def paper_mask(img: np.ndarray) -> np.ndarray:
         return np.ones((H, W), np.uint8)
     if PAPER_QUAD[0]:
         mm = _quad_complete(mm, lab, mc, mb)
-    if PAPER_CONTENT[0]:
-        mm = _cover_content(mm, img)
     mm = cv2.erode(mm, np.ones((3, 3), np.uint8))
     return cv2.resize(mm, (W, H), interpolation=cv2.INTER_NEAREST)
 

@@ -79,7 +79,8 @@ def test_column_runs_igual_a_referencia(seed):
     got = column_runs(B, D, 5, 70, 3, 55)
     assert len(ref) == len(got)
     for cr, cg in zip(ref, got):
-        assert [(int(a), int(b)) for a, b, _, _ in cr] == [(a, b) for a, b, _, _ in cg]
+        assert [(int(a), int(b)) for a, b, _, _ in cr] == [(int(a), int(b)) for a, b, _, _ in cg]
+        assert all(isinstance(a, np.integer) and isinstance(b, np.integer) for a, b, _, _ in cg)
         np.testing.assert_allclose([c[2:] for c in cr], [c[2:] for c in cg], rtol=1e-12, atol=1e-12)
     # o Viterbi dá o mesmo caminho com os segmentos de uma ou de outra versão
     assert viterbi_track(ref, 40.0, 10.0, lw=3.0, w_edge=0.3) == viterbi_track(got, 40.0, 10.0, lw=3.0, w_edge=0.3)

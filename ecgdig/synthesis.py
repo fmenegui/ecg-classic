@@ -106,6 +106,7 @@ def estimate_psf(D, xs, yc, rad, n_max=400):
 
 SYNTH_BUDGET = [4.0]
 SYNTH_MAXWORK = [3e7]
+SYNTH_WORK = [2e8]      # pares ponto-pixel x iterações por segmento (limite determinístico)
 
 
 def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_rad=2.0, order="sort",
@@ -133,8 +134,9 @@ def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_
     cx0, cy0 = _densify(xg, yg, ds)
     K = len(cx0)
     rk = int(np.ceil(3 * sig)) + 1
-    oy, ox = np.mgrid[-rk:rk + 1, -rk:rk + 1]
-    oy = oy.ravel(); ox = ox.ravel()
+    o1 = np.arange(-rk, rk + 1)
+    n1 = len(o1)
+    npair = n1 * n1
     # região de trabalho: retângulo em volta da curva
     x0 = max(0, int(np.floor(cx0.min())) - rk - 2); x1 = min(W, int(np.ceil(cx0.max())) + rk + 3)
     y0 = max(0, int(np.floor(cy0.min())) - rk - 2); y1 = min(H, int(np.ceil(cy0.max())) + rk + 3)
@@ -150,28 +152,41 @@ def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_
     delta = np.zeros(K)
     lr = 0.5 / (a * a + 1e-9)
 
-    CH = max(1, 400000 // len(ox))  # pontos por bloco: limita a memória (~400 mil pares)
+    CH = max(1, 400000 // npair)  # pontos por bloco: limita a memória (~400 mil pares)
+    pat = (o1[:, None] * w + o1[None, :]).ravel()   # deslocamento do índice de cada vizinho (y, x)
+    inv2 = 0.5 / (sig * sig)
 
-    def _block(fx, fy):
-        ix = np.floor(fx).astype(int); iy = np.floor(fy).astype(int)
-        px = ix[:, None] + ox[None, :]; py = iy[:, None] + oy[None, :]
-        dx = px - fx[:, None]; dy = py - fy[:, None]
-        gv = a * np.exp(-0.5 * (dx * dx + dy * dy) / (sig * sig))
-        inside = (px >= 0) & (px < w) & (py >= 0) & (py < h)
-        return px, py, dx, dy, gv, inside
-
-    def render(cx, cy):
-        fx = cx - x0; fy = cy - y0
-        S = np.zeros(h * w)
+    def _blocks(fx, fy):
+        """Por bloco de pontos: índice do pixel, peso gaussiano e deslocamentos de cada par
+        (ponto, pixel vizinho). A gaussiana 2D é o produto de duas 1D (n1 exponenciais por
+        eixo em vez de n1*n1 por ponto), e os blocos de uma iteração servem ao desenho E ao
+        gradiente: antes eram recalculados do zero nas duas passadas."""
+        out = []
         for c0 in range(0, K, CH):
-            px, py, dx, dy, gv, inside = _block(fx[c0:c0 + CH], fy[c0:c0 + CH])
-            S += np.bincount((py * w + px)[inside], weights=gv[inside], minlength=h * w)
-        return S.reshape(h, w)
+            fxc, fyc = fx[c0:c0 + CH], fy[c0:c0 + CH]
+            ix = np.floor(fxc).astype(np.int64); iy = np.floor(fyc).astype(np.int64)
+            px = ix[:, None] + o1[None, :]                                  # (k, n1)
+            py = iy[:, None] + o1[None, :]
+            dx = px - fxc[:, None]; dy = py - fyc[:, None]
+            ex = np.exp(-inv2 * dx * dx); ey = a * np.exp(-inv2 * dy * dy)
+            if ix.min() >= rk and ix.max() < w - rk and iy.min() >= rk and iy.max() < h - rk:
+                # caso comum (a região tem margem em volta da curva): tudo dentro
+                idx = (iy * w + ix)[:, None] + pat[None, :]                 # (k, n1*n1)
+            else:
+                inx = (px >= 0) & (px < w); iny = (py >= 0) & (py < h)
+                ex = np.where(inx, ex, 0.0); ey = np.where(iny, ey, 0.0)    # fora da região: peso 0
+                idx = ((np.clip(py, 0, h - 1) * w)[:, :, None] + np.clip(px, 0, w - 1)[:, None, :]).reshape(len(ix), npair)
+            gv = (ey[:, :, None] * ex[:, None, :]).reshape(len(ix), npair)
+            out.append((c0, idx, gv, dx, dy))
+        return out
 
     if time_budget is None:
         time_budget = SYNTH_BUDGET[0]
-    if K * len(ox) > SYNTH_MAXWORK[0]:
+    if K * npair > SYNTH_MAXWORK[0]:
         return xg, yg  # curva longuíssima com borrão largo: custo proibitivo, ganho incerto
+    # orçamento determinístico (pares ponto-pixel por iteração x iterações): o mesmo resultado em
+    # qualquer máquina. O limite por relógio fica só como freio de emergência.
+    n_iter = int(max(8, min(n_iter, SYNTH_WORK[0] // max(1, K * npair))))
     import time as _time
     t_start = _time.time()
     prev = None
@@ -179,7 +194,11 @@ def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_
         if _time.time() - t_start > time_budget:
             break
         cx = cx0 + delta * nx; cy = cy0 + delta * ny
-        S = render(cx, cy)
+        blocks = _blocks(cx - x0, cy - y0)
+        S = np.zeros(h * w)
+        for _, idx, gv, _, _ in blocks:
+            S += np.bincount(idx.ravel(), weights=gv.ravel(), minlength=h * w)
+        S = S.reshape(h, w)
         M = 1.0 - np.exp(-S)
         r = np.where(tube, M - Dp, 0.0)
         loss = float((r * r).sum())
@@ -190,13 +209,12 @@ def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_
         prev = loss
         # dL/dc_k = sum_p 2 r(p) (1 - M(p)) * a g(p - c_k) * (p - c_k)/sig^2
         G2 = (2 * r * (1 - M)).ravel()
-        fx = cx - x0; fy = cy - y0
         grad = np.empty(K)
-        for c0 in range(0, K, CH):
-            px, py, dx, dy, gv, inside = _block(fx[c0:c0 + CH], fy[c0:c0 + CH])
-            rr = G2[np.where(inside, py * w + px, 0)] * inside
-            coef = rr * gv / (sig * sig)
-            grad[c0:c0 + CH] = (coef * dx).sum(1) * nx[c0:c0 + CH] + (coef * dy).sum(1) * ny[c0:c0 + CH]
+        for c0, idx, gv, dx, dy in blocks:
+            coef = (G2[idx] * gv / (sig * sig)).reshape(len(dx), n1, n1)   # (k, n1[y], n1[x])
+            gx = np.einsum("kji,ki->k", coef, dx)
+            gy = np.einsum("kji,kj->k", coef, dy)
+            grad[c0:c0 + len(gx)] = gx * nx[c0:c0 + len(gx)] + gy * ny[c0:c0 + len(gx)]
         # regularização de 2ª ordem (curva suave na escala de ~1 px de arco)
         lap = np.r_[0.0, delta[:-2] - 2 * delta[1:-1] + delta[2:], 0.0]
         delta = delta - lr * grad + lr * lam * a * a * lap

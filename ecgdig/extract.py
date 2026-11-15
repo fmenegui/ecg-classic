@@ -494,9 +494,7 @@ def detect_pulse(B, y0, half, xa, R, up=None, close_mm=0.8):
 def column_runs(B, D, ya, yb, xa, xb):
     """Lista por coluna de segmentos (top, bot, centróide, massa).
 
-    Todas as colunas de uma vez (antes era um laço por coluna em Python). Os valores saem
-    como int/float do Python: o Viterbi faz milhões de contas escalares com eles, e com
-    escalares do NumPy cada uma custa várias vezes mais."""
+    Todas as colunas de uma vez (antes era um laço por coluna em Python)."""
     sub = B[ya:yb, xa:xb]
     h, w = sub.shape
     if w == 0:
@@ -526,7 +524,9 @@ def column_runs(B, D, ya, yb, xa, xb):
     Dy = Dt.copy()
     Dy[:-1] *= np.tile(yy, w)
     cen = np.add.reduceat(Dy, idx)[0::2] / m
-    top = (a_ + ya).tolist(); bot = (b_ + ya).tolist(); cen = cen.tolist(); m = m.tolist()
+    # topo/base continuam np.int64, como antes: quem usa os segmentos depois faz contas com
+    # float32, e int do Python mudaria a precisão do resultado (float32 em vez de float64)
+    top = list(a_ + ya); bot = list(b_ + ya); cen = cen.tolist(); m = m.tolist()
     cnt = np.bincount(c_, minlength=w).tolist()
     out = []
     i = 0
@@ -570,6 +570,8 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
         return []
     base, R = float(base), float(R)
     others = [float(o) for o in others]
+    # escalares do Python dentro do laço (mesmos valores; os do NumPy custam várias vezes mais)
+    runs = [[(int(t), int(b), float(c), float(m)) for (t, b, c, m) in col] for col in runs]
     cs_br = None
     if D is not None and bridge_ref is not None and bridge_ref > 0 and n > 0:
         cs_br = _bridge_table(D, xa, n, R, bridge_floor)
