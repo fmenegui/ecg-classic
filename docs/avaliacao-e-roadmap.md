@@ -136,10 +136,12 @@ Onde ainda há espaço: as fotos (0006, 0009, 0010) quase não ganham com a sín
 |---|---|---|---|---|
 | dev4 (início) | 4,60 | — | — | — |
 | dev11 | 5,82 | 0,567 | 20,1% | 7,28 |
-| dev16 | **6,99** | **0,632** | **15,7%** | **8,29** |
+| dev16 | 6,99 | 0,632 | 15,7% | 8,29 |
+| dev18 | 7,14 | 0,635 | 16,1% | 8,51 |
+| dev20 | **7,50** | **0,653** | **13,1%** | **8,63** |
 | PMcardio (publicado, base inteira) | > 12,5 | > 0,91 | 6,6% | — |
 
-Ainda há ~5,5 dB de distância. Os números do artigo por grupo parecem calculados só sobre as digitalizações bem-sucedidas.
+Ainda há ~5 dB de distância. O PhysioNet segue em 14,57 dB no dev20. Os números do artigo por grupo parecem calculados só sobre as digitalizações bem-sucedidas.
 
 ### Correções clássicas desta rodada
 
@@ -158,6 +160,8 @@ Ainda há ~5,5 dB de distância. Os números do artigo por grupo parecem calcula
 - **Folha pequena sobre papelão:** quando o GrabCut vaza, entra Otsu na cor do fundo. A foto é recortada à folha quando ela ocupa menos de 30% do quadro.
 - **Traço claro:** o piso do Otsu passou a ser relativo ao contraste do traço. Com poucas linhas longas, testa-se um limiar menor, que fica se revelar mais linhas em passo regular.
 - **Pulsos só em linhas alternadas:** as linhas no meio do passo entram, desde que o passo seja ≥ 40 mm.
+- **Deriva de linha de base:** em fotos amassadas, o rastreio que salta de linha ou segue um vinco deixa um desvio lento de 1–3 mV. Onde a mediana móvel de 0,6 s anda mais de 1,5 mV, ela é subtraída. A deriva é medida longe das bordas do trecho; nas bordas a mediana segue o QRS e disparava em ECGs limpos do PhysioNet (−0,2 dB). Fotos: 4,7 → 5,9 dB.
+- **Blur:** quando não sobra linha, o nível da grade é recalculado sem a sombra do traço borrado. Ganhos raros (2,5 e 40 mm/mV) só valem pelo pulso impresso à esquerda; o fim do traço borrado virava um "pulso" de 2,5 mm/mV (uma página −6,7 → +4,3 dB).
 - **Avaliador:** `max_tasks_per_child` travava o executor do Python 3.11 após 12 tarefas. Agora um executor novo é criado por lote, com prazo por imagem.
 
 ### O que testar sempre
