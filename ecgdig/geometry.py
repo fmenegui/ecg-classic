@@ -57,8 +57,10 @@ def _paper_otsu(lab, border):
     return mm
 
 
-def paper_crop(img: np.ndarray, max_frac: float = 0.6, margin: float = 0.04):
-    """Recorta a foto à folha quando ela ocupa pouco do quadro (fundo largo em volta).
+def paper_crop(img: np.ndarray, max_frac: float = 0.3, margin: float = 0.12):
+    """Recorta a foto à folha quando ela ocupa pouco do quadro (fundo largo em volta, foto de
+    longe). A margem deixa o fundo na borda do recorte: a máscara da folha depende disso
+    (recorte justo faz a borda parecer papel e a página vira "scan", com fundo e tudo).
     Devolve (img, (x0, y0)) — a origem do recorte; sem recorte, (img, (0, 0))."""
     if not PAPER_CROP[0]:
         return img, (0, 0)
