@@ -346,31 +346,66 @@ def _tile_phases(Gc: np.ndarray, T: float, tile: int, step: int):
 
 
 def _unwrap_quality(ph: np.ndarray, q: np.ndarray, T: float, qmin: float) -> np.ndarray:
-    """Unwrapping 2D guiado por qualidade (flood fill priorizado)."""
+    """Unwrapping 2D guiado por qualidade (flood fill priorizado).
+
+    A semente é o melhor bloco da MAIOR região conexa de blocos bons. Antes era o melhor bloco
+    da página, que às vezes fica numa ilha (margem, rodapé, moldura): o preenchimento cobria
+    10-30 blocos de 600 e a homografia saía de uma dúzia de pontos amontoados (página
+    cisalhada ou "escala implausível"). Se a maior região ainda deixa de fora mais de 30% dos
+    blocos bons, as outras regiões entram também, com o inteiro de cada uma escolhido pelo
+    plano ajustado ao que já foi desembrulhado."""
     h, w = ph.shape
     out = np.full((h, w), np.nan)
     ok = q >= qmin
     if not ok.any():
         return out
-    s = np.unravel_index(np.argmax(np.where(ok, q, -1)), q.shape)
+    n, lab = cv2.connectedComponents(ok.astype(np.uint8), connectivity=4)
+    sizes = np.bincount(lab.ravel(), minlength=n)
+    sizes[0] = 0
+    order = [int(k) for k in np.argsort(-sizes) if sizes[k] > 0]
+
+    def flood(s):
+        heap = []
+
+        def push(i, j):
+            for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                a, b = i + di, j + dj
+                if 0 <= a < h and 0 <= b < w and ok[a, b] and np.isnan(out[a, b]):
+                    heapq.heappush(heap, (-q[a, b], a, b, i, j))
+
+        push(*s)
+        while heap:
+            _, a, b, i, j = heapq.heappop(heap)
+            if not np.isnan(out[a, b]):
+                continue
+            d = ph[a, b] - out[i, j]
+            d -= T * np.round(d / T)
+            out[a, b] = out[i, j] + d
+            push(a, b)
+
+    k0 = order[0]
+    s = np.unravel_index(np.argmax(np.where(lab == k0, q, -1)), q.shape)
     out[s] = ph[s]
-    heap = []
-
-    def push(i, j):
-        for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            a, b = i + di, j + dj
-            if 0 <= a < h and 0 <= b < w and ok[a, b] and np.isnan(out[a, b]):
-                heapq.heappush(heap, (-q[a, b], a, b, i, j))
-
-    push(*s)
-    while heap:
-        _, a, b, i, j = heapq.heappop(heap)
-        if not np.isnan(out[a, b]):
-            continue
-        d = ph[a, b] - out[i, j]
-        d -= T * np.round(d / T)
-        out[a, b] = out[i, j] + d
-        push(a, b)
+    flood(s)
+    if sizes[k0] >= 0.7 * ok.sum():
+        return out
+    ii, jj = np.mgrid[0:h, 0:w]
+    for k in order[1:]:
+        if sizes[k] < 3:
+            break
+        m = np.isfinite(out)
+        if m.sum() < 6 or np.ptp(ii[m]) < 2 or np.ptp(jj[m]) < 2:
+            break
+        A = np.stack([np.ones(m.sum()), ii[m], jj[m]], 1).astype(float)
+        c = np.linalg.lstsq(A, out[m], rcond=None)[0]
+        # só extrapola o inteiro se o que já foi desembrulhado for mesmo um plano (scan, foto
+        # sem dobra): em papel amassado o plano erra o período e a região entraria deslocada
+        if float(np.sqrt(np.mean((A @ c - out[m]) ** 2))) > T / 8.0:
+            break
+        s = np.unravel_index(np.argmax(np.where(lab == k, q, -1)), q.shape)
+        pred = c[0] + c[1] * s[0] + c[2] * s[1]
+        out[s] = ph[s] + T * np.round((pred - ph[s]) / T)
+        flood(s)
     return out
 
 

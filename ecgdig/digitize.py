@@ -371,11 +371,38 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
     return gaps
 
 
-def _rows_pulses(B, pap, R):
+def _rows_from_hint(B, R, rows, cov):
+    """Linhas já conhecidas (estrutura por colunas realinhada): só extensões e pulsos, sem as
+    regras que descartam linhas."""
+    peaks = np.asarray(rows, dtype=int)
+    spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else 40 * R
+    half = 0.45 * float(np.min(np.diff(peaks))) if len(peaks) > 1 else 0.45 * spacing
+    ext = [row_extent(B, y, half, R) for y in peaks]
+    pulses = []
+    for i, (y, e) in enumerate(zip(peaks, ext)):
+        up_sp = (y - peaks[i - 1]) if i > 0 else spacing
+        try:
+            p_ = detect_pulse(B, y, half, e[0], R, up=max(half, min(0.95 * up_sp, 25 * R))) if e else None
+        except Exception:  # noqa: BLE001
+            p_ = None
+        pulses.append(p_)
+    ok = [p for p in pulses if p is not None]
+    if len(ok) >= 2:   # pulsos valem se concordarem em altura e coluna
+        h0 = float(np.median([p["foot"] - p["top"] for p in ok])); x0_ = float(np.median([p["x_start"] for p in ok]))
+        pulses = [p if (p is not None and abs((p["foot"] - p["top"]) - h0) <= 0.2 * h0 and abs(p["x_start"] - x0_) <= 3 * R)
+                  else None for p in pulses]
+    else:
+        pulses = [None] * len(pulses)
+    return peaks, cov, ext, pulses, spacing
+
+
+def _rows_pulses(B, pap, R, rows_hint=None):
     """Linhas de traçado candidatas (sem texto/bordas), extensões e pulsos."""
     H, W = B.shape
     _prow_set = [None]
     peaks, cov = find_rows(B, R)
+    if rows_hint is not None:
+        return _rows_from_hint(B, R, rows_hint, cov)
     if len(peaks) == 0:
         return peaks, cov, [], [], 40 * R
     tl, raw = trace_likeness(B, peaks, R, return_raw=True)
@@ -1026,8 +1053,12 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     from .colalign import col_align, ENABLED as _CA
     _CA[0] = cfg.col_align
     rect, pap, D, B, col_info = col_align(rect, pap, D, B, R)
+    # estrutura por colunas achada pelos trilhos: as linhas (já realinhadas) e o número de
+    # colunas são conhecidos; não se procura de novo
+    rows_hint = col_info["ref"] if (col_info and col_info.get("how") == "trilhos") else None
+    col_hint = len(col_info["cols"]) if rows_hint is not None else None
 
-    rows_all, cov, ext_all, pulses_all, spacing = _rows_pulses(B, pap, R)
+    rows_all, cov, ext_all, pulses_all, spacing = _rows_pulses(B, pap, R, rows_hint)
 
     def _weak(rows_, ext_):
         # quase nada de traço: < 2 linhas ou linhas curtas (< 40 mm)
@@ -1383,6 +1414,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         layout = cfg.layout if isinstance(cfg.layout, str) else "custom"
     else:
         ctx = _LayoutCtx(B, D, rows, pulses, R, x0_r, sc_r, speed, duration, qfull, base_q, levels)
+        ctx.col_hint = col_hint
         if col_cut:
             # o vão tirado da imagem era a fronteira de coluna mais forte que existe
             for r_ in range(len(rows)):
@@ -1705,7 +1737,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         quality = dict(error=f"{type(e).__name__}: {e}")
 
     gains_seg = {f"{r_}:{nm}": seg_gain(r_, nm) for r_, row in enumerate(rows_spec[:len(levels)]) for nm in row}
-    res = dict(signals=sig, fs=cfg.fs, leads=list(names), layout=layout, layout_rows=rows_spec,
+    # linhas que a hipótese de layout deixou de fora (moldura, régua) não aparecem no resultado
+    res = dict(signals=sig, fs=cfg.fs, leads=list(names), layout=layout, layout_rows=[r_ for r_ in rows_spec if r_],
                layout_info=layout_info, rotation=str(rot),
                gain_mm_per_mv=levels[0][0] if levels else None, gains=gains_seg, duration_s=duration,
                speed_mm_per_s=speed_nominal, speed_source=speed_src, duration_assumed=duration_assumed,
@@ -1714,7 +1747,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                grid_snap_mm=ginfo.get("major_snap_mm"), grid_fine_mm=ginfo.get("fine_snap_mm"), line_width_px=lw, line_width_h_px=2 * rad_h,
                pulses_found=sum(p is not None for p in pulses),
                pulses_right=sum(p is not None for p in rpulses), gain_rows_inferred=gain_flags,
-               quality=quality)
+               quality=quality, col_struct=(dict(cols=col_info["cols"], how=col_info.get("how")) if col_info else None))
     if return_debug:
         dbg = rect.copy()
         for xs, yi, valid in traces_dbg:
@@ -1733,6 +1766,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         res["rectified"] = rect
         res["jobs"] = jobs_dbg
         res["ink"] = D
+        res["bin"] = B
     return res
 
 

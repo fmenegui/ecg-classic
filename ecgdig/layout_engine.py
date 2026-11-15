@@ -31,6 +31,8 @@ from . import ocr
 FAMILIES = ["3x4", "3x4-cabrera", "6x2", "6x2-cabrera", "12x1", "12x1-cabrera",
             "6x1-prec", "6x1-limb", "6x1-limb-cabrera"]
 STRIPS3 = [True]
+ROW_DROP = [True]    # hipóteses que deixam de fora linhas das pontas (moldura, régua)
+DROP_COST = [4.0]
 if STRIPS3[0]:
     FAMILIES += ["3x1-limb", "3x1-aug", "3x1-v13", "3x1-v46"]
 FRACS = {1: [], 2: [0.5], 3: [1 / 3, 2 / 3], 4: [0.25, 0.5, 0.75]}
@@ -336,6 +338,8 @@ class Ctx:
         segs = []
         for r, row in enumerate(spec):
             k = len(row)
+            if k == 0:
+                continue      # linha fora da hipótese (moldura, régua): não pontua
             for c, name in enumerate(row):
                 segs.append((r, k, c, name))
             # fronteiras
@@ -480,13 +484,18 @@ class Ctx:
             spec.append([best_n])
         return spec
 
-    def candidates(self):
+    def candidates(self, a=0, b=None):
+        """Hipóteses de layout para as linhas [a, b); as de fora ficam vazias (descartadas)."""
+        n_all = self.n
+        b = n_all if b is None else b
+        pre, pos = [[] for _ in range(a)], [[] for _ in range(n_all - b)]
+        n_eff = b - a
         out = []
         for fam in FAMILIES:
             grid = LIBRARY[fam]
-            if len(grid) > self.n:
+            if len(grid) > n_eff:
                 continue
-            rest = self.n - len(grid)
+            rest = n_eff - len(grid)
             if (fam.startswith("12x1") or fam.startswith("6x1") or fam.startswith("3x1")) and rest:
                 continue
             if fam.startswith("3x1") and not STRIPS3[0]:
@@ -496,7 +505,7 @@ class Ctx:
                 # V lido no início de alguma linha; sem isso a hipótese vence só por não ter
                 # termo de física a perder
                 vs = 0
-                for r in range(self.n):
+                for r in range(a, b):
                     xs = float(self.x_of(r, 0.0)) / self.R
                     w = self.label_near(r, xs - 25, xs + LABEL_HI[0])
                     if w and max(w["dist"], key=w["dist"].get).startswith("V"):
@@ -505,9 +514,12 @@ class Ctx:
                     continue
             if rest > 3:
                 continue
-            spec = self._best_rhythm_names(grid, range(len(grid), self.n)) if rest else [list(r) for r in grid]
+            g_ = pre + [list(r) for r in grid]
+            spec = self._best_rhythm_names(g_, range(a + len(grid), b)) if rest else g_
             name = fam if not rest else f"{fam.split('-')[0]}+{rest}" + ("-cabrera" if "cabrera" in fam else "")
-            out.append((name, spec))
+            out.append((name, spec + pos))
+        if a or pos:
+            return out
         # hipótese livre: k por linha pelas fronteiras, nomes pelo OCR
         free = []
         for r in range(self.n):
@@ -528,10 +540,37 @@ class Ctx:
         return out
 
     def choose(self):
-        cands = self.candidates()
+        cands = [(nm, sp, 0.0) for nm, sp in self.candidates()]
+        if ROW_DROP[0] and not getattr(self, "col_hint", None) and self.n >= 3:
+            # linhas das pontas podem não ser traçado (moldura da grade, régua, faixa de texto):
+            # a hipótese sem elas concorre com as outras e paga um custo. Quem decide é a
+            # pontuação de sempre (rótulos, fronteiras, Einthoven/Goldberger, duplicatas)
+            # pulso de calibração confiável = concorda em altura e coluna com pelo menos outro
+            okp = [p for p in self.pulses if p is not None]
+            trusted = [False] * self.n
+            if len(okp) >= 2:
+                h0 = float(np.median([p["foot"] - p["top"] for p in okp])); x0_ = float(np.median([p["x_start"] for p in okp]))
+                trusted = [p is not None and abs((p["foot"] - p["top"]) - h0) <= 0.15 * h0 and abs(p["x_start"] - x0_) <= 3 * self.R
+                           for p in self.pulses]
+            for a, nb in ((1, 0), (0, 1), (1, 1)):
+                drop = list(range(a)) + list(range(self.n - nb, self.n))
+                if self.n - len(drop) < 2:
+                    continue
+                # custo fixo por linha descartada, maior se ela tem pulso de calibração confiável.
+                # Não há medida segura de "parece traçado": a moldura herda os QRS da linha
+                # vizinha e uma derivação plana é quase reta
+                cost = sum(DROP_COST[0] + (3.0 if trusted[r] else 0.0) for r in drop)
+                cands += [(nm, sp, cost) for nm, sp in self.candidates(a, self.n - nb)]
         scored = []
-        for name, spec in cands:
+        for name, spec, cost in cands:
             sc, parts = self.score(spec)
+            sc -= cost
+            # número de colunas já medido na imagem (colunas com alturas próprias): os layouts
+            # com esse número de colunas ganham, os outros perdem
+            kh = getattr(self, "col_hint", None)
+            if kh:
+                kmax = max(len(row) for row in spec)
+                sc += 8.0 if kmax == kh else -8.0
             if name != "livre":
                 sc += 3.0  # prior para formatos de fabricante (a hipótese livre depende só do OCR)
                 if "cabrera" in name:
@@ -569,4 +608,5 @@ class Ctx:
                 conf = min(conf, 0.55)
                 warn = f"nenhum rótulo lido; {best[1]} decidido só pela fisiologia (alternativa: {alts[0][1]})"
         return dict(name=best[1], spec=best[2], score=best[0], parts=best[3], confidence=conf,
-                    warning=warn, ranking=[(round(s, 2), n) for s, n, _, _ in scored[:6]])
+                    warning=warn, ranking=[(round(s, 2), n) for s, n, _, _ in scored[:6]],
+                    dropped=[r for r, row in enumerate(best[2]) if not row])

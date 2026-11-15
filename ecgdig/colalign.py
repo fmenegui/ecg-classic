@@ -18,6 +18,7 @@ import cv2
 from scipy.signal import find_peaks
 
 ENABLED = [True]
+STRUCT = [True]     # estrutura por trilhos quando não há vãos em branco entre as colunas
 
 
 def _gaps(B, R, ya, yb):
@@ -63,6 +64,154 @@ def _col_rows(B, R, xa, xb):
     return pk
 
 
+def _win_peaks(B, R, xa, xb, ya, yb, dist_mm=3.5, with_height=False):
+    """Linhas de base numa janela estreita: picos da cobertura horizontal (traço dilatado 2 mm)."""
+    k = int(2 * R) | 1
+    Bd = cv2.dilate(B[ya:yb, xa:xb].astype(np.uint8), np.ones((k, 1), np.uint8))
+    cov = cv2.GaussianBlur(Bd.mean(1).astype(np.float64).reshape(-1, 1), (0, 0), 0.6 * R).ravel()
+    if cov.max() <= 0.05:
+        return np.array([], int)
+    pk, pr = find_peaks(cov, distance=int(dist_mm * R), height=max(0.3 * cov.max(), 0.25), prominence=0.12 * cov.max())
+    if with_height:
+        return pk + ya, pr["peak_heights"]
+    return pk + ya
+
+
+def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
+    """Estrutura por colunas sem depender de vãos em branco.
+
+    A página é varrida em janelas de 20 mm; em cada uma, os picos da cobertura horizontal são
+    as linhas de base locais. Picos que se repetem na mesma altura de janela em janela formam
+    um trilho (um trecho de derivação: altura, início, fim). Numa página comum os trilhos
+    atravessam a largura toda. Quando cada coluna tem as suas alturas, os trilhos começam e
+    terminam nas trocas de coluna: os pontos em que vários trilhos acabam e outros começam
+    são as fronteiras, e cada coluna fica com as suas linhas.
+
+    Devolve (cols, P) com cols = [(xa, xb), ...] e P (colunas, linhas) = alturas, ou None
+    quando a página é comum (ou a estrutura não é clara)."""
+    H, W = B.shape
+    prof = B.mean(1)
+    ys = np.nonzero(prof > 0.05 * prof.max())[0] if prof.max() > 0 else []
+    xsum = B.sum(0)
+    xs = np.nonzero(xsum > 0)[0]
+    if len(ys) < 10 or len(xs) < 100 * R:
+        return None
+    ya, yb = int(ys[0]), int(ys[-1]) + 1
+    L, Rr = int(xs[0]), int(xs[-1]) + 1
+    win, step, tol = int(win_mm * R), int(step_mm * R), link_mm * R
+    x0s = list(range(L, max(L + 1, Rr - win + 1), step))
+    if len(x0s) < 8:
+        return None
+    peaks = [_win_peaks(B, R, x, x + win, ya, yb) for x in x0s]
+    # trilhos: encadeia picos de janelas consecutivas (tolera 1 janela sem o pico)
+    tracks = []   # dict(ys=[...], j0, j1)
+    open_ = []
+    for j, pk in enumerate(peaks):
+        used = set()
+        for t in open_:
+            if j - t["j1"] > 2:
+                continue
+            y_ = float(np.median(t["ys"][-4:]))
+            cand = [(abs(float(v) - y_), i) for i, v in enumerate(pk) if i not in used and abs(float(v) - y_) <= tol]
+            if cand:
+                _, i = min(cand)
+                used.add(i); t["ys"].append(float(pk[i])); t["j1"] = j
+        open_ = [t for t in open_ if j - t["j1"] <= 2]
+        for i, v in enumerate(pk):
+            if i not in used:
+                t = dict(ys=[float(v)], j0=j, j1=j)
+                tracks.append(t); open_.append(t)
+    nmin = max(3, int(round((min_len_mm - win_mm) / step_mm)) + 1)
+    tr = [dict(y=float(np.median(t["ys"])), xa=x0s[t["j0"]], xb=x0s[t["j1"]] + win, n=t["j1"] - t["j0"] + 1)
+          for t in tracks if t["j1"] - t["j0"] + 1 >= nmin]
+    # só trilhos de pelo menos 45 mm definem a estrutura (rodapé, QR e platôs de onda S/T
+    # dão trilhos curtos)
+    tr = [t for t in tr if t["xb"] - t["xa"] >= 45 * R]
+    if len(tr) < 4:
+        return None
+    # extensão do traçado pelos próprios trilhos (tinta solta nas margens não conta)
+    L, Rr = min(t["xa"] for t in tr), max(t["xb"] for t in tr)
+    span = Rr - L
+    full = [t for t in tr if t["xb"] - t["xa"] >= 0.85 * span]
+    part = [t for t in tr if t["xb"] - t["xa"] < 0.85 * span]
+    if len(part) < 4 or len(part) < len(full):
+        return None        # página comum: as linhas atravessam a largura
+    # fronteiras: pontos do interior em que trilhos parciais acabam/começam, agrupados
+    ev = sorted([(t["xb"] - win / 2, 0) for t in part if t["xb"] < Rr - 0.08 * span] +
+                [(t["xa"] + win / 2, 1) for t in part if t["xa"] > L + 0.08 * span])
+    if not ev:
+        return None
+    groups = [[ev[0]]]
+    for e in ev[1:]:
+        if e[0] - groups[-1][-1][0] <= 0.75 * win:
+            groups[-1].append(e)
+        else:
+            groups.append([e])
+    # uma fronteira tem trilho acabando E trilho começando (basta uma linha mudar de altura)
+    cuts = [float(np.median([e[0] for e in g])) for g in groups
+            if len(g) >= 2 and any(k == 0 for _, k in g) and any(k == 1 for _, k in g)]
+    if not cuts or len(cuts) > 5:
+        return None
+    edges = [L] + cuts + [Rr]
+    if np.diff(edges).min() < 35 * R:
+        return None
+    y_lo = max(0, int(min(t["y"] for t in tr) - 3 * R)); y_hi = min(H, int(max(t["y"] for t in tr) + 3 * R))
+
+    def rows_of(ca, cb, frac, n=None):
+        m = 0.5 * (1.0 - frac) * (cb - ca)
+        pk, hh = _win_peaks(B, R, int(ca + m), int(cb - m), y_lo, y_hi, with_height=True)
+        if n is not None and len(pk) > n:
+            # platô longo de ST/onda S dá um pico a mais: ficam as n alturas de maior cobertura
+            pk = np.sort(pk[np.argsort(-hh)[:n]])
+        return pk.astype(float)
+
+    # linhas de cada coluna medidas no miolo dela (longe das fronteiras, ainda imprecisas)
+    rows_c = [rows_of(edges[i], edges[i + 1], 0.5) for i in range(len(edges) - 1)]
+    cnt = [len(r_) for r_ in rows_c]
+    n = int(np.bincount(cnt).argmax())
+    if n < 2 or min(cnt) < n or sum(c == n for c in cnt) < 0.5 * len(cnt):
+        return None
+    # só estruturas que existem: 2 colunas de 3 a 9 linhas (6x2 e variantes com ritmo) ou
+    # 4 colunas de 3 a 6 (3x4 e variantes). O resto é traçado confuso, não coluna
+    K = len(cnt)
+    if not ((K == 2 and 3 <= n <= 9) or (K == 4 and 3 <= n <= 6)):
+        return None
+    rows_c = [rows_of(edges[i], edges[i + 1], 0.5, n) for i in range(len(edges) - 1)]
+    P = np.array(rows_c, float)
+    if np.abs(P - np.median(P, 0)[None, :]).max() < 3 * R:
+        return None        # mesmas alturas em todas as colunas: nada a realinhar
+    cols_c = [(edges[i], edges[i + 1]) for i in range(len(edges) - 1)]
+    # corte fino de cada fronteira: a coluna x em que a tinta troca das alturas de uma coluna
+    # para as da outra (soma, nas linhas que mudam de altura, de tinta na faixa de cá menos a de lá)
+    fine = []
+    for c in range(len(cols_c) - 1):
+        xc = int(cuts[c]); lo, hi = max(0, int(xc - 1.5 * win)), min(W, int(xc + 1.5 * win))
+        sc = np.zeros(hi - lo)
+        hb = int(1.0 * R)
+        for i in range(n):
+            y1, y2 = int(P[c, i]), int(P[c + 1, i])
+            if abs(y1 - y2) < 2.5 * R:
+                continue
+            a_ = B[max(0, y1 - hb):y1 + hb + 1, lo:hi].any(0).astype(float)
+            b_ = B[max(0, y2 - hb):y2 + hb + 1, lo:hi].any(0).astype(float)
+            sc += a_ - b_
+        if not sc.any():
+            fine.append(xc); continue
+        # corte k maximiza soma(sc[:k]) - soma(sc[k:])
+        cs = np.cumsum(sc)
+        obj = 2 * np.r_[0.0, cs] - cs[-1]
+        fine.append(lo + int(np.argmax(obj)))
+    bounds = [0] + fine + [W]
+    cols = [(int(bounds[i]), int(bounds[i + 1])) for i in range(len(bounds) - 1)]
+    # alturas finais com as fronteiras finas (miolo de 70%); se a contagem mudar, ficam as de antes
+    e2 = [L] + fine + [Rr]
+    if np.diff(e2).min() >= 35 * R:
+        r2 = [rows_of(e2[i], e2[i + 1], 0.7, n) for i in range(len(e2) - 1)]
+        if all(len(r_) == n for r_ in r2):
+            P = np.array(r2, float)
+    return cols, P
+
+
 def col_align(rect, pap, D, B, R):
     """Devolve (rect, pap, D, B, info) realinhados, ou as entradas e None."""
     if not ENABLED[0]:
@@ -79,20 +228,42 @@ def col_align(rect, pap, D, B, R):
         cols = [(cuts[i], cuts[i + 1]) for i in range(len(cuts) - 1)]
         inner = cols
     else:
+        cols = None
+    P = None
+    if cols is not None:
+        pks = [_col_rows(B, R, a, b) for a, b in inner]
+        n = len(pks[0])
+        if n >= 2 and all(len(p) == n for p in pks):
+            P = np.array(pks, float)              # (colunas, linhas)
+            ref = np.median(P, 0)
+            dl = ref[None, :] - P
+            sp = float(np.median(np.diff(ref)))
+            if np.abs(dl).max() < 3 * R or sp < 8 * R or np.abs(dl).max() > 1.5 * sp:
+                P = None                          # nada a fazer, ou casamento duvidoso
+    how = "vaos"
+    if P is None and STRUCT[0]:
+        # sem vãos em branco (grade escura, rótulo ou QRS no vão): estrutura pelos trilhos
+        st = col_struct(B, R)
+        if st is None:
+            return rect, pap, D, B, None
+        cols, P = st
+        how = "trilhos"
+    if P is None:
         return rect, pap, D, B, None
-    pks = [_col_rows(B, R, a, b) for a, b in inner]
-    n = len(pks[0])
-    if n < 2 or any(len(p) != n for p in pks):
-        return rect, pap, D, B, None
-    P = np.array(pks, float)              # (colunas, linhas)
-    ref = np.median(P, 0)
+    n = P.shape[1]
+    if how == "vaos":
+        ref = np.median(P, 0)
+        H2 = H
+    else:
+        # alturas de referência: a primeira linha fica onde está (mediana) e cada intervalo é
+        # o MAIOR entre as colunas, para que nenhuma faixa se sobreponha à vizinha depois de
+        # deslocada (numa coluna "apertada" as linhas ficam a 4-10 mm; na outra, a 25-35 mm)
+        gaps_ = np.max(np.diff(P, axis=1), axis=0)
+        ref = np.concatenate([[float(np.median(P[:, 0]))], float(np.median(P[:, 0])) + np.cumsum(gaps_)])
+        H2 = int(max(H, ref[-1] + np.max(H - P[:, -1]) + 1))
     dl = ref[None, :] - P
-    sp = float(np.median(np.diff(ref)))
-    if np.abs(dl).max() < 3 * R or sp < 8 * R:
-        return rect, pap, D, B, None
-    if np.abs(dl).max() > 1.5 * sp:       # deslocamento maior que uma linha: casamento duvidoso
-        return rect, pap, D, B, None
-    rect2 = np.full_like(rect, 255); pap2 = np.zeros_like(pap); D2 = np.zeros_like(D); B2 = np.zeros_like(B)
+    rect2 = np.full((H2,) + rect.shape[1:], 255, rect.dtype); pap2 = np.zeros((H2, W), pap.dtype)
+    D2 = np.zeros((H2, W), D.dtype); B2 = np.zeros((H2, W), B.dtype)
     for c, (xa, xb) in enumerate(cols):
         p = P[c]
         bounds = [0] + [int(0.5 * (p[i] + p[i + 1])) for i in range(n - 1)] + [H]
@@ -101,7 +272,7 @@ def col_align(rect, pap, D, B, R):
             d = int(round(dl[c, i]))
             t0, t1 = s0 + d, s1 + d
             # recorta ao quadro
-            o0, o1 = max(0, t0), min(H, t1)
+            o0, o1 = max(0, t0), min(H2, t1)
             if o1 <= o0:
                 continue
             a0, a1 = o0 - d, o1 - d
@@ -110,4 +281,4 @@ def col_align(rect, pap, D, B, R):
             D2[sl_t] = np.maximum(D2[sl_t], D[sl_s])
             rect2[sl_t] = np.minimum(rect2[sl_t], rect[sl_s])
             pap2[sl_t] = np.maximum(pap2[sl_t], pap[sl_s])
-    return rect2, pap2, D2, B2, dict(cols=cols, peaks=P.tolist(), ref=ref.tolist())
+    return rect2, pap2, D2, B2, dict(cols=cols, peaks=P.tolist(), ref=ref.tolist(), how=how)

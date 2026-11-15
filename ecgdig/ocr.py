@@ -124,15 +124,23 @@ def classify_word(mask: np.ndarray) -> dict:
 
 
 def find_words(text_mask: np.ndarray, R: float, min_h_mm=1.4, max_h_mm=8.0):
-    """Agrupa componentes conexas em palavras (caixas). Retorna lista de (x0,y0,x1,y1)."""
+    """Agrupa componentes conexas em palavras (caixas). Retorna lista de (x0,y0,x1,y1).
+
+    Mesma varredura sequencial de sempre, mas só entre as caixas que podem estar ao alcance
+    (as caixas ficam ordenadas por x0; busca binária dá a faixa). Numa página com milhares de
+    componentes (grade pontilhada, ruído) o laço completo, quadrático, levava dezenas de
+    segundos."""
+    from bisect import bisect_left, bisect_right
     n, lab, st, _ = cv2.connectedComponentsWithStats(text_mask.astype(np.uint8), connectivity=8)
     boxes = []
-    for i in range(1, n):
-        x, y, w, h, a = st[i]
+    for x, y, w, h, a in st[1:].tolist():        # int do Python: contas escalares mais rápidas
         if a < 4 or h > max_h_mm * R or w > 25 * R:
             continue
         boxes.append([x, y, x + w, y + h])
     boxes.sort(key=lambda b: b[0])
+    x0s = [b[0] for b in boxes]
+    hmax = max((b[3] - b[1] for b in boxes), default=1)
+    wmax = max((b[2] - b[0] for b in boxes), default=1)
     words = []
     used = [False] * len(boxes)
     for i, b in enumerate(boxes):
@@ -142,16 +150,23 @@ def find_words(text_mask: np.ndarray, R: float, min_h_mm=1.4, max_h_mm=8.0):
         changed = True
         while changed:
             changed = False
-            for j, c in enumerate(boxes):
-                if used[j]:
-                    continue
-                hh = max(cur[3] - cur[1], c[3] - c[1], 1)
-                vo = min(cur[3], c[3]) - max(cur[1], c[1])
-                gap = max(c[0] - cur[2], cur[0] - c[2])
-                # minúsculas/sinal de menos: sobreposição vertical parcial basta
-                if gap < 0.7 * hh and vo > -0.1 * hh and vo > 0.25 * min(c[3] - c[1], cur[3] - cur[1]) - 1:
-                    cur = [min(cur[0], c[0]), min(cur[1], c[1]), max(cur[2], c[2]), max(cur[3], c[3])]
-                    used[j] = True; changed = True
+            # alcance: gap < 0.7 * max(altura de cur, altura da outra) nos dois sentidos
+            g = 0.7 * max(cur[3] - cur[1], hmax, 1)
+            j = bisect_right(x0s, cur[0] - g - wmax)
+            hi = bisect_left(x0s, cur[2] + g)
+            while j < hi:
+                if not used[j]:
+                    c = boxes[j]
+                    hh = max(cur[3] - cur[1], c[3] - c[1], 1)
+                    vo = min(cur[3], c[3]) - max(cur[1], c[1])
+                    gap = max(c[0] - cur[2], cur[0] - c[2])
+                    # minúsculas/sinal de menos: sobreposição vertical parcial basta
+                    if gap < 0.7 * hh and vo > -0.1 * hh and vo > 0.25 * min(c[3] - c[1], cur[3] - cur[1]) - 1:
+                        cur = [min(cur[0], c[0]), min(cur[1], c[1]), max(cur[2], c[2]), max(cur[3], c[3])]
+                        used[j] = True; changed = True
+                        g = 0.7 * max(cur[3] - cur[1], hmax, 1)
+                        hi = bisect_left(x0s, cur[2] + g)       # cur cresceu: o alcance à direita também
+                j += 1
         h = cur[3] - cur[1]
         if min_h_mm * R <= h <= max_h_mm * R:
             words.append(tuple(cur))
