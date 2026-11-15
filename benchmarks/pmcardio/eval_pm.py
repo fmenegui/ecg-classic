@@ -31,12 +31,23 @@ FS = 500
 MAXS = int(0.5 * FS)
 
 
+def _apply_flags(spec: str):
+    """Chaves de ablação "modulo.FLAG=valor;..." (listas de 1 elemento em ecgdig.*), para
+    comparar variantes na base inteira sem mudar o código."""
+    import importlib
+    for it in [x.strip() for x in spec.split(";") if x.strip()]:
+        mod, rest = it.split(".", 1)
+        var, val = rest.split("=", 1)
+        getattr(importlib.import_module("ecgdig." + mod), var)[0] = ast.literal_eval(val)
+
+
 def _digitize(job):
     path, cfg_kw = job
     import warnings
     warnings.filterwarnings("ignore")
     from ecgdig import Config, digitize
     import signal
+    _apply_flags(os.environ.get("ECGDIG_FLAGS", ""))
 
     def _alarm(*_):
         raise TimeoutError("tempo esgotado")
