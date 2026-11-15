@@ -948,6 +948,33 @@ def _vote_x0(xl, xe, rad, span_px, R, weak=()):
     return float(np.median(Ws))
 
 
+
+BASELINE_GUARD = [True]
+
+
+def _baseline_guard(sig, fs, win_s=0.6, thr_mv=1.5):
+    """Linha de base que anda > 1,5 mV dentro de um trecho contínuo: o rastreio trocou de
+    linha ou seguiu uma borda/vinco por um tempo (foto amassada, folha curva). Um ECG não tem
+    esse desvio lento; tira a mediana móvel de 0,6 s (mais longa que QRS e T) só nesses
+    trechos. Trechos normais ficam intactos."""
+    from scipy.ndimage import median_filter
+    out = sig.copy()
+    k = max(3, int(win_s * fs) | 1)
+    for i in range(out.shape[0]):
+        s_ = out[i].astype(np.float64)
+        idx = np.nonzero(np.isfinite(s_))[0]
+        if len(idx) < k:
+            continue
+        for seg in np.split(idx, np.nonzero(np.diff(idx) > 1)[0] + 1):
+            if len(seg) < k:
+                continue
+            x = s_[seg]
+            b = median_filter(x, size=k, mode="nearest")
+            if np.ptp(b) > thr_mv:
+                s_[seg] = x - b + np.median(b)
+        out[i] = s_.astype(out.dtype)
+    return out
+
 def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     cfg = cfg or Config()
     img = cv2.imread(image, cv2.IMREAD_COLOR) if isinstance(image, str) else image
@@ -1638,6 +1665,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             nmeas[li] = sw  # "número efetivo de medidas" (peso total) -> variância na fusão
     if cfg.einthoven and names is LEADS:
         sig = einthoven_fuse(sig, nmeas, fill=cfg.fill_limb)
+    if BASELINE_GUARD[0]:
+        sig = _baseline_guard(sig, cfg.fs)
 
     gains_seg = {f"{r_}:{nm}": seg_gain(r_, nm) for r_, row in enumerate(rows_spec[:len(levels)]) for nm in row}
     res = dict(signals=sig, fs=cfg.fs, leads=list(names), layout=layout, layout_rows=rows_spec,
