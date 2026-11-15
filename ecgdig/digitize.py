@@ -438,8 +438,9 @@ def _rows_pulses(B, pap, R):
             # da projeção no meio do passo dos pulsos, entre eles, são linhas de verdade; o
             # passo real é a metade. Pontas dos pulsos fora do novo passo saem.
             spp = float(np.median(np.diff(prow)))
+            # (só com passo de pulsos largo: metade dele ainda é um passo de linhas plausível)
             mids = [p for p in peaks if prow.min() < p < prow.max()
-                    and 0.35 * spp <= np.min(np.abs(prow - p)) <= 0.65 * spp]
+                    and 0.35 * spp <= np.min(np.abs(prow - p)) <= 0.65 * spp] if spp >= 40 * R else []
             if mids:
                 prow = np.sort(np.concatenate([prow, np.array(mids, float)]))
                 sp2 = float(np.median(np.diff(prow)))
