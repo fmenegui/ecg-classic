@@ -72,34 +72,53 @@ def _run_all(jobs, n, cache: Path, root: Path):
             res[os.path.relpath(j[0], root)] = pickle.loads(k.read_bytes())
         else:
             todo.append(j)
+    # Lotes de n*4 imagens, um executor novo por lote (recicla a memória dos processos sem
+    # max_tasks_per_child, que trava o executor no Python 3.11 depois de n*4 tarefas). Cada
+    # imagem tem prazo; o que estourar vira falha e os processos do lote são mortos.
+    from concurrent.futures import wait, FIRST_COMPLETED
+    per_img = float(os.environ.get("ECGDIG_IMG_TIMEOUT", "900"))
     while todo:
-        ex = ProcessPoolExecutor(n, max_tasks_per_child=4)
-        futs = {ex.submit(_digitize, j): j for j in todo}
+        batch, todo = todo[: n * 4], todo[n * 4:]
+        ex = ProcessPoolExecutor(n)
+        futs = {ex.submit(_digitize, j): j for j in batch}
+        t0 = time.time()
+        pending = set(futs)
         broken = []
-        for f, j in futs.items():
-            try:
-                path, o = f.result()
-            except BrokenProcessPool:
-                broken.append(j)
-                continue
-            except Exception as e:  # noqa: BLE001
-                path, o = j[0], dict(ok=False, err=f"{type(e).__name__}: {e}", sec=0.0)
-            res[os.path.relpath(path, root)] = o
-            key(path).write_bytes(pickle.dumps(o))
-        ex.shutdown(wait=False, cancel_futures=True)
-        if broken and len(broken) == len(todo):
-            # nada andou: roda um por vez; o que matar o processo vira falha
-            for j in broken:
-                e1 = ProcessPoolExecutor(1)
+        while pending:
+            done, pending = wait(pending, timeout=30, return_when=FIRST_COMPLETED)
+            for f in done:
+                j = futs[f]
                 try:
-                    path, o = e1.submit(_digitize, j).result()
+                    path, o = f.result()
                 except BrokenProcessPool:
-                    path, o = j[0], dict(ok=False, err="processo morto (memória?)", sec=0.0)
-                e1.shutdown(wait=False)
+                    broken.append(j)
+                    continue
+                except Exception as e:  # noqa: BLE001
+                    path, o = j[0], dict(ok=False, err=f"{type(e).__name__}: {e}", sec=0.0)
                 res[os.path.relpath(path, root)] = o
                 key(path).write_bytes(pickle.dumps(o))
-            broken = []
-        todo = broken
+            if pending and time.time() - t0 > per_img * 4:
+                for f in pending:
+                    j = futs[f]
+                    o = dict(ok=False, err="tempo esgotado", sec=time.time() - t0)
+                    res[os.path.relpath(j[0], root)] = o
+                    key(j[0]).write_bytes(pickle.dumps(o))
+                for pr in list(getattr(ex, "_processes", {}).values()):
+                    pr.kill()
+                pending = set()
+        ex.shutdown(wait=False, cancel_futures=True)
+        for j in broken:
+            # processo morto (memória?): roda sozinha; se morrer de novo, vira falha
+            e1 = ProcessPoolExecutor(1)
+            try:
+                path, o = e1.submit(_digitize, j).result(timeout=per_img)
+            except Exception as e:  # noqa: BLE001
+                path, o = j[0], dict(ok=False, err=f"processo morto/tempo: {type(e).__name__}", sec=0.0)
+                for pr in list(getattr(e1, "_processes", {}).values()):
+                    pr.kill()
+            e1.shutdown(wait=False, cancel_futures=True)
+            res[os.path.relpath(path, root)] = o
+            key(path).write_bytes(pickle.dumps(o))
     return res
 
 
