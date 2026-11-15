@@ -72,9 +72,14 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
     # O molde precisa descer até elas (senão a linha da grade vira "tinta" contínua que
     # estende as linhas até a borda da folha e cria linhas falsas)
     dark_grid = float(tmpl.min()) < 0.15
+    ink_map.tmpl_min = float(tmpl.min())
     ink_map.dark_grid = dark_grid
     if tmin is None:
         tmin = 0.05 if dark_grid else 0.3
+        if TMIN_ADAPT[0] and not dark_grid:
+            # grade escura mas não preta (foto escurecida): linhas a 0,15-0,3 de transmitância
+            # passariam do piso 0,3 e virariam "tinta" na página toda
+            tmin = float(np.clip(0.85 * tmpl.min(), 0.05, 0.3))
     tmpl = np.clip(tmpl, tmin, 1.0)
     reps = (int(np.ceil(H / P)), int(np.ceil(W / P)))
     T = np.tile(tmpl, reps)[:H, :W]
@@ -171,6 +176,7 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: flo
 
 GRID_LINE_CLEAN = [True]
 OTSU_FLOOR_REL = [True]
+TMIN_ADAPT = [True]
 
 
 def _clean_grid_lines(B, R, frac=0.7):
@@ -197,7 +203,9 @@ def _clean_grid_lines(B, R, frac=0.7):
         # grade de verdade: a maioria dos vizinhos a 5 mm (ou 1 mm). Linhas de base planas de
         # traçado longo também cobrem a página e ficam em múltiplos de 5 mm, mas a 25-40 mm
         near = np.mean((np.abs(d - 5.0) < 0.75) | (np.abs(d - 1.0) < 0.3))
-        if len(cen) < 5 or near < 0.6:
+        # (com grade escura e folha empenada parte das linhas fica abaixo de 70% e os vizinhos
+        # achados saem a 10-15 mm: aceita também passo mediano de até 10 mm com >= 8 linhas)
+        if len(cen) < 5 or (near < 0.6 and not (len(cen) >= 8 and np.median(d) <= 10.5)):
             continue
         for g in grp:
             lo, hi = max(0, g[0] - 1), g[-1] + 2

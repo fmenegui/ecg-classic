@@ -30,6 +30,7 @@ def _bg_max(ch: np.ndarray, win_frac: float = 0.015, small: int = 900) -> np.nda
 
 
 PAPER_OTSU = [True]
+RESCUE_CORR = [True]
 PAPER_CROP = [True]
 
 
@@ -449,6 +450,7 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
     ang = estimate_rotation(G)
     ppmm, has_major = estimate_ppmm(G, ang, paper)
     rescued = False
+    rescued_ok = False
     if ppmm_hint:  # escala conhecida (ex.: DPI do scanner / 25.4)
         ppmm = float(ppmm_hint)
     elif SCALE_X5[0] and max(img.shape[:2]) / ppmm > 600 and max(img.shape[:2]) / (5 * ppmm) >= 100:
@@ -479,14 +481,25 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
     Gc = cv2.warpAffine(G, M, (Wc, Hc), flags=cv2.INTER_AREA if s < ppmm else cv2.INTER_LINEAR)
 
     tile, step = int(25 * s), int(10 * s)
-    src, dst, w = _correspondences(Gc, 5 * s, s, has_major, tile, step) if not rescued else ([], [], [])
+    if not rescued:
+        src, dst, w = _correspondences(Gc, 5 * s, s, has_major, tile, step)
+    elif RESCUE_CORR[0]:
+        # escala resgatada: a estimativa global errou o harmônico, mas na escala corrigida a
+        # fase da linha de 1 mm (ou, se ela não aparece, a de 5 mm) ainda dá a perspectiva.
+        # Fica a que tiver mais blocos de boa qualidade; a homografia só vale se explicar a
+        # maioria deles (senão fica rotação + escala)
+        c1 = _correspondences(Gc, 5 * s, s, False, tile, step)
+        c5 = _correspondences(Gc, 5 * s, 5 * s, False, tile, step)
+        src, dst, w = max((c1, c5), key=lambda c: float(np.sum(c[2])) if len(c[0]) else 0.0)
+    else:
+        src, dst, w = [], [], []
     A3 = np.vstack([M, [0, 0, 1]])
-    # escala resgatada: as correspondências da grade não são confiáveis (passo de 1 mm visto
-    # como 5 mm); fica a rotação + escala
     if len(src) >= 8:
         Hm, inl = cv2.findHomography(dst, src, cv2.RANSAC, 0.6 * s)
-        if Hm is None:
+        if Hm is None or (rescued and (inl is None or inl.mean() < 0.6)):
             Hm = np.eye(3)
+        elif rescued:
+            rescued_ok = True
     else:
         Hm = np.eye(3)
     # quadro retificado: u,v em mm*R. coarse(x,y) = Hm @ (u/R*s, v/R*s)
@@ -514,7 +527,7 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
     # refinamento não-rígido: resíduo de fase -> polinômio cúbico -> remap
     rms, rms_cell, snap_mm, fine_mm = float("nan"), float("nan"), 0.0, 0.0
     snp = None
-    if nonrigid in ("poly", "cell") and not rescued:
+    if nonrigid in ("poly", "cell") and (not rescued or rescued_ok):
         out_p, pap_p, rms, mx, my = _refine_nonrigid(out, pap, R, return_map=True)
         cx_ = cy_ = None
         if nonrigid == "cell" and mx is not None:
