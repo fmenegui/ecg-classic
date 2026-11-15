@@ -69,7 +69,6 @@ class Config:
     col_align: bool = True      # colunas com linhas de base próprias: realinha cada faixa
     limb_log: bool = True       # física no layout como log-verossimilhança do resíduo
     fit: str = "none"          # "lsf": renderização inversa com o perfil de pena medido
-    direct_resample: bool = False  # retificação com uma interpolação só, a partir da imagem original
     refuse_below: float | None = None  # derivações com nota de qualidade abaixo disto saem como NaN
 
 
@@ -1013,7 +1012,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     from . import extract as _ex
     _ex.ROW_CHAIN[0] = cfg.row_chain
     rect, pap, ginfo = rectify(img, R, cfg.ppmm, cfg.nonrigid, major_snap=cfg.major_snap,
-                               fine_snap=cfg.fine_snap, direct=cfg.direct_resample)
+                               fine_snap=cfg.fine_snap)
     D, glev = ink_map(rect, pap, R, return_grid_level=True)
     if cfg.ink_model:
         # modo híbrido: a rede diz onde está a tinta do traço; o resto segue clássico
@@ -1688,11 +1687,10 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         page = dict(layout_confidence=(layout_info or {}).get("confidence"),
                     layout_warning=(layout_info or {}).get("warning"),
                     pulses_ratio=sum(p is not None for p in pulses) / n_rows)
+        # a confiança do layout é a parte que melhor separa página boa de ruim (ver quality.py)
         ps = 1.0
         if page["layout_confidence"] is not None:
-            ps *= float(np.clip(page["layout_confidence"] / 0.8, 0.3, 1.0))
-        if page["pulses_ratio"] < 0.5:
-            ps *= 0.7       # sem pulsos de calibração: ganho e 0 mV presumidos
+            ps = float(np.clip(page["layout_confidence"], 0.05, 1.0))
         page["score"] = ps
         quality["page"] = page
         for q_ in quality["leads"].values():

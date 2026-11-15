@@ -518,7 +518,7 @@ CLIP_MARGIN = [0.1]
 
 def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, nonrigid: str = "cell",
             cell_min_mm: float = 0.06, major_snap: bool = True, fine_snap: bool = True,
-            fine_min_mm: float = 0.06, direct: bool = False):
+            fine_min_mm: float = 0.06):
     """Retorna (img_ret, paper_ret, info). img_ret tem R px/mm e linhas grossas em múltiplos de 5R.
 
     nonrigid: "poly" (polinômio cúbico global), "cell" (polinômio + campo local por células de
@@ -646,7 +646,6 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
                 cy2 = cv2.remap(cy_, gx + sx, gy + sy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
                 out_p = cv2.remap(out, cx2, cy2, cv2.INTER_CUBIC, borderValue=(255, 255, 255))
                 pap_p = cv2.remap(pap, cx2, cy2, cv2.INTER_NEAREST)
-        fn = None
         if mx is not None and fine_snap and ppmm >= 6.0:
             if cx_ is None:
                 cx_, cy_ = mx, my
@@ -663,18 +662,6 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
                 cy3 = cv2.remap(cy_, gx + fx, gy + fy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
                 out_p = cv2.remap(out, cx3, cy3, cv2.INTER_CUBIC, borderValue=(255, 255, 255))
                 pap_p = cv2.remap(pap, cx3, cy3, cv2.INTER_NEAREST)
-        if direct and mx is not None:
-            # reamostragem única: o mapa final (quadro retificado -> quadro da homografia) é
-            # composto com a homografia e a imagem ORIGINAL é amostrada uma vez só. Antes a
-            # página passava por duas interpolações cúbicas em série (homografia, depois o
-            # mapa não-rígido), o que borra o traço fino
-            fx_, fy_ = (cx3, cy3) if fn is not None else ((cx2, cy2) if snp is not None else (
-                (cx_, cy_) if cx_ is not None else (mx, my)))
-            Tm = T_total.astype(np.float64)
-            den = Tm[2, 0] * fx_ + Tm[2, 1] * fy_ + Tm[2, 2]
-            ox = ((Tm[0, 0] * fx_ + Tm[0, 1] * fy_ + Tm[0, 2]) / den).astype(np.float32)
-            oy = ((Tm[1, 0] * fx_ + Tm[1, 1] * fy_ + Tm[1, 2]) / den).astype(np.float32)
-            out_p = cv2.remap(img, ox, oy, cv2.INTER_CUBIC, borderValue=(255, 255, 255))
         out, pap = out_p, pap_p
     info = dict(angle=ang, ppmm=ppmm, has_major=has_major, n_corr=int(len(src)),
                 residual_rms_mm=rms, residual_cell_rms_mm=rms_cell, major_snap_mm=snap_mm, fine_snap_mm=fine_mm, T=T_total)

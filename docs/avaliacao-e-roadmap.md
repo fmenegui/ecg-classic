@@ -179,3 +179,108 @@ Exemplo: relaxar a limpeza de linhas de grade ajudou no PM, mas apagou linhas de
 | fotos de grade preta pontilhada | restos da grade 5 mm viram linhas falsas |
 | 6x2 com colunas em alturas próprias ou derivações sobrepostas | — |
 | opacidade digital 0,15 | traço quase invisível |
+
+## 7. Velocidade, determinismo e nota de qualidade, 15/11/2026
+
+Branch `claude/classico-melhorias`, a partir do `r4` (f833818). Nenhuma mudança de precisão nesta rodada: o objetivo foi fazer o mesmo cálculo em metade do tempo e medir onde o erro do PM-ECG-ID está.
+
+### Velocidade: 1,9× no total, com a mesma saída
+
+Oito páginas, um processo, máquina de 2 núcleos sem outra carga:
+
+| página | r4 | agora |
+|---|---|---|
+| sintético 3x4+1 (3 páginas) | 12,6–14,1 s | 7,0–7,3 s |
+| PM-ECG-ID, foto Samsung | 40,2 s | 16,8 s |
+| PM-ECG-ID, scan | 43,3 s | 17,3 s |
+| PM-ECG-ID, foto iPhone | 46,2 s | 22,5 s |
+| PM-ECG-ID, rotação 5° | 13,6 s | 8,3 s |
+| PM-ECG-ID, digital de 7483 px | 99,0 s | 62,7 s |
+| **total** | **282,9 s** | **149,1 s** |
+
+O que mudou, sempre com o resultado conferido contra a versão anterior:
+
+- **`_major_snap`:** `np.nanmedian` por faixa virou uma ordenação (`_nanmedian_axis`); o laço por linha da grade foi vetorizado; `generic_filter(np.nanmedian)` virou janelas 3×3. `rectify` 6,6 → 3,4 s.
+- **`ink_map`:** o `median_filter` 4D (5,5,1,1) virou `cv2.medianBlur` 5×5 por fase do molde. 3,6 → 0,8 s.
+- **`column_runs`:** todas as colunas de uma vez (`diff` + `reduceat`).
+- **`viterbi_track`:** contas em escalares do Python em vez de escalares do NumPy.
+- **`synth_refine`:** gaussiana 2D como produto de duas 1D e blocos calculados uma vez por iteração. 3,3× mais rápida com a mesma conta (diferença máxima de 6e-13 px).
+
+Em scans e fotos reais a síntese era 76% do tempo (26,8 de 35,3 s num scan do PM). Continua sendo a maior parcela.
+
+### A síntese dependia do relógio
+
+`synth_refine` parava depois de 4 s de relógio por segmento, então o número de iterações, e com ele o sinal, dependia da velocidade e da carga da máquina. O corte acontecia de fato: num scan do PM os 13 segmentos levavam 32 s sem limite e 26 s com ele. Agora o limite é de trabalho (`SYNTH_WORK`, pares ponto-pixel × iterações), igual em qualquer máquina; o relógio fica como freio de emergência.
+
+### Equivalência medida
+
+| conjunto | r4 | agora |
+|---|---|---|
+| Sintético, 30 páginas (medium, heavy, fold, mix), SNR | 20,796 dB | 20,797 dB |
+| Sintético, layouts certos | 30/30 | 30/30 |
+| PM-ECG-ID, 60 ECGs (1 por cenário): SNR / PCC / falha | 8,12 dB / 0,695 / 8,3% | 8,12 dB / 0,695 / 8,3% |
+| PM-ECG-ID, layouts iguais ao r4 | — | 60/60 |
+| PM-ECG-ID, maior diferença por ECG | — | 0,13 dB |
+
+Com `Config(synth=False)` a saída é idêntica bit a bit à do r4 (conferido em 3 páginas). Com a síntese ligada as diferenças vêm do limite determinístico.
+
+### Onde está o erro do PM-ECG-ID: no layout
+
+Os mesmos 60 ECGs, separados por o layout lido bater ou não com o formato da base:
+
+| | ECGs | SNR | PCC | falha |
+|---|---|---|---|---|
+| layout certo | 41 | 11,77 dB | 0,864 | 0,0% |
+| layout errado | 19 | 0,26 dB | 0,330 | 26,3% |
+
+Com o layout certo o clássico faz 11,8 dB e PCC 0,86; a referência publicada pela PMcardio para a base inteira é > 12,5 dB e PCC > 0,91. Um terço das páginas perde tudo no layout. Os erros mais comuns: 6x2 lido como 6 tiras inteiras (`6x1-prec`, `6x1-limb`: 6 derivações somem), tira de ritmo inventada (`3x4+1`, `3x4+2`, `6x2+1`, `6x2+2`) e 6x2 lido como 3x4+k.
+
+Três causas vistas nas imagens de depuração:
+
+- **Máscara da folha cortando a grade.** Em 6 das 131 páginas da amostra a máscara fica com um quadrilátero torto que deixa de fora os pulsos e o começo das linhas (`JPEG_45/img_65`, `JPEG_2/img_8`, `blur_21/img_81`, `brightness_120/img_13`, `gamma_0.5/img_69`, `doogee/img_24`). Sem pulsos e sem rótulos, o layout é decidido "só pela fisiologia".
+- **Linha de base que anda** (`low_freq_noise_large`): a projeção horizontal acha 7 linhas em vez de 6, e só 4 dos 6 pulsos são encontrados.
+- **Imagem estourada** (`brightness_160`): a metade esquerda do traço quase some e as linhas começam no meio da página.
+
+Uma guarda que estendia a máscara até a área quadriculada (cor do papel + densidade de linhas) corrigiu a máscara nessas páginas, mas no A/B deu 8,12 → 7,99 dB (2 ECGs melhores, 2 piores): as páginas corrigidas continuam falhando mais adiante. Foi retirada.
+
+### Nota de qualidade (`res["quality"]`)
+
+`ecgdig/quality.py` dá uma nota de 0 a 1 por derivação e por página, sem gabarito. O sinal não muda; `Config(refuse_below=...)` devolve NaN abaixo da nota e fica desligado.
+
+Medida contra o gabarito nos 60 ECGs (660 derivações lidas, "ruim" = PCC < 0,5, 22,6% delas):
+
+| parte | AUC |
+|---|---|
+| confiança do layout | 0,76 |
+| resíduo de Einthoven antes da fusão (só onde existe, 48%) | 0,74 |
+| repetição dos batimentos | 0,72 |
+| energia nos QRS da página | 0,59 |
+| degraus | 0,55 |
+| nota final (cobertura × repetição × confiança) | 0,75 |
+
+Ainda é pouco para recusar com segurança: recusar os 20% piores sobe o SNR das aceitas de 8,7 para 9,8 dB e deixa passar 18% de derivações ruins. O motivo é o mesmo da seção anterior: no layout trocado cada traço é um ECG bem formado com o nome errado, e nenhuma medida feita derivação a derivação enxerga isso.
+
+### LITFL
+
+Nesta máquina o site liberou 89 das 102 imagens. Nelas, r4 e esta branch dão a mesma estrutura em 89/89 (layout, linhas, tiras de ritmo, velocidade, duração e ganhos), o mesmo resíduo de Einthoven em todas e a mesma mediana de ritmo × grade (0,519). O tempo por imagem foi de 17,8 para 7,2 s.
+
+| LITFL, 89 imagens | r4 | agora |
+|---|---|---|
+| Layout / ritmo / velocidade / duração / ganho | 92,1 / 93,0 / 98,9 / 98,9 / 96,6% | iguais |
+| Layout + velocidade + duração + ganho | 91,0% | 91,0% |
+| Einthoven antes da fusão (mediana) | 0,474 | 0,474 |
+| Segundos por imagem | 17,8 | 7,2 |
+
+### Testado e descartado
+
+- **Reamostragem única a partir da imagem original** (o mapa não-rígido composto com a homografia, uma interpolação cúbica em vez de duas): 20,797 → 20,806 dB nos 30 sintéticos (fold +0,25, medium −0,16). Neutro; não entrou.
+- **Máscara estendida até a grade:** −0,13 dB no PM-ECG-ID (acima).
+
+### O que não foi medido
+
+O PhysioNet (Kaggle) não roda fora do CI, porque precisa do token. As mudanças desta rodada não alteram o sinal além do limite da síntese, mas a rodada de 135 imagens deve ser repetida no workflow antes do merge.
+
+### Ferramenta nova
+
+`benchmarks/pmcardio/ab.py <rodada A> <rodada B>` compara duas rodadas do `eval_pm.py` ECG a ECG (resumo, quantos melhoraram ou pioraram, layout lido em cada uma).
+

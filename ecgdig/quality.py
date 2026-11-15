@@ -14,9 +14,15 @@ o que um ECG de verdade tem de ter, e nada do conteúdo clínico:
   membros     resíduo de Einthoven/Goldberger ANTES da fusão, onde 3 derivações de membros
               são simultâneas (a fusão zera o resíduo, por isso ele é medido antes)
 
-A nota vai de 0 a 1 e é o produto das partes (cada parte vale 1 quando não há o que
-objetar). Não é probabilidade calibrada: serve para ordenar e para recusar o que é
-claramente lixo (`Config(refuse_below=...)`).
+A nota vai de 0 a 1: cobertura x repetição (por derivação) x confiança do layout (página,
+aplicada em digitize). As outras partes ficam no relatório para diagnóstico. Não é uma
+probabilidade calibrada.
+
+Medida contra o gabarito (PM-ECG-ID, 60 ECGs, 15/11/2026): AUC 0,75 para separar derivações
+com PCC < 0,5; a confiança do layout sozinha dá 0,76. É pouco para recusar com segurança
+(recusar os 20% piores sobe o SNR das aceitas de 8,7 para 9,8 dB e ainda deixa passar 18%
+de derivações ruins): a maior parte do lixo vem de layout trocado, em que cada traço é um
+ECG bem formado com o nome errado. `Config(refuse_below=...)` existe, mas fica desligado.
 """
 from __future__ import annotations
 
@@ -124,24 +130,16 @@ def lead_quality(v: np.ndarray, fs: int, beats: np.ndarray, others_prof: np.ndar
 
 
 def _combine(q: dict, limb_rel: float | None) -> float:
-    s = 1.0
-    c = q["coverage"]
-    s *= float(np.clip((c - 0.5) / 0.4, 0.0, 1.0))           # < 50% coberto vale 0; >= 90% vale 1
-    rep, bsync = q["repeat"], q["beat_sync"]
-    if np.isfinite(rep):
-        # a parte que mais separa lixo de sinal: batimentos que se repetem (r >= 0,7 vale 1)
-        s *= float(np.clip((rep - 0.2) / 0.5, 0.15, 1.0))
-    elif np.isfinite(bsync):
-        # menos de 2 batimentos no trecho: sobra a energia nos QRS da página. Vale pouco em
-        # derivação de baixa voltagem (o QRS pequeno divide a energia com a onda T), por isso
-        # só entra quando não há repetição para medir, e com piso alto
-        s *= float(np.clip(bsync / 0.3, 0.4, 1.0))
-    if q["jumps"] > 0.05:                                      # degraus em > 5% das amostras
-        s *= 0.5
+    """Nota da derivação. Só entram as partes que ordenaram bem as derivações contra o gabarito
+    do PM-ECG-ID (60 ECGs, 660 derivações lidas, "ruim" = PCC < 0,5): cobertura e repetição
+    dos batimentos (AUC 0,72), sem saturar (saturar em 1 empata quase tudo e piora a ordem).
+    A energia nos QRS (AUC 0,59), os degraus (0,55) e o resíduo de membros (0,74, mas só existe
+    em metade das derivações e misturado derrubou o conjunto para 0,63) ficam só no relatório."""
+    s = float(np.clip((q["coverage"] - 0.5) / 0.4, 0.0, 1.0))     # < 50% coberto vale 0; >= 90% vale 1
+    rep = q["repeat"]
+    s *= float(np.clip(rep, 0.05, 1.0)) if np.isfinite(rep) else 0.8   # sem 2 batimentos no trecho: neutro
     if q["p2p"] < 0.05 or q["p2p"] > 8.0:
         s *= 0.3
-    if limb_rel is not None and np.isfinite(limb_rel):
-        s *= float(np.clip(1.0 - (limb_rel - 0.3) / 0.7, 0.3, 1.0))   # resíduo de membros > 30%
     return float(s)
 
 
@@ -168,7 +166,7 @@ def assess(sig: np.ndarray, leads: list, fs: int, prefusion: np.ndarray | None =
         q = lead_quality(sig[i], fs, beats)
         q["limb_residual"] = limb_rel.get(l)
         q["score"] = _combine(q, limb_rel.get(l)) if "ausente" not in q["flags"] else 0.0
-        if q["score"] < 0.3 and "ausente" not in q["flags"]:
+        if q["score"] < 0.4 and "ausente" not in q["flags"]:
             q["flags"].append("suspeita")
         out[l] = q
     present = [q["score"] for q in out.values() if "ausente" not in q["flags"]]
