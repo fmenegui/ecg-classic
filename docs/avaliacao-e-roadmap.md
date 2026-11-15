@@ -233,7 +233,16 @@ Os mesmos 60 ECGs, separados por o layout lido bater ou não com o formato da ba
 | layout certo | 41 | 11,77 dB | 0,864 | 0,0% |
 | layout errado | 19 | 0,26 dB | 0,330 | 26,3% |
 
-Com o layout certo o clássico faz 11,8 dB e PCC 0,86; a referência publicada pela PMcardio para a base inteira é > 12,5 dB e PCC > 0,91. Um terço das páginas perde tudo no layout. Os erros mais comuns: 6x2 lido como 6 tiras inteiras (`6x1-prec`, `6x1-limb`: 6 derivações somem), tira de ritmo inventada (`3x4+1`, `3x4+2`, `6x2+1`, `6x2+2`) e 6x2 lido como 3x4+k.
+Com o layout certo o clássico faz 11,8 dB e PCC 0,86; a referência publicada pela PMcardio para a base inteira é > 12,5 dB e PCC > 0,91. Um terço das páginas perde tudo no layout. A rodada da base inteira no CI (run 43742643092, `r4` f833818, 5.994 ECGs) confirma a proporção:
+
+| base inteira | ECGs | SNR | PCC | falha |
+|---|---|---|---|---|
+| todos | 5.994 | 6,99 dB | 0,591 | 22,2% |
+| 1 página, layout certo | 3.424 (57%) | 11,90 dB | 0,867 | 0,3% |
+| 1 página, layout errado ou não lida | 2.212 (37%) | −0,37 dB | 0,181 | 55,1% |
+| várias páginas | 358 (6%) | 5,53 dB | 0,490 | 27,7% |
+
+A amostra de 60 ECGs desta seção (8,12 dB) é mais fácil que a base (6,99 dB). Em 4,0% dos ECGs alguma página termina em erro: 134 "nenhuma linha de traçado", 60 "nenhum segmento", 27 por tempo, 23 por escala implausível. Os erros mais comuns: 6x2 lido como 6 tiras inteiras (`6x1-prec`, `6x1-limb`: 6 derivações somem), tira de ritmo inventada (`3x4+1`, `3x4+2`, `6x2+1`, `6x2+2`) e 6x2 lido como 3x4+k.
 
 Três causas vistas nas imagens de depuração:
 
