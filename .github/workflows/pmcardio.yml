@@ -40,7 +40,7 @@ jobs:
           ARGS=""
           for kv in ${{ inputs.config }}; do ARGS="$ARGS --config $kv"; done
           python benchmarks/pmcardio/eval_pm.py --root data/pm/visual_data --gt data/pm/final_data/data \
-            --meta data/pm/final_data/metadata.csv --list data/pm/sel.csv --out results/pm --jobs 3 $ARGS
+            --meta data/pm/final_data/metadata.csv --list data/pm/sel.csv --out results/pm --jobs 4 $ARGS
       - uses: actions/upload-artifact@v4
         if: always()
         with:
