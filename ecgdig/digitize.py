@@ -669,11 +669,13 @@ def _rows_pulses(B, pap, R, rows_hint=None):
         med_x = float(np.median(xs_p))
         has = [p is not None and abs(p["x_start"] - med_x) < 3 * R for p in pulses]
         if EDGE_PULSE_HEIGHT[0] and sum(has) >= 2:
-            # ...nor one of another height: the 1 mV pulse is the same on every row (end
-            # marks and steps of a tall QRS next to a letter pass for "half" pulses of any height)
+            # ...nor a half pulse of another height (end marks and steps of a tall QRS next to a
+            # letter pass for "half" pulses of any height). A full rectangle stays: a rhythm
+            # strip may carry its own gain
             hs_ = [p["foot"] - p["top"] for p, h in zip(pulses, has) if h]
             h0_ = float(np.median(hs_))
-            has = [h and abs((p["foot"] - p["top"]) - h0_) <= 0.15 * h0_ for p, h in zip(pulses, has)]
+            has = [h and (not p.get("half") or abs((p["foot"] - p["top"]) - h0_) <= 0.15 * h0_)
+                   for p, h in zip(pulses, has)]
     if sum(has) >= 2 and len(peaks) > sum(has) and len(peaks) >= 3:
         exc = [_excursions(B, int(y), half, R) for y in peaks]
         ref = float(np.median([x for x, h in zip(exc, has) if h]))
