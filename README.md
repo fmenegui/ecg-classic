@@ -67,6 +67,10 @@ res["layout"], res["layout_info"]["confidence"], res["quality"]["global"]
 
 Layout hypotheses: `3x4`, `3x4+1/+2/+3`, `6x2`, `6x2+1`, `12x1`, 6-strip pages (`6x1-prec` V1–V6, `6x1-limb` I–aVF) and 3-strip pages, all also in **Cabrera** order (aVL, I, −aVR, II, aVF, III), with free-named rhythm strips and split gain (limb 10 / precordial 5 mm/mV). Outside the library a "free" hypothesis builds the layout from the boundaries and the OCR. A layout can be forced with `Config(layout="6x2")` or `Config(layout=[["I", "V1"], ["II", "V2"]])`.
 
+## Hybrid mode (optional)
+
+A small network can replace only the ink map (where the pen ink is); grid, layout, pulses, time axis and tracking stay classical. With `Config(ink_model="trace_seg.onnx")` the page is read with both ink maps and the reading with the better internal quality is kept. The network is trained on generic synthetic crops only (no template, no image from the benchmarks). Status and plan: [`docs/hybrid.md`](docs/hybrid.md).
+
 ## Pipeline
 
 | Stage | Technique |
