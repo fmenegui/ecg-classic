@@ -3,23 +3,23 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'inspect = lista os arquivos; eval = baixa N registros e mede SNR'
+        description: 'inspect = list the files; eval = download N records and measure SNR'
         required: true
         default: 'inspect'
         type: choice
         options: [inspect, eval]
       n:
-        description: 'Número de registros (eval)'
+        description: 'Number of records (eval)'
         required: false
         default: '40'
         type: string
       config:
-        description: 'Campos extras do Config, ex.: nonrigid=poly (opcional)'
+        description: 'Extra Config fields, e.g. nonrigid=poly (optional)'
         required: false
         default: ''
         type: string
       ids:
-        description: 'Registros específicos separados por vírgula (opcional; guarda as imagens brutas de todos)'
+        description: 'Specific records, comma-separated (optional; keeps the raw images of all of them)'
         required: false
         default: ''
         type: string
@@ -39,27 +39,27 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install -e . kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0 pandas
-      - name: Credencial
+      - name: Credential
         run: |
           if [ -z "$KAGGLE_API_TOKEN" ]; then
-            echo "Falta o secret KAGGLE_API_TOKEN neste repositório (Settings > Secrets and variables > Actions)." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "The KAGGLE_API_TOKEN secret is missing in this repository (Settings > Secrets and variables > Actions)." | tee -a "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-      - name: Inspecionar
+      - name: Inspect
         if: inputs.mode == 'inspect'
         run: python benchmarks/physionet/run.py inspect --out results/physionet
-      - name: Cache dos dados do Kaggle
+      - name: Cache of the Kaggle data
         if: inputs.mode == 'eval'
         uses: actions/cache@v4
         with:
           path: results/physionet/data
           key: physionet-data-n${{ inputs.n }}-${{ inputs.ids }}-v1
-      - name: Avaliar
+      - name: Evaluate
         if: inputs.mode == 'eval'
         env:
           PHYSIONET_KEEP_DATA: '1'
         run: python benchmarks/physionet/run.py eval --n "${{ inputs.n }}" --out results/physionet ${{ inputs.config && format('--config "{0}"', inputs.config) || '' }} ${{ inputs.ids && format('--ids {0} --keep-raw 99', inputs.ids) || '' }}
-      - name: Resumo
+      - name: Summary
         if: always()
         run: cat results/physionet/report.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
       - uses: actions/upload-artifact@v4

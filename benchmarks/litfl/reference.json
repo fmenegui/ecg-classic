@@ -1,14 +1,14 @@
 {
  "version": 1,
  "created": "2026-11-12",
- "annotator": "revisão visual (Claude, sessão de 12/11/2026) sobre a saída do ecgdig; campos None = não verificável na imagem",
+ "annotator": "visual review (Claude, session of 12/11/2026) of the ecgdig output; None fields = not verifiable on the image",
  "fields": {
-  "layout": "família impressa (3x4, 3x4+1, 3x4+2, 3x4+3, 6x2, rows)",
-  "rhythm": "derivações das tiras de ritmo, de cima para baixo (None = não verificável)",
+  "layout": "printed family (3x4, 3x4+1, 3x4+2, 3x4+3, 6x2, rows)",
+  "rhythm": "rhythm-strip leads, top to bottom (None = not verifiable)",
   "speed": "mm/s",
-  "gain": "ganhos distintos na página, mm/mV (None = pulso ilegível)",
-  "duration": "s por linha",
-  "review": "bom/atencao/falha na revisão de 12/11/2026"
+  "gain": "distinct gains on the page, mm/mV (None = unreadable pulse)",
+  "duration": "s per row",
+  "review": "good/attention/failure in the review of 12/11/2026"
  },
  "images": {
   "0000": {
@@ -21,7 +21,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "RBBB"
@@ -39,7 +39,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "RBBB"
@@ -57,7 +57,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "RBBB"
@@ -75,7 +75,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "RBBB"
@@ -93,7 +93,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "RBBB"
@@ -109,7 +109,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "LBBB"
@@ -127,8 +127,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "atencao",
-   "note": "Ganho de uma linha medido como 7,3 mm/mV (pulso deformado); o resto está bom.",
+   "review": "attention",
+   "note": "Gain of one row measured as 7.3 mm/mV (deformed pulse); the rest is fine.",
    "diagnoses": [
     "AF",
     "LBBB"
@@ -146,8 +146,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "falha",
-   "note": "Traço fraco e quebrado: só parte das linhas foi extraída e a duração saiu 3,4 s.",
+   "review": "failure",
+   "note": "Weak, broken trace: only part of the rows was extracted and the duration came out 3.4 s.",
    "diagnoses": [
     "LBBB"
    ]
@@ -164,7 +164,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "LBBB"
@@ -182,7 +182,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AF"
@@ -200,7 +200,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AF"
@@ -218,7 +218,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AF"
@@ -236,7 +236,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AF"
@@ -254,7 +254,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AF"
@@ -272,7 +272,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AF",
@@ -291,8 +291,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "atencao",
-   "note": "Linhas 3 e 4 com trechos retos onde o traço some (interpolação).",
+   "review": "attention",
+   "note": "Rows 3 and 4 with straight stretches where the trace vanishes (interpolation).",
    "diagnoses": [
     "PM"
    ]
@@ -309,7 +309,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "PM"
@@ -325,7 +325,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "PM"
@@ -343,7 +343,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "PM"
@@ -363,7 +363,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "PM"
@@ -381,7 +381,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "PM"
@@ -399,7 +399,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "PM"
@@ -417,7 +417,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "PM"
@@ -435,7 +435,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Premature_beat"
@@ -453,8 +453,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "atencao",
-   "note": "Na linha 3 o rastreador salta para a linha de cima num trecho e desenha uma reta.",
+   "review": "attention",
+   "note": "On row 3 the tracker jumps to the row above in one stretch and draws a straight line.",
    "diagnoses": [
     "Premature_beat"
    ]
@@ -471,7 +471,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Premature_beat"
@@ -489,7 +489,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Premature_beat"
@@ -507,7 +507,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AVB_2_3_Adv_SB"
@@ -525,7 +525,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AVB_2_3_Adv_SB"
@@ -543,7 +543,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AVB_2_3_Adv_SB"
@@ -559,8 +559,8 @@
    "speed": 25.0,
    "gain": null,
    "duration": 10.0,
-   "review": "atencao",
-   "note": "A tira de ritmo (rotulada TL/SUAR) não entrou no layout; ganho 5 mm/mV a conferir.",
+   "review": "attention",
+   "note": "The rhythm strip (labelled TL/SUAR) did not enter the layout; 5 mm/mV gain to be checked.",
    "diagnoses": [
     "AVB_2_3_Adv_SB"
    ]
@@ -577,7 +577,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AVB_2_3_Adv_SB"
@@ -595,7 +595,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AVB_2_3_Adv_SB"
@@ -611,8 +611,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "falha",
-   "note": "Página 6x2 com supra de ST gigante e papel curvo: lida como 3x4+3, 7,4 s, metade direita sem traço.",
+   "review": "failure",
+   "note": "6x2 page with a giant ST elevation and curved paper: read as 3x4+3, 7.4 s, right half without trace.",
    "diagnoses": [
     "AVB_2_3_Adv_SB",
     "Injury_Current"
@@ -630,8 +630,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "falha",
-   "note": "Velocidade (50) e ganho (3,8) errados: pulso mal medido e QRS largo enganam a fisiologia.",
+   "review": "failure",
+   "note": "Wrong speed (50) and gain (3.8): a poorly measured pulse and a wide QRS fool the physiology.",
    "diagnoses": [
     "AVB_2_3_Adv_SB"
    ]
@@ -648,8 +648,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "falha",
-   "note": "Traço muito claro: só QRS isolados foram capturados; duração 3,4 s.",
+   "review": "failure",
+   "note": "Very light trace: only isolated QRS were captured; duration 3.4 s.",
    "diagnoses": [
     "AVB_2_3_Adv_SB"
    ]
@@ -664,8 +664,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "atencao",
-   "note": "Cinco tiras contínuas de DII (impressão de ritmo): nomes de grade 3x4 inventados; o traçado está bom.",
+   "review": "attention",
+   "note": "Five continuous lead II strips (rhythm print): invented 3x4 grid names; the tracing is good.",
    "diagnoses": [
     "AVB_2_3_Adv_SB"
    ]
@@ -682,7 +682,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Normal"
@@ -700,7 +700,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "PSVT_ST"
@@ -716,7 +716,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AVB_2_3_Adv_SB"
@@ -734,8 +734,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "atencao",
-   "note": "Ganhos 6,95 e 7,0 mm/mV em duas linhas: pulso medido errado.",
+   "review": "attention",
+   "note": "Gains 6.95 and 7.0 mm/mV on two rows: pulse measured wrong.",
    "diagnoses": [
     "PSVT_ST"
    ]
@@ -750,7 +750,7 @@
    "speed": 25.0,
    "gain": null,
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "PSVT_ST"
@@ -768,7 +768,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "PSVT_ST"
@@ -788,7 +788,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "PSVT_ST"
@@ -806,7 +806,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AT_Flutter"
@@ -824,7 +824,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AT_Flutter"
@@ -842,7 +842,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AT_Flutter"
@@ -861,8 +861,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "atencao",
-   "note": "Ganho dividido 10/5 escrito no cabeçalho, medido como 3,8.",
+   "review": "attention",
+   "note": "Split gain 10/5 written in the header, measured as 3.8.",
    "diagnoses": [
     "AT_Flutter"
    ]
@@ -879,7 +879,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AT_Flutter"
@@ -897,8 +897,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "falha",
-   "note": "Tira de ritmo clara demais não foi detectada; linha 2 parcial; duração 8,7 s.",
+   "review": "failure",
+   "note": "Rhythm strip too light, not detected; row 2 partial; duration 8.7 s.",
    "diagnoses": [
     "AT_Flutter"
    ]
@@ -913,7 +913,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AT_Flutter"
@@ -929,7 +929,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AT_Flutter"
@@ -948,7 +948,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AT_Flutter"
@@ -966,7 +966,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "AT_Flutter"
@@ -984,7 +984,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "VT_VF"
@@ -1002,7 +1002,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "VT_VF"
@@ -1020,7 +1020,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "VT_VF",
@@ -1039,8 +1039,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "atencao",
-   "note": "Linha 3 parcialmente extraída (traço fraco em fundo ruidoso).",
+   "review": "attention",
+   "note": "Row 3 partially extracted (weak trace on a noisy background).",
    "diagnoses": [
     "VT_VF",
     "Injury_Current"
@@ -1060,7 +1060,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "VT_VF",
@@ -1079,7 +1079,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "VT_VF"
@@ -1097,7 +1097,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "VT_VF"
@@ -1115,7 +1115,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "VT_VF"
@@ -1133,7 +1133,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "VT_VF"
@@ -1151,7 +1151,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "VT_VF"
@@ -1169,8 +1169,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "falha",
-   "note": "Página fotografada curva (cilindro): grade não retificada, metade do traço perdido, layout errado.",
+   "review": "failure",
+   "note": "Photographed curved page (cylinder): grid not rectified, half the trace lost, wrong layout.",
    "diagnoses": [
     "VT_VF"
    ]
@@ -1187,7 +1187,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "VT_VF"
@@ -1205,8 +1205,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "atencao",
-   "note": "TV com complexos enormes cruzando as linhas vizinhas: o rastreador mistura traços em vários trechos.",
+   "review": "attention",
+   "note": "VT with huge complexes crossing the neighbouring rows: the tracker mixes traces in several stretches.",
    "diagnoses": [
     "VT_VF"
    ]
@@ -1223,8 +1223,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "atencao",
-   "note": "Ganho medido 3,7 mm/mV (pulso cortado na borda).",
+   "review": "attention",
+   "note": "Gain measured 3.7 mm/mV (pulse cut at the border).",
    "diagnoses": [
     "VT_VF"
    ]
@@ -1241,8 +1241,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "falha",
-   "note": "Duração 13,6 s e traços cruzados (TV larga): eixo do tempo errado.",
+   "review": "failure",
+   "note": "Duration 13.6 s and crossed traces (wide VT): wrong time axis.",
    "diagnoses": [
     "VT_VF"
    ]
@@ -1259,7 +1259,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "VT_VF"
@@ -1275,7 +1275,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1293,7 +1293,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1311,7 +1311,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1327,8 +1327,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "atencao",
-   "note": "Rótulos cortados ('L', '2', '5'): layout montado pela hipótese livre.",
+   "review": "attention",
+   "note": "Cut labels ('L', '2', '5'): layout assembled by the free hypothesis.",
    "diagnoses": [
     "Injury_Current"
    ]
@@ -1343,7 +1343,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1359,7 +1359,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1375,7 +1375,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1391,7 +1391,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1407,7 +1407,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current",
@@ -1424,7 +1424,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current",
@@ -1443,7 +1443,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1459,7 +1459,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1475,7 +1475,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1493,7 +1493,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1511,7 +1511,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1527,8 +1527,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "atencao",
-   "note": "Ganho 6,5 mm/mV (fora do padrão): pulso mal medido.",
+   "review": "attention",
+   "note": "Gain 6.5 mm/mV (non-standard): pulse poorly measured.",
    "diagnoses": [
     "Injury_Current"
    ]
@@ -1543,7 +1543,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1561,7 +1561,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1579,7 +1579,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1595,8 +1595,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "falha",
-   "note": "Mesma página da 0033 (repetida no conjunto): mesmo erro.",
+   "review": "failure",
+   "note": "Same page as 0033 (repeated in the set): same error.",
    "diagnoses": [
     "AVB_2_3_Adv_SB",
     "Injury_Current"
@@ -1614,7 +1614,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1632,7 +1632,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1650,7 +1650,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1666,7 +1666,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1682,7 +1682,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1698,7 +1698,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1716,7 +1716,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1734,7 +1734,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1752,7 +1752,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1770,7 +1770,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1786,7 +1786,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1804,7 +1804,7 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "bom",
+   "review": "good",
    "note": "",
    "diagnoses": [
     "Injury_Current"
@@ -1820,8 +1820,8 @@
     10.0
    ],
    "duration": 10.0,
-   "review": "indisponivel",
-   "note": "LITFL recusa o download (HTTP 403).",
+   "review": "unavailable",
+   "note": "LITFL refuses the download (HTTP 403).",
    "diagnoses": []
   }
  }

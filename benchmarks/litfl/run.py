@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Benchmark LITFL: 102 ECGs reais (scans/fotos de várias fontes) sem sinal verdadeiro.
+"""LITFL benchmark: 102 real ECGs (scans/photos from various sources) without a true signal.
 
-Mede contra uma referência revisada à mão (reference.json):
-  - layout impresso, nomes das tiras de ritmo, velocidade, duração e ganho;
-e, sem referência nenhuma, a coerência interna do sinal extraído:
-  - cobertura: fração das amostras que a página mostra e que saíram extraídas;
-  - Einthoven: |I - II + III| / RMS(I, II, III) nas medidas da grade ANTES da fusão (3x4: as três
-    derivações de membros estão na mesma coluna, no mesmo instante);
-  - duplicata: NRMSE entre a tira de ritmo II e a II da grade no mesmo trecho (só quando a
-    tira é simultânea; em montagens do LITFL nem sempre é).
+Measured against a hand-reviewed reference (reference.json):
+  - printed layout, rhythm-strip names, speed, duration and gain;
+and, with no reference at all, the internal consistency of the extracted signal:
+  - coverage: fraction of the samples the page shows that were extracted;
+  - Einthoven: |I - II + III| / RMS(I, II, III) on the grid measurements BEFORE fusion (3x4: the
+    three limb leads are in the same column, at the same instant);
+  - duplicate: NRMSE between the rhythm strip II and the grid II over the same stretch (only
+    when the strip is simultaneous; in LITFL montages it is not always).
 
-Uso:
-  python benchmarks/litfl/run.py                      # baixa (cache em benchmarks/litfl/cache) e roda tudo
+Usage:
+  python benchmarks/litfl/run.py                      # downloads (cache in benchmarks/litfl/cache) and runs everything
   python benchmarks/litfl/run.py --limit 20 --jobs 2
-  python benchmarks/litfl/run.py --compare results/litfl_main.json   # aponta regressões
-Saída: results/litfl/results.json (por imagem + resumo), report.md e report.html (+ img/)
+  python benchmarks/litfl/run.py --compare results/litfl_main.json   # flags regressions
+Output: results/litfl/results.json (per image + summary), report.md and report.html (+ img/)
 """
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def _family(name):
 
 
 def _expected_fraction(layout_rows, fs=500, n=5000):
-    """Fração do tempo em que cada derivação aparece no papel, pelo layout."""
+    """Fraction of the time each lead appears on paper, from the layout."""
     from ecgdig.layouts import LEADS
     frac = np.zeros(len(LEADS))
     for row in layout_rows:
@@ -79,7 +79,7 @@ def evaluate_one(args):
         out.update(error=repr(e)[:300], trace=traceback.format_exc(limit=2)[-500:], seconds=time.monotonic() - t0)
         return out
     out["seconds"] = round(time.monotonic() - t0, 1)
-    if img_dir is not None:  # página retificada com o traçado extraído por cima
+    if img_dir is not None:  # rectified page with the extracted trace drawn on top
         import cv2
         d = r["debug_image"]
         sc = min(1.0, 1100 / d.shape[1])
@@ -96,7 +96,7 @@ def evaluate_one(args):
                confidence=float(li.get("confidence") or 0.0), warning=li.get("warning"),
                rotation=r.get("rotation"), pulses_left=r.get("pulses_found"), pulses_right=r.get("pulses_right"),
                gain_rows_inferred=r.get("gain_rows_inferred"))
-    # ---- acertos contra a referência
+    # ---- hits against the reference
     ref = entry
     chk = {}
     if ref.get("layout"):
@@ -112,7 +112,7 @@ def evaluate_one(args):
     if ref.get("gain"):
         chk["gain"] = gains == sorted(ref["gain"]) if len(ref["gain"]) > 1 else all(abs(g - ref["gain"][0]) < 1e-6 for g in gains)
     out["check"] = chk
-    # ---- coerência interna (sem referência)
+    # ---- internal consistency (no reference)
     sig = r["signals"]
     exp = _expected_fraction(rows)
     got = np.isfinite(sig).mean(1)
@@ -132,7 +132,7 @@ def evaluate_one(args):
             scale = np.sqrt(np.mean(V ** 2))
             if scale > 0:
                 e = V[0] - V[1] + V[2]
-                # normalizado pela amplitude das três (II sozinha pode ser quase plana)
+                # normalized by the amplitude of the three (II alone may be almost flat)
                 out["einthoven_ratio"] = float(np.sqrt(np.mean(e ** 2)) / scale)
     lst = ps.get("II") or []
     if len(lst) >= 2:
@@ -164,24 +164,24 @@ def summarize(results, ref):
 
 
 def report_md(S, results, ref, cmp=None):
-    L = ["# Benchmark LITFL", "",
-         f"{S['ran']}/{S['images']} imagens processadas ({S['errors']} erros), {S['seconds_mean']} s/imagem.", "",
-         "| Métrica | Valor | n |", "|---|---|---|"]
-    names = dict(layout_acc="Layout correto", rhythm_acc="Tiras de ritmo (todas certas)", rhythm_strip_acc="Tiras de ritmo (por tira)",
-                 speed_acc="Velocidade", duration_acc="Duração", gain_acc="Ganho", all_structural_ok="Layout+velocidade+duração+ganho",
-                 coverage_median="Cobertura (mediana)", einthoven_ratio_median="Einthoven |I−II+III|/RMS(I,II,III) (mediana)",
-                 dup_II_nrmse_median="Ritmo II × grade II, NRMSE (mediana)")
+    L = ["# LITFL benchmark", "",
+         f"{S['ran']}/{S['images']} images processed ({S['errors']} errors), {S['seconds_mean']} s/image.", "",
+         "| Metric | Value | n |", "|---|---|---|"]
+    names = dict(layout_acc="Correct layout", rhythm_acc="Rhythm strips (all right)", rhythm_strip_acc="Rhythm strips (per strip)",
+                 speed_acc="Speed", duration_acc="Duration", gain_acc="Gain", all_structural_ok="Layout+speed+duration+gain",
+                 coverage_median="Coverage (median)", einthoven_ratio_median="Einthoven |I−II+III|/RMS(I,II,III) (median)",
+                 dup_II_nrmse_median="Rhythm II vs grid II, NRMSE (median)")
     for k, lab in names.items():
         n = S.get(k.replace("_acc", "_n").replace("_median", "_n"), "")
         if k in ("rhythm_strip_acc", "all_structural_ok"):
             n = ""
         val = S.get(k)
-        old = f" (antes {cmp[k]})" if cmp and cmp.get(k) is not None and cmp.get(k) != val else ""
+        old = f" (before {cmp[k]})" if cmp and cmp.get(k) is not None and cmp.get(k) != val else ""
         L.append(f"| {lab} | {val}{old} | {n} |")
-    L += ["", "## Erros por imagem", "", "| Imagem | Falhou em | Detectado | Referência |", "|---|---|---|---|"]
+    L += ["", "## Errors per image", "", "| Image | Failed on | Detected | Reference |", "|---|---|---|---|"]
     for x in results:
         if not x["ok"]:
-            L.append(f"| {x['id']} | exceção | {x.get('error','')[:60]} | |")
+            L.append(f"| {x['id']} | exception | {x.get('error','')[:60]} | |")
             continue
         bad = [k for k, v in x["check"].items() if v is False]
         if bad:
@@ -199,10 +199,10 @@ def main():
     ap.add_argument("--out", type=Path, default=Path("results/litfl"))
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2)))
-    ap.add_argument("--compare", type=Path, default=None, help="results.json de uma rodada anterior")
-    ap.add_argument("--no-html", action="store_true", help="não gera report.html nem as imagens")
-    ap.add_argument("--config", action="append", default=[], metavar="CHAVE=VALOR",
-                    help="campo do Config (ex.: --config nonrigid=poly)")
+    ap.add_argument("--compare", type=Path, default=None, help="results.json of a previous run")
+    ap.add_argument("--no-html", action="store_true", help="do not write report.html or the images")
+    ap.add_argument("--config", action="append", default=[], metavar="KEY=VALUE",
+                    help="Config field (e.g. --config nonrigid=poly)")
     a = ap.parse_args()
     import ast
     cfg_kw = {}
@@ -221,19 +221,19 @@ def main():
         img_dir.mkdir(exist_ok=True)
     todo = []
     for key in sorted(ref):
-        if ref[key].get("review") == "indisponivel":
+        if ref[key].get("review") == "unavailable":
             continue
         try:
             todo.append((key, ref[key], fetch(ref[key], a.cache), cfg_kw, img_dir))
         except Exception as e:  # noqa: BLE001
-            print(f"download falhou {key}: {e}", flush=True)
+            print(f"download failed {key}: {e}", flush=True)
         if a.limit and len(todo) >= a.limit:
             break
     results = []
     with ProcessPoolExecutor(max_workers=a.jobs) as ex:
         for res in ex.map(evaluate_one, todo):
             results.append(res)
-            print(res["id"], "ok" if res["ok"] else "ERRO", {k: v for k, v in res.get("check", {}).items() if v is False}, flush=True)
+            print(res["id"], "ok" if res["ok"] else "ERROR", {k: v for k, v in res.get("check", {}).items() if v is False}, flush=True)
     S = summarize(results, ref)
     cmp = json.loads(a.compare.read_text())["summary"] if a.compare and a.compare.exists() else None
     (a.out / "results.json").write_text(json.dumps(dict(summary=S, config=cfg_kw, results=results), indent=1, default=str))

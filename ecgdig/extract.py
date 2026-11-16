@@ -444,14 +444,14 @@ def pulse_rows(B: np.ndarray, R: float):
     return np.array(best[1]), best[2]
 
 
-def pulse_column(B: np.ndarray, R: float, P=None, all_groups: bool = False):
+def pulse_column(B: np.ndarray, R: float, P=None):
     """Column of calibration pulses that do not join the trace (printed apart, on the
     nominal row, with the trace offset by the lead's DC level). Requires >= 3 pulses with the
     same x (±2 mm), the same height (±8%), the same width (±1 mm) and a regular vertical step
     (±15%): a text block or a QR code does not form that. Returns dict(x_start, x_end,
     height, feet) or None."""
     P = find_pulses(B, R) if P is None else P
-    best, groups = None, []
+    best = None
     for p in P:
         h = p["foot"] - p["top"]; w = p["x_end"] - p["x_start"]
         grp = [q for q in P if abs(q["x_start"] - p["x_start"]) <= 2 * R
@@ -467,13 +467,9 @@ def pulse_column(B: np.ndarray, R: float, P=None, all_groups: bool = False):
         cand = dict(x_start=float(np.median([q["x_start"] for q in grp])),
                     x_end=float(np.median([q["x_end"] for q in grp])),
                     height=float(np.median([q["foot"] - q["top"] for q in grp])), feet=feet)
-        if all_groups:
-            if not any(abs(g["x_start"] - cand["x_start"]) <= 3 * R for g in groups):
-                groups.append(cand)
-            continue
         if best is None or len(feet) > len(best["feet"]):
             best = cand
-    return sorted(groups, key=lambda g: g["x_start"]) if all_groups else best
+    return best
 
 
 def _runs(mask_1d):

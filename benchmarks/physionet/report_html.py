@@ -258,7 +258,7 @@ def build(art: Path, before: Path | None, out: Path, findings_md: Path | None = 
     lay_ok = np.mean([r.get("layout") == "3x4+1" for r in ok]) if ok else np.nan
     with_exc = (sum(allv) + 0.0 * n_exc) / max(1, len(allv) + n_exc)
 
-    H = [f"<title>ecgdig on PhysioNet</title>",
+    H = ["<title>ecgdig on PhysioNet</title>",
          '<meta name="claude:viewport-fit-sides" content="cover">',
          '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
          '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">',

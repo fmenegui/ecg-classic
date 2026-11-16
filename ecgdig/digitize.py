@@ -667,7 +667,6 @@ PULSE_COL = [True]
 ADAPT_MORE = [True]
 GLEV_RETRY = [True]
 PULSE_HALF = [True]
-PULSE_MID = [False]   # erasing the middle pulses hurt (rotation_35 img_41: 7.6 -> -0.2 dB)
 COL_GAP = [True]
 _PULSE_ROWS = [True]
 _ROW_BEAT_THR = [0.3]
@@ -1042,7 +1041,6 @@ def _vote_x0(xl, xe, rad, span_px, R, weak=()):
 BASELINE_GUARD = [True]
 GAP_IGNORE_TEXT = [True]
 SPAN_SANITY = [True]
-GRID_SEGS_ALL = [False]
 GAP_PULSE_SLACK = [True]
 # column gap taken by a label ("aVR" printed in the gap, touching both sides): accepted if the
 # gap ink in each row is only text (few small components, letter height)
@@ -1186,9 +1184,6 @@ def _digitize_once(image, cfg: Config | None = None, return_debug: bool = False)
         D = Pn if cfg.ink_mix >= 1.0 else (cfg.ink_mix * Pn + (1 - cfg.ink_mix) * D).astype(np.float32)
         glev = 0.0 if cfg.ink_mix >= 1.0 else glev
     B = binarize(D, R, glev)
-    if GRID_SEGS_ALL[0]:
-        from .extract import clean_grid_segments
-        B = clean_grid_segments(B, R)
     _PRE[0] = (cfg, rect, pap, D, B, glev, ginfo)
     return _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug)
 
@@ -1295,35 +1290,6 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                 B[ya_:yb_, xa_:int(xb_ + 3 * R)] = False
                 D[ya_:yb_, xa_:int(xb_ + 3 * R)] = 0
             ext = [row_extent(B, y, half, R) for y in rows]
-    # pulse column IN THE MIDDLE of the trace (each column of leads starts with its pulse):
-    # it marks the start of a column, it is not signal. Removed from B and D; the gap left
-    # between the end of the previous column and the start of the next is handled as a column gap, below.
-    if PULSE_MID[0] and len(rows) >= 3:
-        from .extract import pulse_column
-        ex_ = [e for e in ext if e]
-        if ex_:
-            s0 = float(np.median([e[0] for e in ex_]))
-            # end from the band ink (the row extent stops at the gap before the middle pulse)
-            ends = []
-            for y in rows:
-                a_, b_ = max(0, int(y - half)), min(B.shape[0], int(y + half))
-                xs_ = np.nonzero(B[a_:b_].any(0))[0]
-                if len(xs_):
-                    ends.append(float(xs_[-1]))
-            e0 = float(np.median(ends)) if ends else float(np.median([e[1] for e in ex_]))
-            mids = [g for g in pulse_column(B, R, all_groups=True)
-                    if g["x_start"] > s0 + 30 * R and g["x_end"] < e0 - 30 * R
-                    and len(g["feet"]) >= max(3, len(rows) - 1)]
-            if mids:
-                B = B.copy(); D = D.copy()
-                for g in mids:
-                    xa_, xb_ = max(0, int(g["x_start"] - 1 * R)), int(g["x_end"] + 1 * R)
-                    h_ = g["height"]
-                    for f_ in g["feet"]:
-                        ya_, yb_ = max(0, int(f_ - h_ - 1 * R)), int(f_ + 1 * R)
-                        B[ya_:yb_, xa_:xb_] = False
-                        D[ya_:yb_, xa_:xb_] = 0
-                ext = [row_extent(B, y, half, R) for y in rows]
     # common gap between columns: every row without ink in the same x range, at positions that
     # split the trace into equal columns. Time is continuous from one column to the next, so
     # the gap is removed from the image (B, D and the rectified one) and the rest sees a continuous trace
@@ -1498,9 +1464,9 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     lv1, lv2, src = [], [], []
     for p, rp in zip(pulses, rpulses):
         a1, a2 = _lv(p)
-        b1, b2 = _lv(rp)
+        b1, _ = _lv(rp)
         if RPULSE_HALF[0] and rp is not None and rp.get("half") and _std_ok(b1) and _snap(b1) != 10.0:
-            b1, b2 = None, None
+            b1 = None
         # the left pulse counts if it gives a standard gain; otherwise try the right one
         if _std_ok(a1) or not _std_ok(b1):
             lv1.append(a1); lv2.append(a2); src.append("L" if a1 is not None else None)

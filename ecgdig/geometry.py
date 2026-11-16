@@ -542,30 +542,6 @@ def _refine_long_period(G, angle, ppmm, mm=(10.0, 20.0)):
 SCALE_X5 = [True]
 
 
-def _homography_sane(Hm, shape, tol=0.35):
-    """Local scale (Jacobian determinant) at the corners within a factor 3 of the centre, and
-    no point at infinity."""
-    h, w = shape[:2]
-    pts = [(0, 0), (w, 0), (w, h), (0, h), (w / 2, h / 2)]
-
-    def jdet(x, y):
-        v = Hm @ np.array([x, y, 1.0])
-        if v[2] <= 1e-6:
-            return None
-        e = 1.0
-        a = Hm @ np.array([x + e, y, 1.0]); b = Hm @ np.array([x, y + e, 1.0])
-        p0 = v[:2] / v[2]; pa = a[:2] / a[2]; pb = b[:2] / b[2]
-        return abs(np.linalg.det(np.stack([pa - p0, pb - p0])))
-    d = [jdet(x, y) for x, y in pts]
-    if any(x is None or x <= 0 for x in d):
-        return False
-    c = d[-1]
-    # a photo with strong perspective changes the local scale up to ~2x from one corner to
-    # the other; only a factor > 3 (or a point at infinity) is degenerate
-    return all(1 / 3.0 <= x / c <= 3.0 for x in d[:-1]) and 0.33 <= c <= 3.0
-
-
-H_SANE = [False]
 NONRIGID_CLIP = [True]
 CLIP_MARGIN = [0.1]
 
@@ -631,9 +607,9 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
         # if it explains most of them (otherwise rotation + scale)
         c1 = _correspondences(Gc, 5 * s, s, False, tile, step)
         c5 = _correspondences(Gc, 5 * s, 5 * s, False, tile, step)
-        src, dst, w = max((c1, c5), key=lambda c: float(np.sum(c[2])) if len(c[0]) else 0.0)
+        src, dst, _ = max((c1, c5), key=lambda c: float(np.sum(c[2])) if len(c[0]) else 0.0)
     else:
-        src, dst, w = [], [], []
+        src, dst = [], []
     A3 = np.vstack([M, [0, 0, 1]])
     if len(src) >= 8:
         Hm, inl = cv2.findHomography(dst, src, cv2.RANSAC, 0.6 * s)
@@ -641,13 +617,6 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
             Hm = np.eye(3)
         elif rescued:
             rescued_ok = True
-        if H_SANE[0] and not _homography_sane(Hm, Gc.shape):
-            # degenerate homography (RANSAC on a badly unwrapped block set): the local scale
-            # changes > 35% from one corner to the other. Keep the robust affine, or rotation + scale
-            A2, _ = cv2.estimateAffine2D(dst, src, method=cv2.RANSAC, ransacReprojThreshold=0.6 * s)
-            Hm = np.vstack([A2, [0, 0, 1]]) if A2 is not None else np.eye(3)
-            if not _homography_sane(Hm, Gc.shape):
-                Hm = np.eye(3)
     else:
         Hm = np.eye(3)
     # rectified frame: u,v in mm*R. coarse(x,y) = Hm @ (u/R*s, v/R*s)
@@ -765,7 +734,6 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
     With period_mm=1 (and search < 0.5 mm) it is the FINE fit: each 1 mm line located, the
     classical equivalent of the intersection-indexed grid of the top Kaggle entries.
     Returns dense (dx, dy, rms_mm) (sample at x+dx, y+dy) or None."""
-    import warnings
     if out.ndim == 3:
         # darkness in the channel where the grid shows most (red/pink grid: green and blue);
         # the channel mean almost erases the minor line

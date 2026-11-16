@@ -1,14 +1,14 @@
-name: PhysioNet (Kaggle) em paralelo
+name: PhysioNet (Kaggle) in parallel
 on:
   workflow_dispatch:
     inputs:
       config:
-        description: 'Campos do Config, ex.: "synth=False bridge=False" (opcional)'
+        description: 'Config fields, e.g. "synth=False bridge=False" (optional)'
         required: false
         default: ''
         type: string
       tag:
-        description: 'Rótulo do artefato'
+        description: 'Artifact label'
         required: false
         default: 'run'
         type: string
@@ -30,14 +30,14 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install -e . kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0 pandas
-      - name: Cache (20 registros)
+      - name: Cache (20 records)
         id: c
         uses: actions/cache/restore@v4
         with:
           path: results/physionet/data
           key: physionet-all20-v1
           restore-keys: physionet-p20-
-      # junta o que rodadas anteriores já baixaram (cada restauração acrescenta arquivos)
+      # gather what previous runs already downloaded (each restore adds files)
       - uses: actions/cache/restore@v4
         if: steps.c.outputs.cache-hit != 'true'
         with:
@@ -63,19 +63,19 @@ jobs:
         with:
           path: results/physionet/data
           key: physionet-shard-3-v1
-      - name: Baixar o que falta
+      - name: Download what is missing
         id: dl
         if: steps.c.outputs.cache-hit != 'true'
         run: |
           python benchmarks/physionet/run.py prefetch --ids "$IDS" --out results/physionet | tee pf.log
-          if grep -q "^faltando 0" pf.log; then echo "full=1" >> "$GITHUB_OUTPUT"; else echo "full=0" >> "$GITHUB_OUTPUT"; fi
-      - name: Guardar (completo)
+          if grep -q "^missing 0" pf.log; then echo "full=1" >> "$GITHUB_OUTPUT"; else echo "full=0" >> "$GITHUB_OUTPUT"; fi
+      - name: Save (complete)
         if: steps.c.outputs.cache-hit != 'true' && steps.dl.outputs.full == '1'
         uses: actions/cache/save@v4
         with:
           path: results/physionet/data
           key: physionet-all20-v1
-      - name: Guardar (parcial)
+      - name: Save (partial)
         if: steps.c.outputs.cache-hit != 'true' && steps.dl.outputs.full != '1'
         uses: actions/cache/save@v4
         with:
@@ -104,7 +104,7 @@ jobs:
           path: results/physionet/data
           key: physionet-all20-v1
           restore-keys: physionet-p20-
-      - name: Avaliar
+      - name: Evaluate
         env:
           PHYSIONET_KEEP_DATA: '1'
           PART: ${{ matrix.part }}

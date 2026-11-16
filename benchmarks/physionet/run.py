@@ -171,8 +171,8 @@ def main():
                         _t.sleep(3)  # slowly: the Kaggle request limit drops bursts
                 except Exception as e:  # noqa: BLE001
                     miss += 1
-                    print("falhou", nm, str(e)[:120], flush=True)
-        print("faltando", miss)
+                    print("failed", nm, str(e)[:120], flush=True)
+        print("missing", miss)
     else:
         from eval_snr import evaluate  # written after inspecting the format
         evaluate(a)

@@ -1,15 +1,19 @@
-import sys, pickle, json, numpy as np, cv2
+"""Figures in docs/internet/: public ECG images from Open-ECG-Digitizer and paper-ecg.
+
+    ECG_EXT=<folder with the oed/ and pecg/ clones> python scripts/internet_figures.py [key ...]
+"""
+import sys, json, numpy as np, cv2
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 from ecgdig.digitize import digitize, Config, LEADS
 from ecgdig.plot import plot_ecg
-E = __import__("os").environ.get("ECG_EXT", "ext/")  # clones de open-ecg-digitizer (oed/) e paper-ecg (pecg/)
-imgs = [("ge_scan", E+"pecg/fullScan.png", "GE/Marquette, scan (paper-ecg)", "3x4 + ritmo V1, II · 25 mm/s"),
-        ("ge_rot", E+"pecg/rotatedFullScan.png", "Mesmo GE, scan girado (paper-ecg)", "3x4 + ritmo V1, II · 25 mm/s"),
+E = __import__("os").environ.get("ECG_EXT", "ext/")  # clones of open-ecg-digitizer (oed/) and paper-ecg (pecg/)
+imgs = [("ge_scan", E+"pecg/fullScan.png", "GE/Marquette, scan (paper-ecg)", "3x4 + rhythm V1, II · 25 mm/s"),
+        ("ge_rot", E+"pecg/rotatedFullScan.png", "Same GE, rotated scan (paper-ecg)", "3x4 + rhythm V1, II · 25 mm/s"),
         ("schiller11", E+"oed/test/test_data/data/ecg_data/11_1.png", "Mortara/Quinton, scan (Open-ECG-Digitizer)", "V1–V6 · 50 mm/s"),
         ("schiller12", E+"oed/test/test_data/data/ecg_data/12_1.png", "Schiller, scan (Open-ECG-Digitizer)", "V1–V6 · 50 mm/s"),
-        ("photo0", E+"oed/assets/visual_abstract-img0.png", "Schiller, foto de celular (Open-ECG-Digitizer)", "V1–V6 · 50 mm/s"),
-        ("photo1", E+"oed/assets/visual_abstract-img1.png", "Foto com rótulos apagados (Open-ECG-Digitizer)", "provavelmente V1–V6 (mesmo paciente da foto anterior) · 50 mm/s")]
+        ("photo0", E+"oed/assets/visual_abstract-img0.png", "Schiller, phone photo (Open-ECG-Digitizer)", "V1–V6 · 50 mm/s"),
+        ("photo1", E+"oed/assets/visual_abstract-img1.png", "Photo with erased labels (Open-ECG-Digitizer)", "probably V1–V6 (same patient as the previous photo) · 50 mm/s")]
 sel = sys.argv[1:]
 summ = {}
 for key, f, title, truth in imgs:
@@ -23,19 +27,19 @@ for key, f, title, truth in imgs:
     li = r["layout_info"] or {}
     fig = plt.figure(figsize=(16, 15.5), dpi=110)
     fig.text(0.02, 0.985, f"{title}", fontsize=15, weight="bold", va="top")
-    fig.text(0.02, 0.962, f"Verdade (impresso na folha): {truth}", fontsize=11, va="top", color="#333")
-    fig.text(0.02, 0.945, f"Detectado: layout {r['layout']}  [{names}]  ·  {r['speed_mm_per_s']:g} mm/s ({r['speed_source']})  ·  "
-             f"{r['duration_s']:g} s  ·  ganho {sorted(set(r['gains'].values()))} mm/mV  ·  confiança do layout {li.get('confidence', 0):.2f}",
+    fig.text(0.02, 0.962, f"Truth (printed on the sheet): {truth}", fontsize=11, va="top", color="#333")
+    fig.text(0.02, 0.945, f"Detected: layout {r['layout']}  [{names}]  ·  {r['speed_mm_per_s']:g} mm/s ({r['speed_source']})  ·  "
+             f"{r['duration_s']:g} s  ·  gain {sorted(set(r['gains'].values()))} mm/mV  ·  layout confidence {li.get('confidence', 0):.2f}",
              fontsize=10.5, va="top", color="#0b4f9c")
     if li.get("warning"):
         fig.text(0.51, 0.962, "⚠ " + li["warning"], fontsize=10, va="top", color="#b45309")
     ax = fig.add_axes([0.02, 0.585, 0.47, 0.32]); ax.imshow(img); ax.axis("off")
-    ax.set_title("Imagem original", fontsize=11, loc="left")
+    ax.set_title("Original image", fontsize=11, loc="left")
     ax = fig.add_axes([0.51, 0.585, 0.47, 0.32]); ax.imshow(dbg); ax.axis("off")
-    ax.set_title("Retificada pela grade + traçado extraído (azul)", fontsize=11, loc="left")
+    ax.set_title("Rectified by the grid + extracted trace (blue)", fontsize=11, loc="left")
     ax = fig.add_axes([0.02, 0.01, 0.96, 0.55])
     plot_ecg(ax, r["signals"], LEADS, layout=rows, speed=r["speed_mm_per_s"],
-             title=f"Sinal digitalizado redesenhado a partir dos números (mV, 500 Hz), na mesma velocidade da folha")
+             title="Digitized signal redrawn from the numbers (mV, 500 Hz), at the sheet's speed")
     fig.savefig(f"docs/internet/{key}.png"); plt.close(fig)
     m_ = dict(layout=r["layout"], speed=r["speed_mm_per_s"], conf=float(li.get("confidence", 0)))
     ps, pw = rn["per_segment"], rn["per_segment_weight"]

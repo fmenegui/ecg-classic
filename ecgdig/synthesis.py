@@ -104,7 +104,9 @@ def estimate_psf(D, xs, yc, rad, n_max=400):
     return float(A), float(s)
 
 
-SYNTH_BUDGET = [4.0]
+# wall-clock emergency brake only: at 4 s a long rhythm strip (~2500 points) on a loaded
+# machine was cut before the deterministic work limit, so the output depended on the machine
+SYNTH_BUDGET = [30.0]
 SYNTH_MAXWORK = [3e7]
 SYNTH_WORK = [2e8]      # point-pixel pairs x iterations per segment (deterministic limit)
 
@@ -195,9 +197,12 @@ def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_
             break
         cx = cx0 + delta * nx; cy = cy0 + delta * ny
         blocks = _blocks(cx - x0, cy - y0)
-        S = np.zeros(h * w)
-        for _, idx, gv, _, _ in blocks:
-            S += np.bincount(idx.ravel(), weights=gv.ravel(), minlength=h * w)
+        if len(blocks) == 1:   # one block: the sum is the single bincount (0 + x == x)
+            S = np.bincount(blocks[0][1].ravel(), weights=blocks[0][2].ravel(), minlength=h * w)
+        else:
+            S = np.zeros(h * w)
+            for _, idx, gv, _, _ in blocks:
+                S += np.bincount(idx.ravel(), weights=gv.ravel(), minlength=h * w)
         S = S.reshape(h, w)
         M = 1.0 - np.exp(-S)
         r = np.where(tube, M - Dp, 0.0)
@@ -209,9 +214,10 @@ def synth_refine(D, xg, yg, rad, n_iter=60, ds=0.5, lam=2.0, max_shift=1.5, max_
         prev = loss
         # dL/dc_k = sum_p 2 r(p) (1 - M(p)) * a g(p - c_k) * (p - c_k)/sig^2
         G2 = (2 * r * (1 - M)).ravel()
+        s2 = sig * sig
         grad = np.empty(K)
         for c0, idx, gv, dx, dy in blocks:
-            coef = (G2[idx] * gv / (sig * sig)).reshape(len(dx), n1, n1)   # (k, n1[y], n1[x])
+            coef = (np.take(G2, idx) * gv / s2).reshape(len(dx), n1, n1)   # (k, n1[y], n1[x])
             gx = np.einsum("kji,ki->k", coef, dx)
             gy = np.einsum("kji,kj->k", coef, dy)
             grad[c0:c0 + len(gx)] = gx * nx[c0:c0 + len(gx)] + gy * ny[c0:c0 + len(gx)]

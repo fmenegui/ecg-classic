@@ -45,11 +45,10 @@ CABRERA_NO_EVIDENCE = [10.0]
 LABEL_HI = [15.0]
 BND_RELATIVE = [True]
 BND_OTHER_ROWS = [True]
-# the row's own QRS is not a boundary mark either (in simultaneous formats the QRS falls at
-# the same position in every row and mimics a boundary); a loose bar read as "I" does not
-# contradict the name of another segment (QRS fragment touching the label)
+# the row's own QRS is not a boundary mark either: in simultaneous formats the QRS falls at
+# the same position in every row and mimics a boundary. Off: it also masks separator marks
+# that the tracker followed as steep strokes (6x2 page read as 3x4+3)
 BND_OWN_QRS = [False]
-OCR_SINGLE_NEUTRAL = [False]
 BND_COHERENT = [True]
 LIMB_LOG = [True]
 
@@ -393,8 +392,7 @@ class Ctx:
             # I/II/III differ only by the number of bars: a bar touching the trace or the
             # pulse vanishes and "II" becomes "I". Confusion among them costs half
             cap = 0.5 if (top in ("I", "II", "III") and _canon(name) in ("I", "II", "III")) else 1.0
-            if w.get("single") and top == "I" and (_canon(name) in ("II", "III") or
-                                                   (OCR_SINGLE_NEUTRAL[0] and _canon(name) != "I")):
+            if w.get("single") and top == "I" and _canon(name) in ("II", "III"):
                 cap = 0.0  # a single bar does not contradict II/III: the others may have merged into the trace
             parts["ocr"] += max(-cap, (d.get(name, 0.0) - d[top]) / 0.15)
         # reliable label with no segment to explain it: the hypothesis ignores a printed lead

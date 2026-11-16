@@ -1,6 +1,6 @@
-"""Relatório HTML do benchmark LITFL: resumo + galeria das páginas com o traçado extraído.
+"""HTML report of the LITFL benchmark: summary + gallery of the pages with the extracted trace.
 
-Arquivo único (dados embutidos); as imagens ficam em img/ ao lado. Abre direto do disco.
+Single file (embedded data); the images sit in img/ next to it. Opens straight from disk.
 """
 from __future__ import annotations
 
@@ -10,22 +10,22 @@ from datetime import date
 
 LABELS = {
     "layout": "Layout",
-    "rhythm": "Tiras de ritmo",
-    "speed": "Velocidade",
-    "duration": "Duração",
-    "gain": "Ganho",
+    "rhythm": "Rhythm strips",
+    "speed": "Speed",
+    "duration": "Duration",
+    "gain": "Gain",
 }
 
 METRICS = [
-    ("layout_acc", "Layout correto", "pct"),
-    ("rhythm_acc", "Tiras de ritmo certas", "pct"),
-    ("gain_acc", "Ganho certo", "pct"),
-    ("duration_acc", "Duração certa", "pct"),
-    ("speed_acc", "Velocidade certa", "pct"),
-    ("all_structural_ok", "Layout + velocidade + duração + ganho", "pct"),
-    ("coverage_median", "Cobertura (mediana)", "pct"),
-    ("einthoven_ratio_median", "Einthoven antes da fusão (mediana)", "num"),
-    ("dup_II_nrmse_median", "Ritmo II × grade II, NRMSE (mediana)", "num"),
+    ("layout_acc", "Correct layout", "pct"),
+    ("rhythm_acc", "Correct rhythm strips", "pct"),
+    ("gain_acc", "Correct gain", "pct"),
+    ("duration_acc", "Correct duration", "pct"),
+    ("speed_acc", "Correct speed", "pct"),
+    ("all_structural_ok", "Layout + speed + duration + gain", "pct"),
+    ("coverage_median", "Coverage (median)", "pct"),
+    ("einthoven_ratio_median", "Einthoven before fusion (median)", "num"),
+    ("dup_II_nrmse_median", "Rhythm II vs grid II, NRMSE (median)", "num"),
 ]
 
 CSS = """
@@ -75,7 +75,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .id { font-family: var(--font-mono); font-weight: 500; font-size: 13px; }
 .pill { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 999px; }
-.pill.ok { color: var(--ok); background: var(--ok-bg); } .pill.erro { color: var(--warn); background: var(--warn-bg); } .pill.falha { color: var(--bad); background: var(--bad-bg); }
+.pill.ok { color: var(--ok); background: var(--ok-bg); } .pill.error { color: var(--warn); background: var(--warn-bg); } .pill.failure { color: var(--bad); background: var(--bad-bg); }
 .miss { font-size: 11.5px; padding: 1px 7px; border-radius: 6px; color: var(--bad); background: var(--bad-bg); }
 .dx { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
 .kv { font-family: var(--font-mono); font-size: 12px; color: var(--muted); display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-variant-numeric: tabular-nums; }
@@ -97,14 +97,14 @@ footer { margin-top: 28px; color: var(--muted); font-size: 13px; max-width: 85ch
 
 JS = """
 const D = JSON.parse(document.getElementById("data").textContent);
-const L = { ok: "Certa", erro: "Com erro", falha: "Exceção" };
+const L = { ok: "Correct", error: "With errors", failure: "Exception" };
 const F = D.fields;
 let filter = "all", q = "";
 try { filter = localStorage.getItem("litfl-bench-filter") || "all"; } catch (e) {}
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmt = v => Array.isArray(v) ? v.join(" / ") : (v ?? "—");
 function rowsKV(it) {
-  if (!it.ok) return `<span>erro</span><b class="x">${esc(it.error)}</b>`;
+  if (!it.ok) return `<span>error</span><b class="x">${esc(it.error)}</b>`;
   const r = it.ref, bad = new Set(it.failed);
   const line = (k, got, want) => `<span>${F[k]}</span><b${bad.has(k) ? ' class="x"' : ""}>${esc(fmt(got))}${bad.has(k) ? " ≠ " + esc(fmt(want)) : ""}</b>`;
   return [line("layout", it.layout, r.layout), line("rhythm", it.rhythm.length ? it.rhythm : "—", r.rhythm),
@@ -113,8 +113,8 @@ function rowsKV(it) {
 }
 function card(it) {
   const miss = it.failed.map(k => `<span class="miss">${F[k]}</span>`).join("");
-  return `<button class="card" data-id="${it.id}" aria-label="Abrir ${it.id}">
-    ${it.image ? `<img loading="lazy" src="${it.image}" alt="Página ${it.id} retificada com o traçado extraído">` : ""}
+  return `<button class="card" data-id="${it.id}" aria-label="Open ${it.id}">
+    ${it.image ? `<img loading="lazy" src="${it.image}" alt="Page ${it.id} rectified with the extracted trace">` : ""}
     <div class="body"><div class="top"><span class="id">${it.id}</span><span class="pill ${it.status}">${L[it.status]}</span>${miss}<span class="dx">${esc(it.dx.join(", "))}</span></div>
     <div class="kv">${rowsKV(it)}</div>${it.note ? `<p class="note">${esc(it.note)}</p>` : ""}</div></button>`;
 }
@@ -132,16 +132,16 @@ function open(id) {
   const p = document.getElementById("d-pill"); p.className = "pill " + it.status; p.textContent = L[it.status];
   document.getElementById("d-kv").innerHTML = rowsKV(it);
   const extra = [];
-  if (it.confidence != null) extra.push("confiança do layout " + it.confidence.toFixed(2));
+  if (it.confidence != null) extra.push("layout confidence " + it.confidence.toFixed(2));
   if (it.einthoven_ratio != null) extra.push("Einthoven " + it.einthoven_ratio.toFixed(2));
-  if (it.dup_II_nrmse != null) extra.push("ritmo × grade " + it.dup_II_nrmse.toFixed(2));
+  if (it.dup_II_nrmse != null) extra.push("rhythm vs grid " + it.dup_II_nrmse.toFixed(2));
   if (it.warning) extra.push(it.warning);
   document.getElementById("d-note").textContent = [it.note, extra.join(" · ")].filter(Boolean).join(" — ");
   const img = document.getElementById("d-img"); img.src = it.image || ""; img.hidden = !it.image;
   const a = document.getElementById("d-src"); a.href = it.url || "#"; a.hidden = !it.url;
   document.getElementById("dlg").showModal();
 }
-const cnt = { all: D.items.length, ok: 0, erro: 0, falha: 0 };
+const cnt = { all: D.items.length, ok: 0, error: 0, failure: 0 };
 D.items.forEach(it => cnt[it.status]++);
 document.querySelectorAll("[data-c]").forEach(e => e.textContent = cnt[e.dataset.c]);
 document.querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => { filter = b.dataset.f; try { localStorage.setItem("litfl-bench-filter", filter); } catch (e) {} render(); }));
@@ -164,7 +164,7 @@ def write_html(path, S, results, ref, cmp=None, cfg_kw=None):
     for x in results:
         rf = ref.get(x["id"], {})
         failed = [k for k in LABELS if x.get("check", {}).get(k) is False]
-        status = "falha" if not x["ok"] else ("erro" if failed else "ok")
+        status = "failure" if not x["ok"] else ("error" if failed else "ok")
         items.append(dict(
             id=x["id"], status=status, failed=failed, image=x.get("image"), url=rf.get("url"),
             dx=[d.replace("_", " ") for d in rf.get("diagnoses", [])], note=rf.get("note", "") if failed or not x["ok"] else "",
@@ -182,46 +182,46 @@ def write_html(path, S, results, ref, cmp=None, cfg_kw=None):
             delta = v - cmp[key]
             cls = "up" if delta > 1e-9 else ("down" if delta < -1e-9 else "same")
             arrow = "▲" if delta > 1e-9 else ("▼" if delta < -1e-9 else "=")
-            d = f'<div class="d {cls}">{arrow} antes {_fmt(cmp[key], kind)}</div>'
+            d = f'<div class="d {cls}">{arrow} before {_fmt(cmp[key], kind)}</div>'
         tiles.append(f'<div class="tile"><div class="n">{_fmt(v, kind)}</div><div class="l">{html.escape(lab)}</div>{d}</div>')
-    # erros por campo
+    # errors per field
     by_field = {k: [it["id"] for it in items if k in it["failed"]] for k in LABELS}
     rows = "".join(f"<tr><td>{LABELS[k]}</td><td class='num'>{len(v)}</td><td class='num'>{' '.join(v) or '—'}</td></tr>"
                    for k, v in by_field.items())
-    cfg = ", ".join(f"{k}={v}" for k, v in (cfg_kw or {}).items()) or "padrão"
+    cfg = ", ".join(f"{k}={v}" for k, v in (cfg_kw or {}).items()) or "default"
     data = dict(items=items, fields=LABELS)
-    # fora do f-string: o Python 3.11 (o do CI) não aceita barra invertida dentro da expressão
+    # outside the f-string: Python 3.11 (the CI one) does not accept a backslash inside the expression
     data_json = json.dumps(data, ensure_ascii=False, default=str).replace("</", "<\\/")
     page = f"""<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Benchmark LITFL</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LITFL benchmark</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap">
 <style>{CSS}</style></head>
 <body><div class="wrap">
 <header>
-<h1>Benchmark LITFL</h1>
-<p class="lede">O digitalizador clássico <b>ecgdig</b> em <b>{S['images']} ECGs reais</b> do Life in the Fast Lane (scans e fotos de várias fontes). Não há sinal verdadeiro: a estrutura (layout, nome das tiras de ritmo, velocidade, duração, ganho) é comparada com uma referência revisada à mão, e o sinal é avaliado pela coerência interna. Cada cartão mostra a página retificada pela grade com o <b style="color:var(--ink)">traçado extraído em azul</b>.</p>
-<div class="meta">{date.today().isoformat()} · Config: {html.escape(cfg)} · {S['ran']}/{S['images']} processadas · {S['seconds_mean']} s por imagem</div>
+<h1>LITFL benchmark</h1>
+<p class="lede">The classical digitizer <b>ecgdig</b> on <b>{S['images']} real ECGs</b> from Life in the Fast Lane (scans and photos from various sources). There is no true signal: the structure (layout, rhythm-strip names, speed, duration, gain) is compared with a hand-reviewed reference, and the signal is judged by its internal consistency. Each card shows the page rectified by the grid with the <b style="color:var(--ink)">extracted trace in blue</b>.</p>
+<div class="meta">{date.today().isoformat()} · Config: {html.escape(cfg)} · {S['ran']}/{S['images']} processed · {S['seconds_mean']} s per image</div>
 </header>
 <div class="tiles">{''.join(tiles)}</div>
-<h2>Erros por campo</h2>
-<div class="tablewrap"><table><thead><tr><th>Campo</th><th>Imagens</th><th>Quais</th></tr></thead><tbody>{rows}</tbody></table></div>
-<div class="bar" role="toolbar" aria-label="Filtros">
-<button class="chip" data-f="all" id="f-all">Todas <span class="c" data-c="all"></span></button>
-<button class="chip" data-f="ok" id="f-ok">Certas <span class="c" data-c="ok"></span></button>
-<button class="chip" data-f="erro" id="f-erro">Com erro <span class="c" data-c="erro"></span></button>
-<button class="chip" data-f="falha" id="f-falha">Exceção <span class="c" data-c="falha"></span></button>
-<input class="search" id="q" type="search" placeholder="Nº, diagnóstico ou campo" aria-label="Buscar">
+<h2>Errors per field</h2>
+<div class="tablewrap"><table><thead><tr><th>Field</th><th>Images</th><th>Which</th></tr></thead><tbody>{rows}</tbody></table></div>
+<div class="bar" role="toolbar" aria-label="Filters">
+<button class="chip" data-f="all" id="f-all">All <span class="c" data-c="all"></span></button>
+<button class="chip" data-f="ok" id="f-ok">Correct <span class="c" data-c="ok"></span></button>
+<button class="chip" data-f="error" id="f-error">With errors <span class="c" data-c="error"></span></button>
+<button class="chip" data-f="failure" id="f-failure">Exception <span class="c" data-c="failure"></span></button>
+<input class="search" id="q" type="search" placeholder="No., diagnosis or field" aria-label="Search">
 </div>
 <div class="grid" id="grid"></div>
-<p class="empty" id="empty" hidden>Nenhuma imagem com esse filtro.</p>
-<footer>Einthoven: |I − II + III| / RMS(I, II, III) nas medidas da grade antes da fusão (0 = perfeito). Ritmo × grade: NRMSE entre a tira de ritmo II e a II da grade no mesmo trecho; em várias montagens do LITFL a tira não é simultânea, então só a variação entre versões é informativa. Referência anotada visualmente em 12/11/2026 (benchmarks/litfl/reference.json). Imagens: litfl.com.</footer>
+<p class="empty" id="empty" hidden>No image with this filter.</p>
+<footer>Einthoven: |I − II + III| / RMS(I, II, III) on the grid measurements before fusion (0 = perfect). Rhythm vs grid: NRMSE between the rhythm strip II and the grid II over the same stretch; in several LITFL montages the strip is not simultaneous, so only the change between versions is informative. Reference annotated visually on 12/11/2026 (benchmarks/litfl/reference.json). Images: litfl.com.</footer>
 </div>
-<dialog id="dlg" aria-label="Imagem ampliada"><div class="dlg">
-<div class="row"><span class="id" id="d-id"></span><span class="pill" id="d-pill"></span><button class="close" id="d-close">Fechar</button></div>
+<dialog id="dlg" aria-label="Enlarged image"><div class="dlg">
+<div class="row"><span class="id" id="d-id"></span><span class="pill" id="d-pill"></span><button class="close" id="d-close">Close</button></div>
 <div class="kv" id="d-kv"></div><p class="note" id="d-note"></p>
-<img id="d-img" alt=""><div class="row"><a id="d-src" href="#" target="_blank" rel="noopener">Imagem original no LITFL</a></div>
+<img id="d-img" alt=""><div class="row"><a id="d-src" href="#" target="_blank" rel="noopener">Original image on LITFL</a></div>
 </div></dialog>
 <script type="application/json" id="data">{data_json}</script>
 <script>{JS}</script>

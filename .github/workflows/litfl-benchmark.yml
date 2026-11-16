@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       limit:
-        description: 'Número de imagens (0 = todas)'
+        description: 'Number of images (0 = all)'
         required: false
         default: '0'
         type: string
@@ -27,7 +27,7 @@ jobs:
           key: litfl-images-v1
       - name: Benchmark
         run: python benchmarks/litfl/run.py --limit "${{ inputs.limit || '0' }}" --jobs 2 --compare benchmarks/litfl/baseline.json
-      - name: Relatório no resumo do job
+      - name: Report in the job summary
         if: always()
         run: cat results/litfl/report.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4

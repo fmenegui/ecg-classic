@@ -1,25 +1,25 @@
-"""Gerador de recortes de treino para o segmentador de traço (modo híbrido).
+"""Training-crop generator for the trace segmenter (hybrid mode).
 
-Princípio: a rede só aprende ONDE ESTÁ A TINTA DA PENA DO ECG (traço, pulso de calibração,
-marca separadora) numa imagem já retificada pela grade (10 px/mm). Tudo o mais continua
-clássico. Para não decorar um gerador específico (o do Kaggle/PhysioNet), cada recorte sorteia
-papel, grade, pena, cores, texto e degradações de forma independente e ampla; não há página,
-layout nem posição fixa.
+Principle: the network only learns WHERE THE ECG PEN INK IS (trace, calibration pulse,
+separator mark) on an image already rectified by the grid (10 px/mm). Everything else stays
+classical. To avoid memorizing a specific generator (the Kaggle/PhysioNet one), each crop draws
+paper, grid, pen, colours, text and degradations independently and broadly; there is no fixed
+page, layout or position.
 
-Rótulo: cobertura anti-aliased da pena (0..1), desenhada em supersampling, ANTES das
-degradações (a rede aprende a desfazer borrão, JPEG, sombra, pontilhado, moiré).
+Label: anti-aliased pen coverage (0..1), drawn with supersampling, BEFORE the degradations
+(the network learns to undo blur, JPEG, shadow, stippling, moiré).
 """
 from __future__ import annotations
 
 import numpy as np
 import cv2
 
-R = 10.0  # px/mm da imagem retificada
+R = 10.0  # px/mm of the rectified image
 
 
 def _ecg_wave(rng, n):
-    """Sinal de ECG plausível (mV) com n amostras a 500 Hz: usa o gerador de dipolo do ecgdig
-    quando disponível e sorteia derivação, janela e ganho."""
+    """Plausible ECG signal (mV) with n samples at 500 Hz: uses the ecgdig dipole generator when
+    available and draws lead, window and gain at random."""
     try:
         from ecgdig.synth import synth_signals
         S = synth_signals(rng)
@@ -39,7 +39,7 @@ def _ecg_wave(rng, n):
 def _rand_color(rng, dark=True):
     if dark:
         base = rng.integers(0, 70, 3)
-        if rng.random() < 0.3:  # traço colorido (azul, verde-escuro, roxo)
+        if rng.random() < 0.3:  # coloured trace (blue, dark green, purple)
             base[rng.integers(3)] = rng.integers(60, 160)
         return tuple(int(c) for c in base)
     return tuple(int(c) for c in rng.integers(150, 256, 3))
@@ -51,7 +51,7 @@ def _blend(img, alpha, color):
 
 
 def _grid_layer(rng, H, W, S):
-    """Grade milimetrada (ou pontilhada, ou nenhuma) com período ~R e fase/rotação sorteadas."""
+    """Millimetre grid (or dotted, or none) with period ~R and random phase/rotation."""
     out = []
     if rng.random() < 0.1:
         return out
@@ -73,10 +73,10 @@ def _grid_layer(rng, H, W, S):
     if dotted:
         minor = lines(u, per, w_min * 1.5) * lines(v, per, w_min * 1.5)
     major = np.maximum(lines(u, 5 * per, w_maj), lines(v, 5 * per, w_maj))
-    # grade preta/cinza (impressora P&B, scan escurecido) com mais peso: é onde a grade e o
-    # traço têm a mesma cor e a rede mais erra
+    # black/grey grid (B&W printer, darkened scan) weighted up: it is where grid and trace share
+    # a colour and the network errs most
     kind = int(rng.choice(5, p=[0.3, 0.12, 0.13, 0.33, 0.12]))
-    if kind == 0:      # vermelho/rosa clássico
+    if kind == 0:      # classic red/pink
         cmin = (int(rng.integers(150, 230)), int(rng.integers(150, 225)), int(rng.integers(220, 256)))
         cmaj = (int(rng.integers(60, 170)), int(rng.integers(60, 160)), int(rng.integers(180, 256)))
     elif kind == 1:    # laranja/marrom
@@ -87,7 +87,7 @@ def _grid_layer(rng, H, W, S):
         cmin = (int(rng.integers(170, 240)),) * 3
         cmin = tuple(int(v_) if i != 1 + g else int(rng.integers(200, 256)) for i, v_ in enumerate(cmin))
         cmaj = tuple(int(c) - 70 for c in cmin)
-    elif kind == 3:    # cinza/preto (impressora P&B, scan escurecido): o caso difícil
+    elif kind == 3:    # grey/black (B&W printer, darkened scan): the hard case
         gmin = int(rng.integers(120, 220)); gmaj = int(rng.integers(20, max(30, gmin - 30)))
         cmin, cmaj = (gmin,) * 3, (gmaj,) * 3
     else:              # cores livres claras
@@ -100,7 +100,7 @@ def _grid_layer(rng, H, W, S):
 
 
 def _trace_layer(rng, H, W, S):
-    """Traços de ECG, pulsos e marcas separadoras (o RÓTULO) em supersampling."""
+    """ECG traces, pulses and separator marks (the LABEL) with supersampling."""
     lay = np.zeros((H * S, W * S), np.uint8)
     pen = rng.uniform(0.6, 4.0)
     th = max(1, int(round(pen * S)))
@@ -119,7 +119,7 @@ def _trace_layer(rng, H, W, S):
         yv = y0 - v * gain * R
         pts = np.stack([xs * S, yv * S], 1).astype(np.int32)
         cv2.polylines(lay, [pts], False, 255, th, cv2.LINE_AA)
-        if rng.random() < 0.25:   # pulso de calibração
+        if rng.random() < 0.25:   # calibration pulse
             xa = rng.uniform(0.05, 0.6) * W
             h = gain * R * 1.0
             P = np.array([[xa - 2 * R, y0], [xa, y0], [xa, y0 - h], [xa + 5 * R, y0 - h], [xa + 5 * R, y0],
@@ -134,7 +134,7 @@ def _trace_layer(rng, H, W, S):
 
 
 def _distractors(rng, img, H, W, ink):
-    """Coisas escuras que NÃO são traço: texto, réguas, bordas, carimbos, QR, manchas."""
+    """Dark things that are NOT trace: text, rulers, borders, stamps, QR, stains."""
     font = [cv2.FONT_HERSHEY_SIMPLEX, cv2.FONT_HERSHEY_PLAIN, cv2.FONT_HERSHEY_DUPLEX,
             cv2.FONT_HERSHEY_COMPLEX][rng.integers(4)]
     alph = "IVaRLFV123456 mm/s mV HzQRST ID"
@@ -158,16 +158,16 @@ def _distractors(rng, img, H, W, ink):
 def _degrade(rng, img):
     H, W = img.shape[:2]
     f = img.astype(np.float32)
-    # rasterização em baixa resolução antes da "impressão"
+    # low-resolution rasterization before "printing"
     if rng.random() < 0.3:
         k = rng.uniform(1.5, 3.0)
         small = cv2.resize(f, (max(8, int(W / k)), max(8, int(H / k))), interpolation=cv2.INTER_AREA)
         f = cv2.resize(small, (W, H), interpolation=cv2.INTER_LINEAR)
-    # borrão (impressão + captura)
+    # blur (printing + capture)
     s = rng.uniform(0, 1.6)
     if s > 0.2:
         f = cv2.GaussianBlur(f, (0, 0), s)
-    # iluminação: gradiente, sombra, balanço de cor
+    # illumination: gradient, shadow, colour balance
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
     g = 1 - rng.uniform(0, 0.45) * (0.5 + 0.5 * np.sin(rng.uniform(0, 6.28) + (xx * rng.normal() + yy * rng.normal()) / (3 * W)))
     if rng.random() < 0.25:  # sombra dura
@@ -175,19 +175,19 @@ def _degrade(rng, img):
         g *= 1 - rng.uniform(0.2, 0.5) * (((xx - cx) * rng.normal() + (yy - cy) * rng.normal()) > 0)
         g = cv2.GaussianBlur(g, (0, 0), rng.uniform(2, 15))
     f = f * g[..., None] * rng.uniform(0.85, 1.12, 3)[None, None, :] + rng.uniform(-25, 15)
-    # manchas/pontilhado de scan escurecido
+    # stains/stippling of a darkened scan
     if rng.random() < 0.15:
         blob = cv2.GaussianBlur((rng.random((H, W)) < 0.002).astype(np.float32), (0, 0), rng.uniform(5, 20))
         blob = blob / (blob.max() + 1e-6)
         speck = (rng.random((H, W)) < blob * rng.uniform(0.2, 0.7)).astype(np.float32)
         f = f * (1 - 0.8 * speck[..., None])
-    # moiré de tela
+    # screen moiré
     if rng.random() < 0.1:
         a = rng.uniform(0, 3.14); fr = rng.uniform(0.6, 1.4)
         f = f * (1 - rng.uniform(0.05, 0.25) * (0.5 + 0.5 * np.sin(fr * (xx * np.cos(a) + yy * np.sin(a)))))[..., None]
     f = f + rng.normal(0, rng.uniform(0, 10), f.shape)
     f = np.clip(f, 0, 255).astype(np.uint8)
-    # P&B pontilhado (scanner de fax/P&B)
+    # stippled B&W (fax/B&W scanner)
     if rng.random() < 0.22:
         gr = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY).astype(np.float32)
         gr = (gr + rng.normal(0, 30, gr.shape) > rng.uniform(110, 170)).astype(np.uint8) * 255
@@ -200,7 +200,7 @@ def _degrade(rng, img):
 
 
 def sample(rng, size=192):
-    """Um recorte (BGR uint8, rótulo float32 0..1)."""
+    """One crop (BGR uint8, float32 label 0..1)."""
     H = W = size
     S = 4
     paper = np.array(_rand_color(rng, dark=False), np.float32)
@@ -210,10 +210,10 @@ def sample(rng, size=192):
     for a, c in _grid_layer(rng, H, W, S):
         img = _blend(img, a, c)
     lay = _trace_layer(rng, H, W, S)
-    if rng.random() < 0.08:  # recorte só de grade/texto: a rede precisa aprender a dizer "nada"
+    if rng.random() < 0.08:  # grid/text-only crop: the network must learn to say "nothing"
         lay[:] = 0
     ink = _rand_color(rng)
-    if rng.random() < 0.2:  # traço da mesma cor da grade grossa (pior caso)
+    if rng.random() < 0.2:  # trace with the same colour as the major grid (worst case)
         ink = (int(rng.integers(0, 60)),) * 3
     img = _blend(img, lay.astype(np.float32) / 255.0 * rng.uniform(0.75, 1.0), ink)
     img = cv2.resize(img, (W, H), interpolation=cv2.INTER_AREA)

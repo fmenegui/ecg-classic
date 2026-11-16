@@ -1,8 +1,8 @@
-"""Treina a U-Net pequena do segmentador de traço em CPU e exporta ONNX.
+"""Train the small trace-segmenter U-Net on CPU and export ONNX.
 
     python hybrid/train.py --steps 6000 --out hybrid/out
 
-Dados: hybrid/gen.py, gerados na hora (nenhuma imagem do PhysioNet/Kaggle).
+Data: hybrid/gen.py, generated on the fly (no PhysioNet/Kaggle image).
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class Block(nn.Module):
 
 
 class UNet(nn.Module):
-    """4 níveis, canais pequenos (~0,5 M parâmetros): campo receptivo ~ 7 mm a 10 px/mm."""
+    """4 levels, small channels (~0.5 M parameters): receptive field ~7 mm at 10 px/mm."""
 
     def __init__(self, ch=(16, 32, 64, 96)):
         super().__init__()
@@ -88,19 +88,19 @@ def main():
     ap.add_argument("--size", type=int, default=192)
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--lr", type=float, default=2e-3)
-    ap.add_argument("--minutes", type=float, default=0, help="para antes, por tempo (0 = sem limite)")
+    ap.add_argument("--minutes", type=float, default=0, help="stop earlier, by time (0 = no limit)")
     ap.add_argument("--out", type=Path, default=Path("hybrid/out"))
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
     torch.set_num_threads(max(1, (os.cpu_count() or 2) - a.workers + 1))
     net = UNet()
-    print("parâmetros", sum(p.numel() for p in net.parameters()), flush=True)
+    print("parameters", sum(p.numel() for p in net.parameters()), flush=True)
     dl = torch.utils.data.DataLoader(Stream(a.size, 1234), batch_size=a.batch, num_workers=a.workers,
                                      persistent_workers=a.workers > 0)
     opt = torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=1e-4)
     import math
 
-    def lr_at(frac):  # aquecimento curto + cosseno; a fração é a maior entre passos e tempo
+    def lr_at(frac):  # short warm-up + cosine; the fraction is the larger of steps and time
         if frac < 0.03:
             return a.lr * frac / 0.03
         return a.lr * 0.5 * (1 + math.cos(math.pi * min(1.0, (frac - 0.03) / 0.97))) + 1e-5
@@ -124,7 +124,7 @@ def main():
         if step % 1000 == 0 or step == a.steps:
             torch.save(net.state_dict(), a.out / "unet.pt")
         if frac >= 1.0:
-            print("limite de tempo", flush=True)
+            print("time limit", flush=True)
             break
     torch.save(net.state_dict(), a.out / "unet.pt")
     net.eval()

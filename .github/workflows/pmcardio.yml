@@ -1,24 +1,24 @@
-name: PM-ECG-ID (PMcardio) completo
+name: PM-ECG-ID (PMcardio) full database
 on:
   workflow_dispatch:
     inputs:
       config:
-        description: 'Campos do Config, ex.: "synth=False" (opcional)'
+        description: 'Config fields, e.g. "synth=False" (optional)'
         required: false
         default: ''
         type: string
       tag:
-        description: 'Rótulo'
+        description: 'Label'
         required: false
         default: 'run'
         type: string
       flags:
-        description: 'Chaves de ablação, ex.: "digitize.GAP_IGNORE_TEXT=False;geometry.PAPER_QUAD=False" (opcional)'
+        description: 'Ablation switches, e.g. "digitize.GAP_IGNORE_TEXT=False;geometry.PAPER_QUAD=False" (optional)'
         required: false
         default: ''
         type: string
       per_scenario:
-        description: 'ECGs por cenário (0 = base inteira)'
+        description: 'ECGs per scenario (0 = whole database)'
         required: false
         default: '0'
         type: string
@@ -38,9 +38,9 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install -e . pandas remotezip onnxruntime
-      - name: Baixar a fatia (Zenodo, por faixas)
+      - name: Download the shard (Zenodo, by ranges)
         run: python benchmarks/pmcardio/fetch.py --out data/pm --shard ${{ matrix.part }} --nshards 20 --per-scenario ${{ inputs.per_scenario }}
-      - name: Avaliar
+      - name: Evaluate
         env:
           ECGDIG_FLAGS: ${{ inputs.flags }}
         run: |
