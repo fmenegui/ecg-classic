@@ -85,7 +85,12 @@ def _equal_split(B, R, ya, yb, lr):
         if n >= 2 and all(len(p) == n for p in pks):
             P_ = np.array(pks, float)
             dl = np.median(P_, 0)[None, :] - P_
-            if np.abs(dl).max() >= 3 * R:
+            sp = float(np.median(np.diff(np.median(P_, 0)))) if n > 1 else 0.0
+            # sem vão que confirme as colunas, o deslocamento tem de ser de bloco: alguma
+            # coluna inteira fora (mediana >= 3 mm), nenhum casamento ambíguo (> meia linha:
+            # cabeçalho numa coluna e rodapé na outra trocam o índice das linhas) e >= 5 mm
+            if sp > 0 and np.abs(dl).max() >= 5 * R and np.abs(dl).max() <= 0.5 * sp and \
+                    np.median(np.abs(dl), 1).max() >= 3 * R:
                 return cols
     return None
 
