@@ -336,7 +336,7 @@ def _shift_pulse(p, keep_x):
 
 
 def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
-    """Gaps common to all rows (no ink in any row band), 2 to 15 mm wide, that split the
+    """Gaps common to all rows (no ink in any row band), min_mm to max_mm wide, that split the
     trace into k equal-width columns (±3%). Returns [(x0, x1)] or None."""
     ex = [e for e in ext if e]
     if len(ex) < len(rows) or len(rows) < 2:
@@ -1045,6 +1045,8 @@ GAP_PULSE_SLACK = [True]
 # column gap taken by a label ("aVR" printed in the gap, touching both sides): accepted if the
 # gap ink in each row is only text (few small components, letter height)
 GAP_LABELS = [True]
+# margins between columns up to 25 mm (some printers leave ~18 mm between the two halves of a 6x2)
+GAP_WIDE = [True]
 RPULSE_RARE = [True]
 # a loose step at the end of the row (one edge only, no return to baseline) is an end-of-trace
 # mark in several generators, not a calibration: it only stays if it gives the near-universal gain (10 mm/mV)
@@ -1295,7 +1297,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     # the gap is removed from the image (B, D and the rectified one) and the rest sees a continuous trace
     col_cut = None
     if COL_GAP[0] and len(rows) >= 2:
-        cg = _column_gaps(B, rows, ext, half, R)
+        cg = _column_gaps(B, rows, ext, half, R, max_mm=25.0 if GAP_WIDE[0] else 15.0)
         if cg:
             keep_x = np.ones(W, bool)
             for a_, b_ in cg:

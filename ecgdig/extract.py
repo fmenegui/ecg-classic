@@ -38,6 +38,9 @@ def _bg(ch, R):
 TEMPLATE_MM = [10.0]
 TEMPLATE_AUTO = [True]
 GLEV_RELATIVE = [False]
+# coloured trace on an achromatic grid (blue pen on a black/grey grid): the brightest channel
+# makes the trace vanish; the chroma (max - min channel) shows it and drops the grid
+CHROMA_TRACE = [True]
 
 
 def _median5_cells(cells: np.ndarray) -> np.ndarray:
@@ -52,10 +55,45 @@ def _median5_cells(cells: np.ndarray) -> np.ndarray:
     return out.transpose(1, 2, 0).reshape(ny, nx, P1, P2)
 
 
+def _chroma_trace(n, t, paper, R):
+    """Transmittance from the chroma when the trace is coloured and the grid achromatic.
+
+    The grid is what repeats every 5 mm (median over the cells of each phase); the trace is
+    what does not. If the periodic part has no chroma, the grid is visible in the brightness,
+    and non-periodic chromatic ink reaches most columns of the page, the trace is the coloured
+    pen: t = 1 - chroma (grid and black text vanish)."""
+    P = int(round(5.0 * R))
+    H, W = t.shape
+    ny, nx = H // P, W // P
+    if ny < 4 or nx < 4:
+        return t
+    C = np.clip(np.maximum(np.maximum(n[0], n[1]), n[2]) - np.minimum(np.minimum(n[0], n[1]), n[2]), 0, 1)
+    pm = paper[: ny * P, : nx * P].reshape(ny, P, nx, P).min(axis=(1, 3)) > 0
+    if pm.sum() < 10:
+        return t
+
+    def tiles(X):
+        return X[: ny * P, : nx * P].reshape(ny, P, nx, P).transpose(0, 2, 1, 3)[pm]
+    Ct = np.median(tiles(C), axis=0)
+    Tt = np.median(tiles(t), axis=0)
+    if float(Ct.max()) >= 0.1 or float(Tt.min()) > 0.7:
+        return t   # coloured grid (it already vanishes in the brightest channel) or no visible grid
+    # the trace runs across the page: its chromatic ink covers most of the columns (coloured
+    # labels or stamps cover a few)
+    reps = (int(np.ceil(H / P)), int(np.ceil(W / P)))
+    M = ((C - np.tile(Ct, reps)[:H, :W]) > 0.35) & (paper > 0)
+    xs = paper.any(0)
+    if not xs.any() or float(np.mean(M.any(0)[xs])) < 0.5:
+        return t
+    return np.clip(1.0 - C, 0.0, 1.2).astype(np.float32)
+
+
 def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bool = False, tmin: float | None = None):
     f = rect.astype(np.float32)
     n = [f[..., c] / (_bg(f[..., c], R) + 1e-3) for c in range(3)]
     t = np.clip(np.maximum(np.maximum(n[0], n[1]), n[2]), 0, 1.2)  # transmittance in the brightest channel
+    if CHROMA_TRACE[0]:
+        t = _chroma_trace(n, t, paper, R)
     # 10 mm template: covers the 5 mm periodicity and also grids with an extra line every
     # 10 mm (5 mm templates left that line as "ink" and created false rows)
     H, W = t.shape
@@ -526,7 +564,10 @@ def row_extent(B, y0, half, R, max_gap_mm=3.0):
             edge = lo if direction < 0 else hi
             while 0 <= j < len(s):
                 g_ = (edge - e[j]) if direction < 0 else (s[j] - edge)
-                if g_ > gap:
+                # a wide margin between columns (up to 25 mm) only joins a long stretch: the
+                # other column itself, not text or a stamp
+                if g_ > gap and not (ROW_CHAIN_WIDE[0] and not acc and g_ <= 25 * R
+                                     and (e[j] - s[j]) >= 40 * R):
                     break
                 acc.append(j)
                 edge = s[j] if direction < 0 else e[j]
@@ -541,6 +582,7 @@ def row_extent(B, y0, half, R, max_gap_mm=3.0):
 
 
 ROW_CHAIN = [True]
+ROW_CHAIN_WIDE = [True]
 
 
 def detect_pulse(B, y0, half, xa, R, up=None, close_mm=0.8):
