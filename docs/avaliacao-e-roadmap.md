@@ -362,3 +362,23 @@ Scans: mediana de 23 → 17 s por página na mesma máquina (2 processos em 2 n�
 ### O que não foi medido
 
 A base inteira do PM-ECG-ID (5.994 ECGs) e o PhysioNet (Kaggle) só rodam no CI. A amostra de 60 ECGs subiu pouco (8,12 → 8,39 dB): fora dos scans, o layout também falha por máscara da folha, linha de base que anda e imagem estourada (seção 7), que esta rodada não tocou.
+
+### Merge com o `r4` de 15/11 (6149275)
+
+Enquanto esta rodada era feita, o `r4` recebeu 8 commits, um deles sobre o mesmo problema (`_equal_split`: hipótese de 4 ou 2 colunas de mesma largura). O merge mantém os dois: o `col_align` tenta os vãos em branco, depois as larguras iguais e, por último, os trilhos (`STRUCT_FIRST` inverte; nessa ordem o scan 77 fica em 18,8 dB em vez de 16,0). Os números acima são de antes do merge; depois dele, nos mesmos 100 ECGs de `photos_scans`:
+
+| | SNR | PCC | falha | layout certo |
+|---|---|---|---|---|
+| `r4` 6149275 | 11,50 dB | 0,752 | 13,3% | 74 de 94 |
+| `r4` + este branch | **14,07 dB** | **0,875** | **5,3%** | 86 de 94 |
+
+36 ECGs melhoram mais de 1 dB e 1 piora (o 88, de 4 páginas: a página de V4-V6 passa de `livre` a `3x1-limb` por 0,2 ponto na pontuação do layout).
+
+Dois defeitos do `r4` novo apareceram nessa comparação e foram tratados aqui:
+
+- **`extract.LONG_VLINES` apagava QRS.** A regra tira do binário linhas verticais de 45 mm ou mais, supondo que nenhum traço sobe tanto. Em derivações empilhadas os QRS caem na mesma coluna e se tocam (o S de uma linha encosta no R da de baixo): a cadeia passa de 45 mm e era apagada, levando o R de um batimento em cada linha. Nos scans, 28 de 100 ECGs perdiam de 3 a 7 dB com o layout certo (scan 14: 19,3 → 12,7 dB), e o `r4` novo ficou abaixo do anterior (11,50 contra 11,72 dB). Agora a linha só sai se tiver traçado de um lado só e pegar pelo menos 70% da altura do bloco de traçados, que é o caso da borda da área da grade (`LONG_VLINES_EDGE`). Dobra e linha de grade no meio da página deixam de ser removidas por essa regra.
+- **`_equal_split` realinhava página que não precisava** (scan 11: 17,3 → 12,3 dB, QRS fatiado na emenda das faixas). Passou a valer a mesma regra dos trilhos: se as linhas da página inteira já ficam a menos de 40% do passo das linhas de todas as colunas, não realinha.
+
+Um terceiro ponto fica para a ablação da base inteira, sem mudança aqui: `geometry.PAPER_SEEDFIX` derruba duas páginas da amostra de 60 (`perspective_transformation_40/img_5`: 15,6 → −3,5 dB; `brightness_40/img_26`: 19,7 → 10,6 dB) e levanta outras (`photos_doogee`: −4,7 → 20,1 dB). Na amostra, `r4` + este branch dá 8,51 dB, PCC 0,729, falha 6,2% (antes do merge 8,39 / 0,713 / 8,8%).
+
+LITFL depois do merge (89 imagens): layout 0,933, tiras de ritmo 0,930 (antes do merge 0,965; a 0058 perde a tira de ritmo e a 0084 ganha o layout, ambas por mudanças do `r4`).

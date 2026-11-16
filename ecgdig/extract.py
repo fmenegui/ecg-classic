@@ -189,6 +189,8 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: flo
 
 GRID_LINE_CLEAN = [True]
 LONG_VLINES = [True]
+LONG_VLINES_EDGE = [True]   # só linha com traçado de um lado só (borda); cadeia de QRS fica
+LONG_VLINES_SIDE = [0.15]
 
 
 def _remove_long_vertical(B, R, min_mm=45.0):
@@ -206,6 +208,25 @@ def _remove_long_vertical(B, R, min_mm=45.0):
     n, lab, st, _ = cv2.connectedComponentsWithStats(Vc, connectivity=8)
     longc = np.zeros(n, bool)
     longc[1:] = (st[1:, cv2.CC_STAT_HEIGHT] >= min_mm * R) & (st[1:, cv2.CC_STAT_WIDTH] <= 6 * R)
+    if LONG_VLINES_EDGE[0]:
+        # QRS de derivações empilhadas caem na mesma coluna e se tocam (o S de uma linha
+        # encosta no R da de baixo): a cadeia passa de 45 mm e era apagada, levando o R de
+        # um batimento em cada linha (scans do PM-ECG-ID: −5 a −7 dB em 28 de 100 ECGs). A
+        # cadeia de QRS tem traçado dos dois lados; a borda da área da grade só de um.
+        # Com tinta em pelo menos 15% das colunas dos dois lados (13 mm de cada), a linha fica
+        # (o último QRS da página tem traçado de um lado só: a borda de verdade pega quase
+        # toda a altura do bloco de traçados, a cadeia de QRS não)
+        wm, gm = int(13 * R), int(2 * R)
+        yy = np.nonzero(B.any(1))[0]
+        yspan = float(yy[-1] - yy[0] + 1) if len(yy) else float(H)
+        for i in np.nonzero(longc)[0]:
+            x0, y0, w_, h_ = (int(v) for v in st[i, :4])
+            lft = B[y0:y0 + h_, max(0, x0 - gm - wm):max(0, x0 - gm)]
+            rgt = B[y0:y0 + h_, min(W, x0 + w_ + gm):min(W, x0 + w_ + gm + wm)]
+            cl = float(lft.any(0).mean()) if lft.shape[1] >= 3 * R else 0.0
+            cr = float(rgt.any(0).mean()) if rgt.shape[1] >= 3 * R else 0.0
+            if min(cl, cr) >= LONG_VLINES_SIDE[0] or h_ < 0.7 * yspan:
+                longc[i] = False
     if not longc.any():
         return B
     rm = longc[lab] & (V > 0)

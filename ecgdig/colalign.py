@@ -272,6 +272,17 @@ def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
     return cols, P
 
 
+def _fits_plain_rows(B, R, P):
+    """As linhas de sempre (projeção da página inteira) já ficam a menos de 40% do passo das
+    linhas de todas as colunas: não é preciso realinhar."""
+    from .extract import find_rows
+    pk0 = np.asarray(find_rows(B, R)[0], float)
+    if len(pk0) != P.shape[1] or len(pk0) < 2:
+        return False
+    sp0 = float(np.median(np.diff(pk0)))
+    return bool(np.abs(P - pk0[None, :]).max() <= 0.4 * sp0)
+
+
 def col_align(rect, pap, D, B, R):
     """Devolve (rect, pap, D, B, info) realinhados, ou as entradas e None.
 
@@ -318,6 +329,8 @@ def col_align(rect, pap, D, B, R):
             return None
         if np.abs(dl).max() > 1.5 * sp:       # deslocamento maior que uma linha: casamento duvidoso
             return None
+        if how == "iguais" and _fits_plain_rows(B, R, P):
+            return None
         return cols, P, how
 
     def _tracks():
@@ -331,12 +344,8 @@ def col_align(rect, pap, D, B, R):
         # diferença pequena entre as colunas (< 40% do passo) e as linhas de sempre já saem
         # certas: a extração dá conta sozinha (faixa larga + linha de base por trecho), e
         # realinhar só arriscaria fatiar um QRS grande na emenda das faixas
-        from .extract import find_rows
-        pk0 = np.asarray(find_rows(B, R)[0], float)
-        if len(pk0) == P.shape[1] and len(pk0) >= 2:
-            sp0 = float(np.median(np.diff(pk0)))
-            if np.abs(P - pk0[None, :]).max() <= 0.4 * sp0:
-                return None
+        if _fits_plain_rows(B, R, P):
+            return None
         return cols, P, "trilhos"
 
     got = None
