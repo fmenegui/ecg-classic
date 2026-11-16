@@ -28,7 +28,7 @@ NAME = "ecgdig-train"
 
 
 def gql(query, variables=None):
-    key = os.environ.get("RUNPOD_API_KEY", "")
+    key = os.environ.get("RUNPOD_API_KEY", "").strip().strip("\"'")
     if not key:
         sys.exit("RUNPOD_API_KEY is not set (repository secret missing?)")
     body = json.dumps({"query": query, "variables": variables or {}}).encode()
@@ -53,6 +53,8 @@ def check():
     try:
         me = gql("query { myself { id clientBalance } }")["myself"]
     except urllib.error.HTTPError as e:
+        k = os.environ.get("RUNPOD_API_KEY", "").strip()
+        print(f"key length {len(k)}, starts with {k[:4]!r}...", file=sys.stderr)
         sys.exit(f"RunPod rejected the API key (HTTP {e.code}): check that the secret RUNPOD_API_KEY holds a "
                  "valid key with read/write (GraphQL) permission")
     print(f"RunPod account ok, balance {me.get('clientBalance')} USD", file=sys.stderr)
