@@ -55,6 +55,10 @@ class Config:
     row_beats: bool = True       # edge rows without QRS simultaneous with the others are dropped
     ink_model: str = ""         # path of the trace-segmenter ONNX (hybrid mode)
     ink_mix: float = 1.0        # 1 = network only; <1 mixes with the classical map
+    # with ink_model: "model" reads the page with the network's ink map only; "select" reads it
+    # both ways and keeps the reading with the better internal quality (no ground truth)
+    hybrid: str = "select"
+    hybrid_margin: float = 0.0  # the network's reading must beat the classical one by this much
     prewarp: bool = False          # coarse perspective from the outline of the gridded area
     adaptive_threshold: bool = True  # light trace: redo the binarization with a lower threshold
     pulse_rows: bool = True       # baselines from the calibration pulses when there are >= 3
@@ -819,6 +823,7 @@ TL_COVER = [True]
 PULSE_ROWS_SNAP = [True]
 TRACK_BASE_TRACE = [True]
 LABEL_GAPS = [True]
+HYB_W_LIMB = [0.2]   # weight of the limb closure in the hybrid reading score (calibrated on PhysioNet)
 GAP_ROBUST_LR = [True]
 HALF_ALONE = [True]
 MID_PULSE_CUT = [True]
@@ -1256,12 +1261,52 @@ def _baseline_guard(sig, fs, win_s=0.6, thr_mv=1.5):
         out[i] = s_.astype(out.dtype)
     return out
 
+def _reading_score(res):
+    """Internal quality of a reading (no ground truth): the page quality score (coverage x
+    repetition x layout confidence), plus the Einthoven/Goldberger closure of the chosen
+    layout when the limb leads are on the page."""
+    q = res.get("quality") or {}
+    sc = float(q.get("score") or 0.0)
+    li = res.get("layout_info") or {}
+    limb = (li.get("parts") or {}).get("limb")
+    if limb is not None and np.isfinite(limb):
+        sc += HYB_W_LIMB[0] * float(limb)
+    return sc
+
+
 def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     """Image -> signals. When the 0 vs 180 degree choice was weak (no pulse or label to break
     the tie), the page is also read in the other orientation and the better layout wins:
     upside down, the limb leads do not close Einthoven/Goldberger and boundaries and labels
-    fall out of place. Without clear evidence, the page stays as it came."""
+    fall out of place. Without clear evidence, the page stays as it came.
+
+    Hybrid (cfg.ink_model with cfg.hybrid == "select"): the page is read with the classical
+    ink map and with the network's, and the reading with the better internal quality is
+    returned (res["hybrid"] says which and why)."""
     cfg = cfg or Config()
+    if cfg.ink_model and cfg.hybrid == "select":
+        if isinstance(image, (str, bytes)) or hasattr(image, "__fspath__"):
+            image = cv2.imread(str(image), cv2.IMREAD_COLOR)
+        rc = rh = None
+        err = []
+        try:
+            rc = digitize(image, dataclasses.replace(cfg, ink_model="", hybrid="model"), return_debug)
+        except Exception as e:  # noqa: BLE001
+            err.append(f"classical: {type(e).__name__}: {e}")
+        try:
+            rh = digitize(image, dataclasses.replace(cfg, hybrid="model"), return_debug)
+        except Exception as e:  # noqa: BLE001
+            err.append(f"model: {type(e).__name__}: {e}")
+        if rc is None and rh is None:
+            raise RuntimeError("; ".join(err))
+        sc = None if rc is None else _reading_score(rc)
+        sh = None if rh is None else _reading_score(rh)
+        use_h = rc is None or (rh is not None and sh > sc + cfg.hybrid_margin)
+        out = rh if use_h else rc
+        out["hybrid"] = dict(chosen="model" if use_h else "classical", score_classical=sc, score_model=sh,
+                             layout_classical=None if rc is None else rc.get("layout"),
+                             layout_model=None if rh is None else rh.get("layout"), errors=err)
+        return out
     _orient.weak = False
     res = _digitize_once(image, cfg, return_debug)
     if not (cfg.orient_check and _orient.weak and ORIENT_FORCE[0] is None):
