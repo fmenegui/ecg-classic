@@ -359,9 +359,24 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
         occ_raw |= B[a:b, L:Rr].any(0)
     d = np.diff(np.concatenate([[1], occ.astype(np.int8), [1]]))
     s_, e_ = np.nonzero(d == -1)[0], np.nonzero(d == 1)[0]
+    def _text_only(a, b):
+        # tinta crua do vão = letras: em cada linha <= 6 componentes pequenas, de 1,2 a 5 mm de
+        # altura; fiapos de traço partido são muitos, baixos e espalhados
+        if not (GAP_LABELS[0] and GAP_IGNORE_TEXT[0]):
+            return False
+        for y in rows:
+            ya_, yb_ = max(0, int(y - half)), min(B.shape[0], int(y + half))
+            ids = np.unique(lab_[ya_:yb_, L + a:L + b])
+            ids = ids[ids > 0]
+            if len(ids) > 6 or not small[ids].all():
+                return False
+            hs = st_[ids, cv2.CC_STAT_HEIGHT]
+            if len(ids) and (hs.max() < 1.2 * R or hs.max() > 5 * R):
+                return False
+        return True
     gaps = [(L + a, L + b) for a, b in zip(s_, e_) if min_mm * R <= b - a <= max_mm * R and a > 0 and b < len(occ)
             # um rótulo ocupa uma parte do vão; traço partido em pedaços (contraste baixo) ocupa quase todo
-            and occ_raw[a:b].mean() <= 0.5]
+            and (occ_raw[a:b].mean() <= 0.5 or _text_only(a, b))]
     if not gaps or len(gaps) > 5:
         return None
     # colunas entre os vãos de mesma largura
@@ -975,7 +990,13 @@ GAP_IGNORE_TEXT = [True]
 SPAN_SANITY = [True]
 GRID_SEGS_ALL = [False]
 GAP_PULSE_SLACK = [True]
+# vão de coluna tomado por rótulo ("aVR" impresso no vão, encostado nos dois lados): aceito se a
+# tinta do vão em cada linha for só texto (poucas componentes pequenas, altura de letra)
+GAP_LABELS = [True]
 RPULSE_RARE = [True]
+# degrau solto no fim da linha (só uma aresta, sem volta à base) é marca de fim de traço em
+# vários geradores, não calibração: só fica se der o ganho de quase todo aparelho (10 mm/mV)
+RPULSE_HALF = [True]
 
 
 def _baseline_guard(sig, fs, win_s=0.6, thr_mv=1.5):
@@ -1346,6 +1367,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     for p, rp in zip(pulses, rpulses):
         a1, a2 = _lv(p)
         b1, b2 = _lv(rp)
+        if RPULSE_HALF[0] and rp is not None and rp.get("half") and _std_ok(b1) and _snap(b1) != 10.0:
+            b1, b2 = None, None
         # pulso da esquerda vale se der um ganho padrão; senão tenta o da direita
         if _std_ok(a1) or not _std_ok(b1):
             lv1.append(a1); lv2.append(a2); src.append("L" if a1 is not None else None)

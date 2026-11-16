@@ -18,6 +18,8 @@ import cv2
 from scipy.signal import find_peaks
 
 ENABLED = [True]
+LONG_EXTENT = [True]
+ROW_DIST6 = [True]   # linhas de uma coluna a >= 6 mm (antes 8): aVL/aVF apertadas
 
 
 def _gaps(B, R, ya, yb):
@@ -27,6 +29,25 @@ def _gaps(B, R, ya, yb):
     if len(xs) < 100 * R:
         return None, None
     L, Rr = int(xs[0]), int(xs[-1])
+    if LONG_EXTENT[0]:
+        # ilhas estreitas (< 20 mm) nas pontas, separadas do corpo por >= 3 mm quase sem tinta,
+        # são marca de canto, tracinho de grade escura ou texto: não esticam as colunas
+        for _ in range(4):
+            seg = P[L:Rr + 1]
+            b0 = np.median(seg[seg > 0]) if (seg > 0).any() else 0
+            d_ = np.diff(np.concatenate([[0], (seg <= max(1.0, 0.03 * b0)).astype(np.int8), [0]]))
+            runs = [(a, b) for a, b in zip(np.nonzero(d_ == 1)[0], np.nonzero(d_ == -1)[0]) if b - a >= 3 * R]
+            if not runs:
+                break
+            L0, R0 = L, Rr
+            a, b = runs[-1]
+            if (Rr - L + 1) - b < 20 * R and a >= 100 * R:
+                Rr = L + a - 1
+            a, b = runs[0]
+            if a < 20 * R and Rr - (L + b) >= 100 * R:
+                L = L + b
+            if (L, Rr) == (L0, R0):
+                break
     base = np.median(P[L:Rr][P[L:Rr] > 0]) if (P[L:Rr] > 0).any() else 0
     blank = P[L:Rr] <= max(1.0, 0.03 * base)
     d = np.diff(np.concatenate([[0], blank.astype(np.int8), [0]]))
@@ -59,11 +80,32 @@ def _col_rows(B, R, xa, xb):
     cov = cv2.GaussianBlur(cov.reshape(-1, 1), (0, 0), R).ravel()
     if cov.max() <= 0:
         return np.array([], int)
-    pk, _ = find_peaks(cov, distance=int(8 * R), height=0.35 * cov.max(), prominence=0.15 * cov.max())
+    pk, _ = find_peaks(cov, distance=int((6 if ROW_DIST6[0] else 8) * R), height=0.35 * cov.max(), prominence=0.15 * cov.max())
     return pk
 
 
 EQUAL_SPLIT = [True]
+# colunas com linhas em alturas próprias (cada coluna com o seu espaçamento): as faixas
+# (coluna, linha) vão para linhas novas de passo comum, em vez da mediana entre colunas
+RELAYOUT = [True]
+
+
+def _rows_are_traces(B, R, cols, pks, lr):
+    """Toda linha de toda coluna é traço (tinta perto da altura em >= 85% da largura da
+    coluna, dentro da extensão do traçado): cabeçalho ou rodapé de texto numa coluna só não
+    passam."""
+    H = B.shape[0]
+    for (xa, xb), p in zip(cols, pks):
+        a, b = max(xa, lr[0]), min(xb, lr[1] + 1)
+        if b - a < 20 * R:
+            return False
+        sub = B[:, a:b]
+        a, b = 0, b - a
+        for y in p:
+            band = sub[max(0, int(y - 3 * R)):min(H, int(y + 3 * R)), a:b]
+            if band.any(0).mean() < 0.85:
+                return False
+    return True
 
 
 def _equal_split(B, R, ya, yb, lr):
@@ -91,6 +133,8 @@ def _equal_split(B, R, ya, yb, lr):
             # cabeçalho numa coluna e rodapé na outra trocam o índice das linhas) e >= 5 mm
             if sp > 0 and np.abs(dl).max() >= 5 * R and np.abs(dl).max() <= 0.5 * sp and \
                     np.median(np.abs(dl), 1).max() >= 3 * R:
+                return cols
+            if RELAYOUT[0] and sp > 0 and np.abs(dl).max() > 0.5 * sp and _rows_are_traces(B, R, cols, pks, lr):
                 return cols
     return None
 
@@ -132,7 +176,24 @@ def col_align(rect, pap, D, B, R):
     sp = float(np.median(np.diff(ref)))
     if np.abs(dl).max() < 3 * R or sp < 8 * R:
         return rect, pap, D, B, None
-    if np.abs(dl).max() > 1.5 * sp:       # deslocamento maior que uma linha: casamento duvidoso
+    relay = False
+    if np.abs(dl).max() > 0.5 * sp and RELAYOUT[0] and n >= 2 and _rows_are_traces(B, R, cols, pks, lr):
+        # linhas novas: passo = maior espaçamento mediano entre as colunas, a partir da linha
+        # mais alta; cada faixa vai inteira para a sua linha nova
+        S = max(float(np.median(np.diff(p))) for p in P)
+        y0 = float(P[:, 0].min())
+        ref = y0 + S * np.arange(n)
+        dl = ref[None, :] - P
+        relay = True
+        Hn = int(ref[-1] + 0.5 * S + 10 * R)
+        if Hn > H:  # aumenta a página para caber
+            pad = Hn - H
+            rect = np.concatenate([rect, np.full((pad,) + rect.shape[1:], 255, rect.dtype)])
+            pap = np.concatenate([pap, np.zeros((pad,) + pap.shape[1:], pap.dtype)])
+            D = np.concatenate([D, np.zeros((pad, W), D.dtype)])
+            B = np.concatenate([B, np.zeros((pad, W), B.dtype)])
+            H = Hn
+    elif np.abs(dl).max() > 1.5 * sp:       # deslocamento maior que uma linha: casamento duvidoso
         return rect, pap, D, B, None
     rect2 = np.full_like(rect, 255); pap2 = np.zeros_like(pap); D2 = np.zeros_like(D); B2 = np.zeros_like(B)
     for c, (xa, xb) in enumerate(cols):
@@ -152,4 +213,4 @@ def col_align(rect, pap, D, B, R):
             D2[sl_t] = np.maximum(D2[sl_t], D[sl_s])
             rect2[sl_t] = np.minimum(rect2[sl_t], rect[sl_s])
             pap2[sl_t] = np.maximum(pap2[sl_t], pap[sl_s])
-    return rect2, pap2, D2, B2, dict(cols=cols, peaks=P.tolist(), ref=ref.tolist())
+    return rect2, pap2, D2, B2, dict(cols=cols, peaks=P.tolist(), ref=ref.tolist(), relayout=relay)
