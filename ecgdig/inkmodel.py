@@ -40,3 +40,18 @@ def predict(rect_bgr: np.ndarray, model_path: str, tile: int = 512, margin: int 
             oy, ox = y0 - ya, x0 - xa
             out[y0:min(H, y0 + step), x0:min(W, x0 + step)] = p[oy:oy + min(step, H - y0), ox:ox + min(step, W - x0)]
     return out
+
+
+def predict_row(rect_bgr: np.ndarray, yc: float, model_path: str, h: int = 512):
+    """Row network: coverage (0..1) of the trace of the row whose baseline is near y = yc, in a
+    strip of height h centred there. Returns (y0, P) with P of shape (h, W) and y0 the strip's
+    first image row (may be negative: the strip is padded with the image's edge)."""
+    sess = _session(model_path)
+    H, W = rect_bgr.shape[:2]
+    y0 = int(round(yc)) - h // 2
+    ya, yb = max(0, y0), min(H, y0 + h)
+    strip = rect_bgr[ya:yb]
+    strip = np.pad(strip, ((ya - y0, y0 + h - yb), (0, (-W) % 32), (0, 0)), mode="edge")
+    x = strip[..., ::-1].astype(np.float32).transpose(2, 0, 1)[None] / 255.0
+    lg = sess.run(None, {"x": x})[0][0, 0][:, :W]
+    return y0, (1.0 / (1.0 + np.exp(-lg))).astype(np.float32)

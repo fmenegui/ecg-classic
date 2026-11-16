@@ -59,6 +59,9 @@ class Config:
     # both ways and keeps the reading with the better internal quality (no ground truth)
     hybrid: str = "select"
     hybrid_margin: float = 0.2  # the network's reading must beat the classical one by this much
+    # path of the row-network ONNX: each row's trace is read from the network's map of THAT row
+    # (neighbours, grid, text removed); rows, layout, time axis and gain stay classical
+    row_model: str = ""
     prewarp: bool = False          # coarse perspective from the outline of the gridded area
     adaptive_threshold: bool = True  # light trace: redo the binarization with a lower threshold
     pulse_rows: bool = True       # baselines from the calibration pulses when there are >= 3
@@ -1833,6 +1836,19 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     traces_dbg = []
     jobs_dbg = []
     seg_jobs = []
+    _row_maps = {}
+
+    def _row_map(r_, yc_):
+        """Full-size map of row r_'s trace from the row network (zero outside its strip)."""
+        if r_ not in _row_maps:
+            from .inkmodel import predict_row
+            y0_, P_ = predict_row(rect, yc_, cfg.row_model)
+            M_ = np.zeros((H, W), np.float32)
+            a_, b_ = max(0, y0_), min(H, y0_ + P_.shape[0])
+            M_[a_:b_] = P_[a_ - y0_:b_ - y0_, :W]
+            _row_maps.clear()        # one row at a time (memory)
+            _row_maps[r_] = M_
+        return _row_maps[r_]
     for r, (y, spec) in enumerate(zip(rows, rows_spec)):
         base0 = base_q[r]
         if TRACK_BASE_TRACE[0] and abs(base0 - y) > 2 * R:
@@ -1860,8 +1876,12 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             xa, xb = max(0, xa), min(W, xb)
             if xb - xa < 10:
                 continue
-            runs = column_runs(B, D, ya, yb, xa, xb)
-            _drop_label_runs(runs, xa, label_boxes)
+            if cfg.row_model:
+                Pr = _row_map(r, base0)
+                runs = column_runs(Pr >= 0.5, Pr, ya, yb, xa, xb)
+            else:
+                runs = column_runs(B, D, ya, yb, xa, xb)
+                _drop_label_runs(runs, xa, label_boxes)
             others = [float(v) for i2, v in enumerate(rows) if i2 != r]
             # in the final extraction, edge continuity (label letters stuck to the trace); the
             # quick traces used for the layout stay as before
@@ -1892,6 +1912,8 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                         runs[i] = [rr_ for rr_ in runs[i] if abs(rr_[2] - base0) <= 4 * R]
                 sel = viterbi_track(runs, base0, R, others=others, lw=lw0, w_edge=0.3, **br_kw(xa))
             seg_jobs.append(dict(lead=lead, row=r, n0=n0, n1=n1, xa=xa, runs=runs, sel=sel))
+            if cfg.row_model:   # envelopes on the row map (coverage 1 = full pen)
+                seg_jobs[-1]["top"], seg_jobs[-1]["bot"] = envelope_edges(Pr, runs, sel, xa, 1.0)
 
     # "full ink" level and trace radius (half thickness) on flat stretches
     pks = []
@@ -1904,7 +1926,10 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     dfull = float(np.nanpercentile(pks, 75)) if pks.size else 0.8
     th = []
     for j in seg_jobs:
-        top, bot = envelope_edges(D, j["runs"], j["sel"], j["xa"], dfull)
+        if "top" in j:   # row network: already on the row map
+            top, bot = j["top"], j["bot"]
+        else:
+            top, bot = envelope_edges(D, j["runs"], j["sel"], j["xa"], dfull)
         j["top"], j["bot"] = top, bot
         dt = np.abs(np.gradient(top)) + np.abs(np.gradient(bot))
         th.append((bot - top)[dt < 0.3])
