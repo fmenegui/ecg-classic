@@ -122,9 +122,6 @@ Switches tested and left off: the row's own QRS masked as boundary evidence (`BN
 
 ## 8. Next steps
 
-1. **Rows whose traces cross:** a joint tracker (k disjoint paths, or a coupled HMM with "all ink explained") instead of one Viterbi per band.
-2. **OCR on light labels and labels crossed by the trace:** a grey-level OCR pass in the expected label windows.
-3. **Hybrid, generic:** use a learned ink map only for reading the trace, keep rows, layout, pulses and time classical, and choose per image with internal criteria (Einthoven, duplicate II, common rhythm). No template and no known grid.
-4. **Validation:** every change goes through the whole PM-ECG-ID database (paired), the 135 PhysioNet images and LITFL, because a single page moves by several dB with a 1% resize and every change moves hundreds of ECGs in both directions.
+The current plan is in [`docs/plan.md`](plan.md): format and structure first (rows that cross, invented or missing rows, grey-level OCR, column boundaries, calibrated layout decision), then the tracing on pages read right. The hybrid waits. Every change goes through the whole PM-ECG-ID database (paired), the 135 PhysioNet images and LITFL, because a single page moves by several dB with a 1% resize and every change moves hundreds of ECGs in both directions.
 
 The per-scenario tables of each whole-database run are in [`docs/results/`](results/).
