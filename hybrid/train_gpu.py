@@ -26,6 +26,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gen import sample  # noqa: E402
 
 
+def _cpus():
+    """CPUs this container may really use: the cgroup quota (a RunPod pod sees all the host's
+    cores in os.cpu_count(), e.g. 94, but gets ~16), else the affinity mask."""
+    try:
+        q, p = open("/sys/fs/cgroup/cpu.max").read().split()[:2]
+        if q != "max":
+            return max(1, int(float(q) / float(p)))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        q = int(open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read()); p = int(open("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read())
+        if q > 0:
+            return max(1, q // p)
+    except Exception:  # noqa: BLE001
+        pass
+    return len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 4)
+
+
 class Stream(torch.utils.data.IterableDataset):
     def __init__(self, size, seed):
         self.size, self.seed = size, seed
@@ -58,13 +76,15 @@ def main():
     ap.add_argument("--steps", type=int, default=10 ** 9)
     ap.add_argument("--batch", type=int, default=32)
     ap.add_argument("--size", type=int, default=256)
-    ap.add_argument("--workers", type=int, default=max(2, (os.cpu_count() or 4) - 2))
+    ap.add_argument("--workers", type=int, default=0, help="data workers (0 = the container's CPUs - 1, at most 32)")
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--encoder", default="resnet34")
     ap.add_argument("--weights", default="imagenet")
     ap.add_argument("--out", type=Path, default=Path("hybrid/out_gpu"))
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
+    if a.workers <= 0:
+        a.workers = int(min(32, max(2, _cpus() - 1)))
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     torch.backends.cudnn.benchmark = True
     net = build(a.encoder, a.weights).to(dev)
@@ -122,7 +142,8 @@ def main():
         scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
         if step % 100 == 0:
             el = time.time() - t0
-            print(f"step {step} loss {float(loss):.4f} lr {lr_at(frac):.2e} {el / step:.3f} s/step", flush=True)
+            print(f"step {step} loss {float(loss):.4f} lr {lr_at(frac):.2e} {el / step:.3f} s/step "
+                  f"cpus {_cpus()}", flush=True)
         if step % 2000 == 0 or frac >= 1.0:
             vl, iou = validate()
             log.append(dict(step=step, loss=float(loss), val_loss=vl, val_iou=iou, sec=round(time.time() - t0, 1)))
