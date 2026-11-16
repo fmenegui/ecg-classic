@@ -26,29 +26,31 @@ Each figure shows the input image, the page rectified by the grid with the extra
 | | |
 |---|---|
 | ![](docs/gallery/photos_scans__img_74_page_0.png) | ![](docs/gallery/photos_iphone__img_26_page_0.png) |
-| Desk scan, 3x4 + rhythm II | Phone photo on cardboard, 3x4 + rhythm II |
+| Desk scan, 3x4 + rhythm II (25.5 dB) | Phone photo on cardboard, 3x4 + rhythm II (22.5 dB) |
 | ![](docs/gallery/photos_doogee__img_19_page_0.png) | ![](docs/gallery/rotation_15__img_60_page_0.png) |
-| Phone photo, 6x2 + rhythm | Rotated 15°, 6x2 |
+| Phone photo, 6x2 + rhythm (23.5 dB) | Rotated 15°, 6x2 (18.6 dB) |
 | ![](docs/gallery/perspective_transformation_30__img_98_page_0.png) | ![](docs/gallery/digital_data_high_freq_noise_large__img_5_page_0.png) |
-| Strong perspective, 3x4 + 3 rhythm strips | Digital page with heavy high-frequency noise, 6x2 |
+| Strong perspective, 3x4 + 3 rhythm strips (17.9 dB) | Digital page with heavy high-frequency noise, 6x2 (22.0 dB) |
+| ![](docs/gallery/digital_data_opacity_1__img_79_page_0.png) | |
+| Blue trace on a black grid, 18 mm between the columns: chroma ink map and wide column gap (19.8 dB; −3.8 dB before) | |
 
 ### Typical
 
 | | |
 |---|---|
-| ![](docs/gallery/photos_scans__img_85_page_0.png) | ![](docs/gallery/photos_screens__img_50_page_0.png) |
-| Desk scan near the scenario median | Photo of a screen (moiré): the columns are split in the wrong place and the page is read as three strips |
+| ![](docs/gallery/photos_scans__img_85_page_0.png) | ![](docs/gallery/contrast_gamma_0.666__img_70_page_0.png) |
+| Desk scan near the scenario median (15.5 dB) | 12x1 whose rows are 2–8 mm apart and cross: the close rows are now found (10.4 dB; 0 dB before) |
 
 ### Bad
 
 | | |
 |---|---|
-| ![](docs/gallery/blur_kernel_31__img_49_page_0.png) | ![](docs/gallery/resolution_scale_down_factor_16__img_2_page_0.png) |
-| Blur 31: trace and grid merge; a 6x2 page read as three strips | Resolution 1/16: a 12x1 page read as 6x2 + rhythm, no lead aligns |
-| ![](docs/gallery/photos_crumbles__img_81_page_0.png) | ![](docs/gallery/digital_data_opacity_015__img_60_page_0.png) |
-| Crumpled paper: the grid is lost in the folds | Opacity 0.15: no trace row is found |
-| ![](docs/gallery/contrast_gamma_0.666__img_70_page_0.png) | |
-| 12x1 page whose rows are 2–8 mm apart and cross: no format fits the rows found | |
+| ![](docs/gallery/photos_screens__img_50_page_0.png) | ![](docs/gallery/blur_kernel_31__img_49_page_0.png) |
+| Photo of a screen (moiré): the columns are split in the wrong place and the page is read as one sheet of a two-sheet 3x2 | Blur 31: trace and grid merge; a 6x2 page read as three strips |
+| ![](docs/gallery/resolution_scale_down_factor_16__img_2_page_0.png) | ![](docs/gallery/photos_crumbles__img_81_page_0.png) |
+| Resolution 1/16: a 12x1 page read as 6x2 + rhythm, no lead aligns | Crumpled paper: the grid is lost in the folds |
+| ![](docs/gallery/digital_data_opacity_015__img_60_page_0.png) | |
+| Opacity 0.15: no trace row is found | |
 
 ## Install and use
 
