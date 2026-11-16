@@ -86,8 +86,8 @@ def start(exclude=(), cloud="ALL"):
     q = """mutation($input: PodFindAndDeployOnDemandInput) {
              podFindAndDeployOnDemand(input: $input) { id machineId costPerHr gpuCount } }"""
     last = None
-    # more vCPU first: the crops are generated on the CPU and feed the GPU
-    for vcpu, g in [(v, g) for v in (16, 8) for g in gpus]:
+    # preferred GPU first, with as many vCPU as possible (the crops are generated on the CPU)
+    for vcpu, g in [(v, g) for g in gpus for v in (24, 16)] + [(8, g) for g in gpus]:
         inp = dict(cloudType=cloud, gpuCount=1, volumeInGb=0, containerDiskInGb=60, minVcpuCount=vcpu,
                    minMemoryInGb=30, gpuTypeId=g, name=NAME, imageName=IMAGE, dockerArgs=cmd,
                    ports="8000/http", volumeMountPath="/workspace", env=env)

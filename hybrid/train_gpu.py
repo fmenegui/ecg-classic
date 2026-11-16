@@ -65,6 +65,27 @@ class Stream(torch.utils.data.IterableDataset):
             yield x, torch.from_numpy(lb)[None]
 
 
+def gpu_aug(x, y, g):
+    """Cheap augmentations on the GPU, so that one generated batch can feed several steps (the CPU crop
+    generator is the bottleneck). The label moves with the image; colour changes keep it."""
+    if torch.rand(1, generator=g).item() < 0.5:
+        x, y = x.flip(3), y.flip(3)
+    if torch.rand(1, generator=g).item() < 0.5:
+        x, y = x.flip(2), y.flip(2)
+    k = int(torch.randint(0, 4, (1,), generator=g))
+    x, y = torch.rot90(x, k, (2, 3)), torch.rot90(y, k, (2, 3))
+    n = x.shape[0]
+    dev = x.device
+    x = x[:, torch.randperm(3, generator=g).to(dev)]                         # ink / grid / paper colours
+    gam = torch.exp(torch.empty(n, 1, 1, 1, device=dev).uniform_(-0.4, 0.4))  # tone curve
+    x = x.clamp(1e-4, 1) ** gam
+    c = torch.empty(n, 1, 1, 1, device=dev).uniform_(0.7, 1.3)               # contrast and brightness
+    b = torch.empty(n, 1, 1, 1, device=dev).uniform_(-0.1, 0.1)
+    x = (x - 0.5) * c + 0.5 + b
+    x = x + torch.randn_like(x) * torch.empty(n, 1, 1, 1, device=dev).uniform_(0, 0.04)
+    return x.clamp(0, 1), y
+
+
 def dice_loss(logit, y):
     p = torch.sigmoid(logit)
     num = 2 * (p * y).sum((1, 2, 3)) + 1
@@ -88,6 +109,8 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--encoder", default="resnet34")
     ap.add_argument("--weights", default="imagenet")
+    ap.add_argument("--reuse", type=int, default=1,
+                    help="steps per generated batch (> 1: the extra steps see GPU-augmented copies)")
     ap.add_argument("--val", type=int, default=256, help="fixed validation crops")
     ap.add_argument("--out", type=Path, default=Path("hybrid/out_gpu"))
     a = ap.parse_args()
@@ -143,12 +166,17 @@ def main():
         net.to(dev).train()
 
     t0 = time.time(); log = []; it = iter(dl); best = None; t_wait = 0.0
+    g_aug = torch.Generator().manual_seed(7)
     for step in range(1, a.steps + 1):
         frac = max(step / a.steps, (time.time() - t0) / (a.minutes * 60))
         for g in opt.param_groups:
             g["lr"] = lr_at(frac)
-        tw = time.time(); x, y = next(it); t_wait += time.time() - tw
-        x, y = x.to(dev, non_blocking=True), y.to(dev, non_blocking=True)
+        if (step - 1) % a.reuse == 0:
+            tw = time.time(); xb, yb = next(it); t_wait += time.time() - tw
+            xb, yb = xb.to(dev, non_blocking=True), yb.to(dev, non_blocking=True)
+            x, y = xb, yb
+        else:
+            x, y = gpu_aug(xb, yb, g_aug)
         with torch.autocast(dev, enabled=dev == "cuda"):
             logit = net(x)
         logit = logit.float()
@@ -176,7 +204,8 @@ def main():
     torch.save(net.state_dict(), a.out / "unet.pt")
     export()
     (a.out / "meta.json").write_text(json.dumps(dict(encoder=a.encoder, parameters=n_par, steps=step,
-                                                     best_val_iou=best, size=a.size, batch=a.batch)))
+                                                     best_val_iou=best, size=a.size, batch=a.batch,
+                                                     reuse=a.reuse)))
     print("ok", a.out / "trace_seg.onnx", flush=True)
 
 
