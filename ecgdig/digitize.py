@@ -390,10 +390,15 @@ def _rows_pulses(B, pap, R):
     """Linhas de traçado candidatas (sem texto/bordas), extensões e pulsos."""
     H, W = B.shape
     _prow_set = [None]
-    peaks, cov = find_rows(B, R)
+    from .extract import GRID_SEGS, clean_grid_segments
+    # grade monocromática partida no binário: fora para achar linhas (horizontais) e para
+    # contar batimentos (verticais também); pulsos e extensões usam B
+    Br = clean_grid_segments(B, R, axes=(1,)) if GRID_SEGS[0] else B
+    Bb = clean_grid_segments(Br, R, axes=(0,)) if GRID_SEGS[0] else B
+    peaks, cov = find_rows(Br, R)
     if len(peaks) == 0:
         return peaks, cov, [], [], 40 * R
-    tl, raw = trace_likeness(B, peaks, R, return_raw=True)
+    tl, raw = trace_likeness(Br, peaks, R, return_raw=True)
     if len(tl) and tl.max() > 0:
         # traçado: longo depois de juntar quebras (tl) OU com pedaços longos/altos sem juntar
         # (raw; traço fraco de scan pode ter tl baixo mas raw alto)
@@ -416,12 +421,12 @@ def _rows_pulses(B, pap, R):
         if ok.sum() >= 3 and (~ok).any():
             sp0 = float(np.median(np.diff(peaks[ok])))
             hb = 0.45 * sp0
-            bx_ok = [_beat_xs(B, y, hb, R) for y in peaks[ok]]
+            bx_ok = [_beat_xs(Bb, y, hb, R) for y in peaks[ok]]
             for i in np.nonzero(~ok)[0]:
                 dmin = np.min(np.abs(peaks[ok] - peaks[i]))
                 if not (0.8 * sp0 <= dmin <= 1.25 * sp0):
                     continue
-                bi = _beat_xs(B, peaks[i], hb, R)
+                bi = _beat_xs(Bb, peaks[i], hb, R)
                 if len(bi) < 2:
                     continue
                 f1s = []
@@ -491,7 +496,7 @@ def _rows_pulses(B, pap, R):
             sp_ = float(np.median(np.diff(peaks))) if len(peaks) > 2 else 40 * R
             for i in np.nonzero(near)[0]:
                 if peaks[i] > ys[0] + 1.5 * R and peaks[i] < ys[-1] - 1.5 * R and \
-                        len(_beat_xs(B, peaks[i], 0.45 * sp_, R)) >= 3:
+                        len(_beat_xs(Bb, peaks[i], 0.45 * sp_, R)) >= 3:
                     near[i] = False
             peaks = peaks[~near]
     spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else 40 * R
@@ -571,7 +576,7 @@ def _rows_pulses(B, pap, R):
             pulses = [p for p, k in zip(pulses, keep) if k]
             spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else spacing
     if _ROW_BEAT_RULE[0] and len(peaks) >= 4:
-        keep = _beat_coherence_drop(B, peaks, ext, half, R)
+        keep = _beat_coherence_drop(Bb, peaks, ext, half, R)
         # linha com pulso de calibração é linha de ECG, tenha ou não QRS visíveis
         if _prow_set[0] is not None:
             for i, y in enumerate(peaks):

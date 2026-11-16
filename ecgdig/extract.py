@@ -165,6 +165,8 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: flo
     # não cobre 70% de uma linha de pixel na página inteira.
     if GRID_LINE_CLEAN[0]:
         B = _clean_grid_lines(B, R)
+    if LONG_VLINES[0]:
+        B = _remove_long_vertical(B, R)
     # remove sal-e-pimenta: componentes minúsculas (< ~0.4 mm²) não são traçado
     n, lab, st, _ = cv2.connectedComponentsWithStats(B.astype(np.uint8), connectivity=8)
     small = st[:, cv2.CC_STAT_AREA] < max(4, int(0.4 * R * R))
@@ -175,6 +177,29 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: flo
 
 
 GRID_LINE_CLEAN = [True]
+LONG_VLINES = [True]
+
+
+def _remove_long_vertical(B, R, min_mm=45.0):
+    """Linha vertical (quase) contínua de >= 45 mm: borda da área da grade, dobra/sombra da
+    folha, linha de grade escura que a correção de perspectiva deixou curva. Nenhum traço de
+    ECG sobe 45 mm seguidos (QRS de 4 mV a 10 mm/mV = 40 mm, e nunca reto) e um pulso tem
+    ~10 mm. Sem isso, o rastreio sobe pela borda e a linha começa na borda da grade."""
+    H, W = B.shape
+    L = max(5, int(8 * R))
+    V = cv2.morphologyEx(B.astype(np.uint8), cv2.MORPH_OPEN, np.ones((L, 1), np.uint8))
+    if not V.any():
+        return B
+    # emenda pedaços da mesma linha curva (deriva lateral de 1-2 px por trecho)
+    Vc = cv2.morphologyEx(V, cv2.MORPH_CLOSE, np.ones((int(2 * R) | 1, 3), np.uint8))
+    n, lab, st, _ = cv2.connectedComponentsWithStats(Vc, connectivity=8)
+    longc = np.zeros(n, bool)
+    longc[1:] = (st[1:, cv2.CC_STAT_HEIGHT] >= min_mm * R) & (st[1:, cv2.CC_STAT_WIDTH] <= 6 * R)
+    if not longc.any():
+        return B
+    rm = longc[lab] & (V > 0)
+    rm = cv2.dilate(rm.astype(np.uint8), np.ones((1, 3), np.uint8)) > 0
+    return B & ~rm
 OTSU_FLOOR_REL = [True]
 TMIN_ADAPT = [True]
 
@@ -215,6 +240,50 @@ def _clean_grid_lines(B, R, frac=0.7):
 
 
 # ------------------------------------------------------------------------ layout
+
+GRID_SEGS = [True]
+
+
+def clean_grid_segments(B, R, L_mm=8.0, frac=0.03, axes=(1, 0)):
+    """Grade monocromática (preta/cinza) sobra no binário em pedaços retos e partidos (a
+    limpeza por linha inteira exige >= 70% de cobertura). Pedaços retos >= L_mm numa faixa
+    fina (<= ~0,5 mm) com outra faixa assim a 5 ou 10 mm: são grade e saem; o traço que
+    cruza fica (só sai o pedaço reto). Uma linha de base plana também é reta, mas as linhas
+    de ECG ficam a >= ~15 mm umas das outras."""
+    from scipy.signal import find_peaks as _fp
+    H, W = B.shape
+    ys, xs = np.nonzero(B.any(1))[0], np.nonzero(B.any(0))[0]
+    if len(ys) < 10 or len(xs) < 10:
+        return B
+    L = max(5, int(L_mm * R))
+    Bu = B.astype(np.uint8)
+    out = B.copy()
+    for axis in axes:
+        k = np.ones((1, L), np.uint8) if axis == 1 else np.ones((L, 1), np.uint8)
+        kc = max(3, int(1.5 * R))
+        # linha tracejada (grade fraca binarizada aos pedaços): fecha os vãos curtos antes
+        Bc_ = cv2.morphologyEx(Bu, cv2.MORPH_CLOSE, np.ones((1, kc), np.uint8) if axis == 1
+                               else np.ones((kc, 1), np.uint8))
+        S = cv2.morphologyEx(Bc_, cv2.MORPH_OPEN, k)
+        span = (xs[-1] - xs[0] + 1) if axis == 1 else (ys[-1] - ys[0] + 1)
+        cov = S.sum(axis) / max(span, 1)
+        pk, pr = _fp(cov, height=frac, width=(None, 0.5 * R + 2), rel_height=0.5)
+        if len(pk) < 4:
+            continue
+        cen = pk / R
+        keep = [i for i in range(len(pk))
+                if np.any((np.abs(np.abs(cen - cen[i]) - 5.0) < 0.5) | (np.abs(np.abs(cen - cen[i]) - 10.0) < 0.7))]
+        if len(keep) < 4:
+            continue
+        hw = int(0.5 * R) + 1
+        for i in keep:
+            lo, hi = max(0, pk[i] - hw), pk[i] + hw + 1
+            if axis == 1:
+                out[lo:hi, :] &= ~(S[lo:hi, :] > 0)
+            else:
+                out[:, lo:hi] &= ~(S[:, lo:hi] > 0)
+    return out
+
 
 def find_rows(B: np.ndarray, R: float):
     H, W = B.shape
