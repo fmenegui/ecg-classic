@@ -427,7 +427,7 @@ def _grid_clean(B, R):
 def _label_gaps(B, rows, ext, half, R):
     """Column gaps narrowed by a lead label touching the trace ("aVR" printed in the gap,
     joined to the next lead's first stroke): only a sliver stays blank in every
-    row (>= 0.2 mm). Seeds = such slivers near the boundaries of k = 4, 3 or 2 equal columns; each gap
+    row (>= 0.2 mm). Seeds = such slivers near the boundaries of k = 4 or 3 equal columns; each gap
     then runs from the end of the left trace to the start of the right one, both taken on the
     horizontal runs >= 4 mm long (letters are shorter), median over the rows. The columns
     must come out of equal width (as in _column_gaps)."""
@@ -448,7 +448,9 @@ def _label_gaps(B, rows, ext, half, R):
     kh = int(4 * R) | 1
     Bh = cv2.morphologyEx(B.astype(np.uint8), cv2.MORPH_OPEN, np.ones((1, kh), np.uint8)) > 0
     hb = [Bh[max(0, int(y - half)):int(y + half)].any(0) for y in rows]
-    for k in (4, 3, 2):
+    # (2 columns: a 6x2 has no label in the gap often enough to be worth the risk; measured
+    # on the whole PM-ECG-ID database it lost more 6x2 pages than it gained)
+    for k in (4, 3):
         w = (Rr - L) / k
         cuts = []
         for i in range(1, k):

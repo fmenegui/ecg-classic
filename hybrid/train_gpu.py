@@ -1,0 +1,146 @@
+"""Train the trace segmenter on a GPU (RunPod pod, see hybrid/gpu/pod.sh) and export ONNX.
+
+    python hybrid/train_gpu.py --minutes 120 --encoder resnet34 --out /workspace/out
+
+Same task and data as hybrid/train.py (generic synthetic crops from hybrid/gen.py, label =
+pen coverage before the degradations), with a larger U-Net (pretrained encoder from
+segmentation_models_pytorch), mixed precision and many data workers. The ONNX output is a
+drop-in replacement for Config(ink_model=...).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gen import sample  # noqa: E402
+
+
+class Stream(torch.utils.data.IterableDataset):
+    def __init__(self, size, seed):
+        self.size, self.seed = size, seed
+
+    def __iter__(self):
+        wi = torch.utils.data.get_worker_info()
+        rng = np.random.default_rng(self.seed + (wi.id if wi else 0) * 7919 + int(time.time() * 1000) % 100000)
+        while True:
+            im, lb = sample(rng, self.size)
+            x = torch.from_numpy(im[..., ::-1].copy()).permute(2, 0, 1).float() / 255.0  # RGB
+            yield x, torch.from_numpy(lb)[None]
+
+
+def dice_loss(logit, y):
+    p = torch.sigmoid(logit)
+    num = 2 * (p * y).sum((1, 2, 3)) + 1
+    den = (p + y).sum((1, 2, 3)) + 1
+    return (1 - num / den).mean()
+
+
+def build(encoder, weights):
+    import segmentation_models_pytorch as smp
+    return smp.Unet(encoder_name=encoder, encoder_weights=None if weights in ("", "none") else weights,
+                    in_channels=3, classes=1)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--minutes", type=float, default=60)
+    ap.add_argument("--steps", type=int, default=10 ** 9)
+    ap.add_argument("--batch", type=int, default=32)
+    ap.add_argument("--size", type=int, default=256)
+    ap.add_argument("--workers", type=int, default=max(2, (os.cpu_count() or 4) - 2))
+    ap.add_argument("--lr", type=float, default=1e-3)
+    ap.add_argument("--encoder", default="resnet34")
+    ap.add_argument("--weights", default="imagenet")
+    ap.add_argument("--out", type=Path, default=Path("hybrid/out_gpu"))
+    a = ap.parse_args()
+    a.out.mkdir(parents=True, exist_ok=True)
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    torch.backends.cudnn.benchmark = True
+    net = build(a.encoder, a.weights).to(dev)
+    n_par = sum(p.numel() for p in net.parameters())
+    print(f"device {dev} encoder {a.encoder} parameters {n_par} workers {a.workers}", flush=True)
+    dl = torch.utils.data.DataLoader(Stream(a.size, 1234), batch_size=a.batch, num_workers=a.workers,
+                                     persistent_workers=True, pin_memory=dev == "cuda", prefetch_factor=4)
+    # fixed validation set (same crops every time)
+    vr = np.random.default_rng(999)
+    val = [sample(vr, a.size) for _ in range(256)]
+    vx = torch.stack([torch.from_numpy(im[..., ::-1].copy()).permute(2, 0, 1).float() / 255.0 for im, _ in val])
+    vy = torch.stack([torch.from_numpy(lb)[None] for _, lb in val])
+    opt = torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=1e-4)
+    scaler = torch.amp.GradScaler(enabled=dev == "cuda")
+    pos_w = torch.tensor(3.0, device=dev)
+
+    def lr_at(frac):
+        if frac < 0.02:
+            return a.lr * frac / 0.02
+        return a.lr * 0.5 * (1 + math.cos(math.pi * min(1.0, (frac - 0.02) / 0.98))) + 1e-6
+
+    def validate():
+        net.eval(); tot = 0.0; inter = 0.0; uni = 0.0
+        with torch.no_grad(), torch.autocast(dev, enabled=dev == "cuda"):
+            for i in range(0, len(vx), 32):
+                x, y = vx[i:i + 32].to(dev), vy[i:i + 32].to(dev)
+                lg = net(x).float()
+                tot += float(F.binary_cross_entropy_with_logits(lg, y, pos_weight=pos_w)) * len(x)
+                p = (torch.sigmoid(lg) > 0.5).float(); yb = (y > 0.5).float()
+                inter += float((p * yb).sum()); uni += float(((p + yb) > 0).float().sum())
+        net.train()
+        return tot / len(vx), inter / max(uni, 1.0)
+
+    def export(tag=""):
+        net.eval()
+        m = net.float().cpu()
+        dummy = torch.zeros(1, 3, 256, 256)
+        torch.onnx.export(m, dummy, a.out / f"trace_seg{tag}.onnx", input_names=["x"], output_names=["logit"],
+                          dynamic_axes={"x": {0: "n", 2: "h", 3: "w"}, "logit": {0: "n", 2: "h", 3: "w"}},
+                          opset_version=17, dynamo=False)
+        net.to(dev).train()
+
+    t0 = time.time(); log = []; it = iter(dl); best = None
+    for step in range(1, a.steps + 1):
+        frac = max(step / a.steps, (time.time() - t0) / (a.minutes * 60))
+        for g in opt.param_groups:
+            g["lr"] = lr_at(frac)
+        x, y = next(it)
+        x, y = x.to(dev, non_blocking=True), y.to(dev, non_blocking=True)
+        with torch.autocast(dev, enabled=dev == "cuda"):
+            logit = net(x)
+        logit = logit.float()
+        loss = F.binary_cross_entropy_with_logits(logit, y, pos_weight=pos_w) + dice_loss(logit, y)
+        opt.zero_grad(set_to_none=True)
+        scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
+        if step % 100 == 0:
+            el = time.time() - t0
+            print(f"step {step} loss {float(loss):.4f} lr {lr_at(frac):.2e} {el / step:.3f} s/step", flush=True)
+        if step % 2000 == 0 or frac >= 1.0:
+            vl, iou = validate()
+            log.append(dict(step=step, loss=float(loss), val_loss=vl, val_iou=iou, sec=round(time.time() - t0, 1)))
+            print(f"VAL step {step} val_loss {vl:.4f} IoU {iou:.4f}", flush=True)
+            (a.out / "train_log.json").write_text(json.dumps(log))
+            torch.save(net.state_dict(), a.out / "unet.pt")
+            if best is None or iou > best:
+                best = iou
+                torch.save(net.state_dict(), a.out / "unet_best.pt")
+        if frac >= 1.0:
+            print("time limit", flush=True)
+            break
+    torch.save(net.state_dict(), a.out / "unet.pt")
+    export()
+    (a.out / "meta.json").write_text(json.dumps(dict(encoder=a.encoder, parameters=n_par, steps=step,
+                                                     best_val_iou=best, size=a.size, batch=a.batch)))
+    print("ok", a.out / "trace_seg.onnx", flush=True)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,27 @@
+#!/bin/bash
+# Runs inside a RunPod GPU pod (started by .github/workflows/gpu-train.yml).
+# Clones the repository at $REF, runs the training command for at most $MAX_HOURS and serves
+# /workspace/out over HTTP (port 8000) so the workflow can follow the log and fetch the result.
+# The pod receives no secret: the repository is public and the results leave through the HTTP port.
+set -u
+OUT=/workspace/out
+mkdir -p "$OUT"
+cd /workspace
+(python -m http.server 8000 --directory "$OUT" > /dev/null 2>&1 &)
+echo "setup" > "$OUT/status.txt"
+{
+  echo "pod start $(date -u)"
+  nvidia-smi || true
+  git clone --depth 1 -b "$REF" https://github.com/fmenegui/ecg-digitalization-classic repo
+  cd repo
+  git log --oneline -1
+  pip install -q -e . onnx onnxruntime segmentation-models-pytorch==0.3.4 timm
+  echo "running" > "$OUT/status.txt"
+  echo "command: $JOB"
+  timeout "$(python -c "print(int(float('$MAX_HOURS') * 3600))")" bash -c "$JOB"
+  echo "exit code $?"
+} >> "$OUT/log.txt" 2>&1
+cd /workspace
+tar czf /workspace/result.tar.gz -C "$OUT" --exclude=result.tar.gz . && mv /workspace/result.tar.gz "$OUT/"
+echo "done" > "$OUT/status.txt"
+sleep infinity

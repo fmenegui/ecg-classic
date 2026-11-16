@@ -1,0 +1,62 @@
+name: GPU training on RunPod
+# Starts a RunPod GPU pod, runs a training command there (hybrid/gpu/pod.sh), follows its log,
+# brings the result back as an artifact and ALWAYS terminates the pod at the end (also on error,
+# cancellation or time limit). Needs the repository secret RUNPOD_API_KEY; the pod itself gets
+# no secret.
+on:
+  workflow_dispatch:
+    inputs:
+      gpu:
+        description: 'RunPod GPU type id'
+        required: false
+        default: 'NVIDIA GeForce RTX 4090'
+        type: string
+      max_hours:
+        description: 'Hard limit for the training command (hours); the pod is terminated after it'
+        required: false
+        default: '1'
+        type: string
+      job:
+        description: 'Command run in the repository on the pod'
+        required: false
+        default: 'python hybrid/train_gpu.py --minutes 45 --out /workspace/out'
+        type: string
+      tag:
+        description: 'Label'
+        required: false
+        default: 'gpu'
+        type: string
+permissions:
+  contents: read
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the pod
+        id: pod
+        env:
+          GPU: ${{ inputs.gpu }}
+          MAX_HOURS: ${{ inputs.max_hours }}
+          JOB: ${{ inputs.job }}
+          REF: ${{ github.ref_name }}
+        run: python hybrid/gpu/runpod_ctl.py start >> "$GITHUB_OUTPUT"
+      - name: Follow the training
+        env:
+          POD_ID: ${{ steps.pod.outputs.pod_id }}
+          MAX_HOURS: ${{ inputs.max_hours }}
+        run: python hybrid/gpu/runpod_ctl.py follow --out result
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpu-${{ inputs.tag }}-${{ github.run_id }}
+          path: result/
+          retention-days: 30
+      - name: Terminate the pod
+        if: always()
+        env:
+          POD_ID: ${{ steps.pod.outputs.pod_id }}
+        run: python hybrid/gpu/runpod_ctl.py stop

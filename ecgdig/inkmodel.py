@@ -31,7 +31,7 @@ def predict(rect_bgr: np.ndarray, model_path: str, tile: int = 512, margin: int 
             ya, xa = max(0, y0 - margin), max(0, x0 - margin)
             yb, xb = min(H, y0 + step + margin), min(W, x0 + step + margin)
             t = x[ya:yb, xa:xb]
-            ph, pw = (-t.shape[0]) % 8, (-t.shape[1]) % 8
+            ph, pw = (-t.shape[0]) % 32, (-t.shape[1]) % 32   # encoders downsample by 32
             if ph or pw:
                 t = np.pad(t, ((0, ph), (0, pw), (0, 0)), mode="edge")
             lg = sess.run(None, {"x": t.transpose(2, 0, 1)[None]})[0][0, 0]
