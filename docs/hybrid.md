@@ -36,6 +36,21 @@ res["hybrid"]   # {"chosen": "model" | "classical", "score_classical": ..., "sco
 | 14/11 | 4,700 CPU steps (loss 0.42, still falling) | classical 14.57 → network only 13.69 dB; best of the two per image 15.49 dB | wins on screens and crumpled photos, loses on renders and phone photos |
 | 16/11 | same model, current classical pipeline | classical 14.70, network only 12.16, best of the two per image 15.37 dB; automatic choice (page score + 1.0 × limb closure, margin 0.2) 14.80 dB | the internal score finds only a fraction of the oracle gain; the downstream rules (row filters) were tuned on the classical map and drop rows the network draws well (12x1 photo, ECG 70) |
 
+## Comparison with the Kaggle leaders
+
+| | ecgdig hybrid (now) | Kaggle 5th place (22.6 dB private LB) | Oxford, CinC 2026 (16.9 dB, own split) |
+|---|---|---|---|
+| Page geometry | classical grid detection and rectification, any layout | keypoint U-Net (2,422 points) registered to the competition's reference template | grid-intersection U-Net, warp to a standard frame |
+| Layout / leads | classical hypotheses, OCR, pulses | known from the template | 4 trace channels of the competition format |
+| Network output | one ink map for the whole page (where is pen ink) | per lead, a column-wise 1-D heatmap of the signal height | 4 soft trace maps, then a BiLSTM reads the offset per column |
+| Trace to signal | classical Viterbi tracking | argmax / expectation of the heatmap | learned (attention + BiLSTM) |
+| Training data | generic synthetic crops, no test-domain image | competition images (PTB-XL rendered by ecg-image-kit), pseudo-labels | competition images |
+| Generic? | yes (no template, no known grid) | no: relies on the single competition template | partly (fixed 4-row format) |
+
+The leaders' gain comes from two things: a network that outputs the signal height per column for each lead (it resolves overlaps and faint ink itself), and training on images of the test distribution. The plan keeps the generic classical structure and adds both: a per-row height network on the rows found by the classical pipeline, trained on PTB-XL renders (ecg-image-kit), the Kaggle training images and our generator, split by record.
+
+Sources: [5th place code](https://github.com/dangnh0611/kaggle_ecg_digitization), [McIntosh et al., CinC 2026 preprint](https://cinc.org/2026/Program/accepted/550_Preprint.pdf).
+
 ## Plan
 
 1. **Train on a GPU.** The first model is tiny and stopped at a loss still falling. `.github/workflows/gpu-train.yml` starts a RunPod pod (secret `RUNPOD_API_KEY`), trains a U-Net with a pretrained encoder (`hybrid/train_gpu.py`), returns the ONNX and always terminates the pod; chained CPU runs (`init_run`) remain as a fallback.
