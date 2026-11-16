@@ -91,8 +91,8 @@ RELAYOUT = [True]
 
 
 def _rows_are_traces(B, R, cols, pks, lr):
-    """Toda linha de toda coluna é traço (tinta perto da altura em >= 85% da largura da
-    coluna, dentro da extensão do traçado): cabeçalho ou rodapé de texto numa coluna só não
+    """Toda linha de toda coluna é traço (tinta perto da altura em boa parte da largura da
+    coluna, dentro da extensão do traçado; >= 70%): cabeçalho ou rodapé de texto numa coluna só não
     passam."""
     H = B.shape[0]
     for (xa, xb), p in zip(cols, pks):
@@ -103,7 +103,7 @@ def _rows_are_traces(B, R, cols, pks, lr):
         a, b = 0, b - a
         for y in p:
             band = sub[max(0, int(y - 3 * R)):min(H, int(y + 3 * R)), a:b]
-            if band.any(0).mean() < 0.85:
+            if band.any(0).mean() < 0.7:
                 return False
     return True
 
