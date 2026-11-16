@@ -55,6 +55,17 @@ def check():
     except urllib.error.HTTPError as e:
         k = os.environ.get("RUNPOD_API_KEY", "").strip()
         print(f"key length {len(k)}, starts with {k[:4]!r}...", file=sys.stderr)
+        try:   # does the REST API (v1) accept it? tells a wrong key from a key without GraphQL rights
+            rq = urllib.request.Request("https://rest.runpod.io/v1/pods", headers={"Authorization": f"Bearer {k}",
+                                                                                  "User-Agent": "ecgdig-gpu-train"})
+            with urllib.request.urlopen(rq, timeout=60) as r:
+                print(f"REST API accepts the key (HTTP {r.status})", file=sys.stderr)
+        except urllib.error.HTTPError as e2:
+            print(f"REST API: HTTP {e2.code} {e2.read()[:200]!r}", file=sys.stderr)
+        try:
+            print(f"GraphQL said: {e.read()[:300]!r}", file=sys.stderr)
+        except Exception:  # noqa: BLE001
+            pass
         sys.exit(f"RunPod rejected the API key (HTTP {e.code}): check that the secret RUNPOD_API_KEY holds a "
                  "valid key with read/write (GraphQL) permission")
     print(f"RunPod account ok, balance {me.get('clientBalance')} USD", file=sys.stderr)
