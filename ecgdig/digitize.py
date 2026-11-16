@@ -420,6 +420,65 @@ def _grid_clean(B, R):
     return clean_grid_segments(B, R) if GRID_SEGS[0] else B
 
 
+def _label_gaps(B, rows, ext, half, R):
+    """Column gaps narrowed by a lead label touching the trace ("aVR" printed in the gap,
+    joined to the next lead's first stroke): only a sliver stays blank in every
+    row (>= 0.2 mm). Seeds = such slivers near the boundaries of k = 4, 3 or 2 equal columns; each gap
+    then runs from the end of the left trace to the start of the right one, both taken on the
+    horizontal runs >= 4 mm long (letters are shorter), median over the rows. The columns
+    must come out of equal width (as in _column_gaps)."""
+    ex = [e for e in ext if e]
+    if len(ex) < len(rows) or len(rows) < 2:
+        return None
+    L, Rr = _trace_span(ex)
+    if Rr - L < 60 * R:
+        return None
+    occ = np.zeros(Rr - L, bool)
+    for y in rows:
+        occ |= B[max(0, int(y - half)):int(y + half), L:Rr].any(0)
+    d = np.diff(np.concatenate([[1], occ.astype(np.int8), [1]]))
+    s_, e_ = np.nonzero(d == -1)[0], np.nonzero(d == 1)[0]
+    slivers = [(L + a, L + b) for a, b in zip(s_, e_) if b - a >= max(2, 0.2 * R) and 0 < a and b < len(occ)]
+    if not slivers:
+        return None
+    kh = int(4 * R) | 1
+    Bh = cv2.morphologyEx(B.astype(np.uint8), cv2.MORPH_OPEN, np.ones((1, kh), np.uint8)) > 0
+    hb = [Bh[max(0, int(y - half)):int(y + half)].any(0) for y in rows]
+    for k in (4, 3, 2):
+        w = (Rr - L) / k
+        cuts = []
+        for i in range(1, k):
+            xc = L + i * w
+            near = [g for g in slivers if abs(0.5 * (g[0] + g[1]) - xc) <= 0.06 * (Rr - L)]
+            if not near:
+                break
+            a_, b_ = min(near, key=lambda g: abs(0.5 * (g[0] + g[1]) - xc))
+            lo, hi = [], []
+            for h in hb:
+                left = np.nonzero(h[max(0, a_ - int(25 * R)):a_])[0]
+                right = np.nonzero(h[b_:b_ + int(15 * R)])[0]
+                if len(left):
+                    lo.append(max(0, a_ - int(25 * R)) + left[-1] + 1)
+                if len(right):
+                    hi.append(b_ + right[0])
+            if not lo or not hi:
+                break
+            ga, gb = int(np.median(lo)), int(np.median(hi))
+            if not (0.5 * R <= gb - ga <= 15 * R):
+                break
+            cuts.append((ga, gb))
+        if len(cuts) != k - 1:
+            continue
+        edges = [L] + [x for c in cuts for x in c] + [Rr]
+        widths = [edges[2 * i + 1] - edges[2 * i] for i in range(k)]
+        wm = float(np.median(widths[1:]))
+        if wm < 20 * R or any(abs(x - wm) > 0.04 * wm for x in widths[1:]) or \
+                not (-0.04 * wm <= widths[0] - wm <= 0.04 * wm + 15 * R):
+            continue
+        return cuts
+    return None
+
+
 def _mid_pulse_cuts(B, rows, ext, half, R):
     """Calibration pulses printed again at the start of each column (a pulse between the
     columns of every row): [(x0, x1)] stretches to remove (pulse + blank margins), or None.
@@ -759,6 +818,7 @@ PULSE_COL_LEFT = [True]
 TL_COVER = [True]
 PULSE_ROWS_SNAP = [True]
 TRACK_BASE_TRACE = [True]
+LABEL_GAPS = [True]
 GAP_ROBUST_LR = [True]
 HALF_ALONE = [True]
 MID_PULSE_CUT = [True]
@@ -1425,6 +1485,8 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         cg = _column_gaps(B, rows, ext, half, R, max_mm=25.0 if GAP_WIDE[0] else 15.0)
         if not cg and MID_PULSE_CUT[0]:
             cg = _mid_pulse_cuts(B, rows, ext, half, R)
+        if not cg and LABEL_GAPS[0]:
+            cg = _label_gaps(B, rows, ext, half, R)
         if cg:
             keep_x = np.ones(W, bool)
             for a_, b_ in cg:
