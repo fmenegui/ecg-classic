@@ -607,6 +607,12 @@ def _rows_pulses(B, pap, R, rows_hint=None):
         xs_p = np.array([p["x_start"] for p in pulses if p is not None], float)
         med_x = float(np.median(xs_p))
         has = [p is not None and abs(p["x_start"] - med_x) < 3 * R for p in pulses]
+        if EDGE_PULSE_HEIGHT[0] and sum(has) >= 2:
+            # ...nor one of another height: the 1 mV pulse is the same on every row (end
+            # marks and steps of a tall QRS next to a letter pass for "half" pulses of any height)
+            hs_ = [p["foot"] - p["top"] for p, h in zip(pulses, has) if h]
+            h0_ = float(np.median(hs_))
+            has = [h and abs((p["foot"] - p["top"]) - h0_) <= 0.15 * h0_ for p, h in zip(pulses, has)]
     if sum(has) >= 2 and len(peaks) > sum(has) and len(peaks) >= 3:
         exc = [_excursions(B, int(y), half, R) for y in peaks]
         ref = float(np.median([x for x, h in zip(exc, has) if h]))
@@ -658,6 +664,8 @@ def _rows_pulses(B, pap, R, rows_hint=None):
 
 
 _ROW_BEAT_RULE = [True]
+EDGE_PULSE_HEIGHT = [True]
+PULSE_COL_LEFT = [True]
 _PULSE_RETRY = [True]
 RIGHT_ANCHOR = [True]
 ORIENT_T = [True]
@@ -1278,6 +1286,11 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         # at the end of the row (GE) stay for the gain through the mirrored search
         ex_ = [e for e in ext if e]
         if pcol is not None and ex_ and pcol["x_start"] > float(np.median([e[0] for e in ex_])) + 30 * R:
+            pcol = None
+        # a pulse printed apart sits before the trace; with the rows already running well to
+        # its left, the "column" is the first QRS, simultaneous in rows packed 3-8 mm apart
+        if PULSE_COL_LEFT[0] and pcol is not None and ex_ and \
+                float(np.median([e[0] for e in ex_])) < pcol["x_start"] - 5 * R:
             pcol = None
         if pcol is not None:
             B = B.copy(); D = D.copy()

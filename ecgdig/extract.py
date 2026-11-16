@@ -416,6 +416,10 @@ def clean_grid_segments(B, R, L_mm=8.0, frac=0.03, axes=(1, 0)):
     return out
 
 
+ROWS_CLOSE = [True]
+HALF_PULSE_END = [True]
+
+
 def find_rows(B: np.ndarray, R: float):
     H, W = B.shape
     k = int(2 * R) | 1
@@ -423,6 +427,14 @@ def find_rows(B: np.ndarray, R: float):
     cov = Bd.mean(1).astype(np.float64)
     cov = cv2.GaussianBlur(cov.reshape(-1, 1), (0, 0), R).ravel()
     pk, pr = find_peaks(cov, distance=int(8 * R), height=0.3 * cov.max(), prominence=0.1 * cov.max())
+    if ROWS_CLOSE[0] and len(pk):
+        # rows printed closer than 8 mm (12x1 placed by signal offset: baselines 3-8 mm apart):
+        # a second line of almost full coverage, with a deep valley between the two
+        m = cov.max()
+        p2, _ = find_peaks(cov, distance=int(2.5 * R), height=0.6 * m, prominence=0.4 * m)
+        add = [p for p in p2 if np.min(np.abs(pk - p)) >= 2.5 * R]
+        if add:
+            pk = np.sort(np.concatenate([pk, np.asarray(add, pk.dtype)]))
     return pk, cov
 
 
@@ -672,6 +684,13 @@ def detect_pulse(B, y0, half, xa, R, up=None, close_mm=0.8):
             continue
         band = B[max(0, ty - int(0.5 * R)):ty + int(0.5 * R) + 1, xl:x0s + cs[i]]
         left = B[max(0, ty + int(1.0 * R)):int(b1 - 1.0 * R), max(0, xl - int(10 * R)):xl]
+        # after the falling edge the trace runs on at the foot (the baseline); the deep S of a
+        # QRS that starts from a flat baseline comes back up at once
+        xr = x0s + ce[i] + 1
+        fy = int(round(b1))
+        after = B[max(0, fy - int(1.0 * R)):fy + int(1.0 * R) + 1, xr + int(0.5 * R):xr + int(3 * R)]
+        if HALF_PULSE_END[0] and (after.size == 0 or after.any(0).mean() < 0.6):
+            continue
         if band.size and band.any(0).mean() >= 0.8 and (left.size == 0 or left.any(1).mean() < 0.5):
             return dict(top=float(t1), foot=float(b1), x_start=int(x0s + cs[i]), x_end=int(x0s + ce[i]),
                         x_fall=float(x0s + 0.5 * (cs[i] + ce[i])), half=True)
