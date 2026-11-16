@@ -1923,6 +1923,8 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         if cfg.fit == "lsf" and len(xg) > 30:
             from .fit import lsf_refine
             xg, yg = lsf_refine(D, xg, yg, **(cfg.fit_kw or {}))
+        if len(xg) < 2:   # the refinements left nothing of this segment: a missing lead, not a crash
+            continue
         tn = np.arange(j["n0"], j["n1"]) / cfg.fs
         xn = x0_r[rr] + sc_r[rr] * tn * speed * R
         yn = np.interp(xn, xg, yg)
