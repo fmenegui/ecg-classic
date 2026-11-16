@@ -6,13 +6,13 @@
 
 | Benchmark | Start | Now | Reference |
 |---|---|---|---|
-| PM-ECG-ID, whole database (5,994–6,000 ECGs): SNR / PCC / failed leads | 6.99 dB / 0.591 / 22.2% (`7a60059`) | **{{PM_SNR}} dB / {{PM_PCC}} / {{PM_FAIL}}** (`{{PM_COMMIT}}`) | PMcardio, published: > 12.5 dB / > 0.91 / 6.62% |
+| PM-ECG-ID, whole database (5,994–6,000 ECGs): SNR / PCC / failed leads | 6.99 dB / 0.591 / 22.2% (`7a60059`) | **7.91 dB / 0.656 / 15.3%** (`43cb3a6`) | PMcardio, published: > 12.5 dB / > 0.91 / 6.62% |
 | PM-ECG-ID, `photos_scans` (100 ECGs, desk scanner) | 11.5 dB / PCC 0.752 | 14.1 dB / PCC 0.875 | (whole-database reference above) |
-| PhysioNet (Kaggle) training images, 135 local (15 records × 9 captures) | 3.3 dB | **{{PN_SNR}} dB** | a deep-learning entry ranked 24th of 1,425: 19.7 dB (private leaderboard) |
+| PhysioNet (Kaggle) training images, 135 local (15 records × 9 captures) | 3.3 dB | **14.68 dB** | a deep-learning entry ranked 24th of 1,425: 19.7 dB (private leaderboard) |
 | LITFL, 102 real pages: layout / rhythm strips / layout+speed+duration+gain | 92.2 / 87.9 / 83.3% | 92–93 / 93–97 / 91% | hand-reviewed reference |
 | Synthetic (exact ground truth): medium / heavy / fold | 21.6 / 16.7 / 9.7 dB | 21.6 / 19.4 / 18.1 dB | — |
 
-**Where the PM-ECG-ID gap is.** When the page format is read correctly, the classical pipeline reaches 11–12 dB and PCC 0.87, close to PMcardio's whole-database numbers. When it is read wrong, the ECG is near 0 dB. On the first whole-database run the format was wrong or unreadable on 37% of the single-page ECGs; most of the work of 15–16/11 went into that, and the share fell to {{PM_WRONG}}.
+**Where the PM-ECG-ID gap is.** When the page format is read correctly (72% of the single-page ECGs), the classical pipeline reaches 11.5 dB and PCC 0.86, close to PMcardio's whole-database numbers. When it is read wrong, the ECG is near 0 dB. On the first whole-database run the format was wrong or unreadable on 37% of the single-page ECGs; most of the work of 15–16/11 went into that, and the share fell to 28%.
 
 ## 2. Method choices that held up
 
@@ -43,7 +43,7 @@
 | 2nd (13/11) | 13.2 dB | each 1 mm grid line located with the trace masked out by colour (the classical equivalent of the intersection-indexed grid of the top Kaggle entries); separator mark cut as a rectangle; return-to-baseline and pulse-anchored origin in the Viterbi; robust pulse and duration on photos. Phone photos 3.7 → 11.3 dB, colour scans 12.1 → 15.2 dB |
 | 3rd (13/11) | 13.6 dB (135 local) | analysis-by-synthesis fit of the trace (`ecgdig/synthesis.py`): M = 1 − exp(−Σ a·g_σ) with pen and blur estimated on the image, points moved along the normal until the drawing matches the ink; on thin traces only (radius ≤ 2 px) |
 | 4th (13/11) | 14.57 dB | rigid translation in the Viterbi (a giant QRS crossing rows does not pay edge continuity: one render 10.3 → 29.9 dB); common rhythm between rows (an edge row without simultaneous QRS is dropped); ink bridge between segments; second pulse search |
-| 16/11 | **{{PN_SNR}} dB** | the column, label and structure fixes of §5–§7, with no image moving by more than 1 dB |
+| 16/11 | **14.68 dB** | the column, label and structure fixes of §5–§6; the merge first cost three images (14.47 dB), fixed by the straight-line and tracks guards of §6; one image stays 1.4 dB lower |
 
 **Floor of the printing.** On scans, the instant of each QRS varies by ±3 ms per beat relative to the ground truth, the same in every row and in several captures of the same sheet, while the grid is right to ±0.02 mm. The printed signal itself is shifted; no method recovers that.
 
@@ -83,9 +83,11 @@ Two sessions attacked the wrong-format pages, in parallel, and were merged on 16
 | GrabCut paper mask cutting the grid when the sheet touches the frame | border pixels with the paper colour are not background seeds (`PAPER_SEEDFIX`) | doogee −4.7 → 20.1 dB |
 | Black or grey dashed grid left in the binary map (12 false rows on a 6x2 page) | straight pieces with neighbours 5 or 10 mm away removed for row finding, beat counting and OCR (`GRID_SEGS`) | |
 | Curved grid border traced as the trace | vertical lines with trace on one side only removed (`LONG_VLINES`, `LONG_VLINES_EDGE`); chains of stacked QRS stay | scan 14: 12.7 → 19.3 dB |
+| A ruled line (fold, curved grid line) with trace on both sides kept by the one-sided rule | a straight, thin line (centre within 0.12 mm of a fit, median width ≤ 0.5 mm) is removed anyway; QRS chains wiggle 0.15–0.25 mm and are 0.6–1 mm wide (`LONG_VLINES_STRAIGHT`) | PhysioNet 119693645-0005: −1.6 → 15.2 dB |
 | Labels touching the column separator ("\|V2") | OCR variants without thin end bars; vertical lines > 6 mm are not letters; repeated "I" bars along a row are QRS (`OCR_QRS_BARS`, `OCR_TRIM_BARS`) | |
 | Trace contrast falling across a photo | ink boosted per 5 cm block up to the page level, below the grid leakage (`LOCAL_CONTRAST`) | |
 | Columns with their own row heights (6x2 with a tight left column and a spread right column; 3x4 with the four columns offset) | columns from blank gaps, from equal-width hypotheses (`EQUAL_SPLIT`) or from baseline tracks that end and start at the column changes (`col_struct`); each (column, row) band moved to stacked reference rows with the largest interval across columns; rows and column count passed downstream as hints (`RELAYOUT`) | img_23, 49, 76 (6x2) and 32, 50 (3x4): −2 to 0 → 9–24 dB |
+| One header text line at a different height in each column taken for a column structure | the tracks structure needs at least max(2, n/3) rows that change height (`TRACKS_MANY_ROWS`) | PhysioNet 426433979-0004: 0.6 → 12.7 dB |
 | QR code and "id: … page: …" footer counted as rows when matching columns | peaks with ink on < 50% of the column width dropped (`ROW_FILTER`) | img_32 −0.2 → 14.5 dB |
 | Lead label printed inside the column gap | a gap filled only by letter-sized components still counts (`GAP_LABELS`) | img_44 −2.8 → 14.9 dB (with the next row) |
 | A loose step at the end of the row read as a 5 mm/mV calibration | a half pulse on the right only counts if it gives 10 mm/mV (`RPULSE_HALF`) | |
@@ -102,8 +104,8 @@ Whole-database runs (paired on the same ECGs; each fix was also checked by turni
 | head2 | `0fd51d6` | 7.08 | grid segments, OCR, long lines, equal split, local contrast, scale and span sanity |
 | head3 | `1456ce0` | 7.30 | label in the gap, end-of-row step, relayout of per-column rows |
 | head4 | `f2b1c08` | 7.43 | non-trace rows filtered |
-| merge1 | `da0da70` | {{MERGE_SNR}} | + baseline tracks, unwrap seed, orientation check, row drop, pulse-row guard |
-| final | `{{PM_COMMIT}}` | **{{PM_SNR}}** | cleanup, deterministic synthesis brake |
+| merge1 | `da0da70` | 7.91 | + baseline tracks, unwrap seed, orientation check, row drop, pulse-row guard (801 ECGs up > 1 dB, 382 down) |
+| final | `43cb3a6` | **7.91** (PCC 0.656, 15.3% failed) | cleanup, deterministic synthesis brake, straight-line and tracks guards (PhysioNet back to 14.68 dB); 24.6 s per page on CI against 44.9 s before the merge |
 
 Switches tested and left off: the row's own QRS masked as boundary evidence (`BND_OWN_QRS`: +0.08 dB on the pre-merge sample, but it also masks separator marks the tracker followed, and a 6x2 page fell from 10.9 to −0.9 dB after the merge); a loose "I" bar never contradicting a lead name (+0.02 dB on PM-ECG-ID, −0.03 dB on PhysioNet; removed); erasing pulse columns in the middle of the trace (rotation_35 img_41: 7.6 → −0.2 dB; removed); grid-segment cleanup also for tracking (removed); extending the paper mask to the gridded area (−0.13 dB).
 
@@ -112,7 +114,7 @@ Switches tested and left off: the row's own QRS masked as boundary evidence (`BN
 | Family | Symptom |
 |---|---|
 | Blur 31/41, resolution 1/16–1/32 | trace and grid merge; rows or pulses are lost (≈ 0 dB) |
-| Rows 2–8 mm apart whose traces cross (PM-ECG-ID img_49 left column, img_70, img_45, img_6) | separating rows by horizontal bands cannot untangle crossing curves; it needs tracking that follows crossing curves |
+| Rows 2–8 mm apart whose traces cross (PM-ECG-ID img_70, img_45, img_6) | separating rows by horizontal bands cannot untangle crossing curves; it needs tracking that follows crossing curves |
 | Gray or touching labels (img_23 left column, img_39) | the OCR reads nothing and the format is decided by physiology alone |
 | Crumpled and bent photos | local grid residual 0.35–0.5 mm per cell; shadows erase the grid |
 | Digital opacity 0.15, brightness −160 | the trace is almost invisible |

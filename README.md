@@ -8,10 +8,10 @@ ecgdig turns a picture of a paper ECG (scan, rasterized PDF or phone photo) into
 
 | Benchmark | ecgdig | Reference |
 |---|---|---|
-| [PM-ECG-ID](benchmarks/pmcardio/), whole database: 6,000 ECGs, 60 capture scenarios | SNR **{{PM_SNR}} dB**, PCC **{{PM_PCC}}**, failed leads **{{PM_FAIL}}** | PMcardio (published, deep learning): SNR > 12.5 dB, PCC > 0.91, 6.62% |
-| PM-ECG-ID, pages whose format was read correctly ({{PM_RIGHT}} of single-page ECGs) | SNR {{PM_RIGHT_SNR}} dB, PCC {{PM_RIGHT_PCC}} | |
+| [PM-ECG-ID](benchmarks/pmcardio/), whole database: 6,000 ECGs, 60 capture scenarios | SNR **7.91 dB**, PCC **0.656**, failed leads **15.3%** | PMcardio (published, deep learning): SNR > 12.5 dB, PCC > 0.91, 6.62% |
+| PM-ECG-ID, pages whose format was read correctly (72% of single-page ECGs) | SNR 11.5 dB, PCC 0.856 | |
 | PM-ECG-ID, `photos_scans` (100 desk scans) | SNR 14.1 dB, PCC 0.875 | |
-| [PhysioNet (Kaggle)](benchmarks/physionet/) training images, 135 local (15 records × 9 captures) | SNR **{{PN_SNR}} dB** | a deep-learning entry ranked 24th of 1,425: 19.7 dB (private leaderboard) |
+| [PhysioNet (Kaggle)](benchmarks/physionet/) training images, 135 local (15 records × 9 captures) | SNR **14.68 dB** | a deep-learning entry ranked 24th of 1,425: 19.7 dB (private leaderboard) |
 | [LITFL](benchmarks/litfl/), 102 real pages, no signal ground truth | layout 92%, rhythm strips 93%, layout + speed + duration + gain 91% | hand-reviewed reference |
 | Synthetic pages with exact ground truth: medium / heavy degradation / creased paper | 21.6 / 19.4 / 18.1 dB | |
 
