@@ -403,6 +403,58 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
     return gaps
 
 
+def _mid_pulse_cuts(B, rows, ext, half, R):
+    """Calibration pulses printed again at the start of each column (a pulse between the
+    columns of every row): [(x0, x1)] stretches to remove (pulse + blank margins), or None.
+    Requires the pulses of one column at the same x (±2 mm) on at least half the rows (and
+    >= 2), in the middle 20-80% of the rows, and columns of equal width after the cut (the
+    first may carry the start pulse, up to 15 mm more)."""
+    from .extract import find_pulses
+    ex = [e for e in ext if e]
+    if len(rows) < 2 or len(ex) < len(rows):
+        return None
+    L, Rr = float(np.median([e[0] for e in ex])), float(np.median([e[1] for e in ex]))
+    if Rr - L < 60 * R:
+        return None
+    ys = np.asarray(rows, float)
+    cand = []
+    for p in find_pulses(B, R):
+        if not (L + 0.2 * (Rr - L) <= p["x_start"] <= Rr - 0.2 * (Rr - L)):
+            continue
+        r_ = int(np.argmin(np.abs(ys - p["foot"])))
+        if abs(ys[r_] - p["foot"]) <= half:
+            cand.append((p["x_start"], p["x_end"], r_))
+    cand.sort()
+    groups = []
+    for c in cand:
+        if groups and c[0] - groups[-1][0][0] <= 2 * R:
+            groups[-1].append(c)
+        else:
+            groups.append([c])
+    need = max(2, int(np.ceil(0.5 * len(rows))))
+    groups = [g for g in groups if len({c[2] for c in g}) >= need]
+    if not groups or len(groups) > 3:
+        return None
+    occ = np.zeros(B.shape[1], bool)
+    for y in rows:
+        occ |= B[max(0, int(y - half)):int(y + half)].any(0)
+    cuts = []
+    for g in groups:
+        a_ = int(min(c[0] for c in g) - 0.3 * R); b_ = int(max(c[1] for c in g) + 0.3 * R)
+        while a_ > L and not occ[a_ - 1]:
+            a_ -= 1
+        while b_ < Rr and not occ[b_]:
+            b_ += 1
+        cuts.append((a_, b_))
+    edges = [L] + [x for c in cuts for x in c] + [Rr]
+    widths = [edges[2 * i + 1] - edges[2 * i] for i in range(len(cuts) + 1)]
+    w = float(np.median(widths[1:]))
+    if w < 20 * R or any(abs(x - w) > 0.04 * w for x in widths[1:]) or \
+            not (-0.04 * w <= widths[0] - w <= 0.04 * w + 15 * R):
+        return None
+    return cuts
+
+
 def _rows_from_hint(B, R, rows, cov):
     """Rows already known (column structure realigned): only extents and pulses, without the
     rules that drop rows."""
@@ -667,6 +719,7 @@ _ROW_BEAT_RULE = [True]
 EDGE_PULSE_HEIGHT = [True]
 PULSE_COL_LEFT = [True]
 HALF_ALONE = [True]
+MID_PULSE_CUT = [True]
 _PULSE_RETRY = [True]
 RIGHT_ANCHOR = [True]
 ORIENT_T = [True]
@@ -1312,6 +1365,8 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     col_cut = None
     if COL_GAP[0] and len(rows) >= 2:
         cg = _column_gaps(B, rows, ext, half, R, max_mm=25.0 if GAP_WIDE[0] else 15.0)
+        if not cg and MID_PULSE_CUT[0]:
+            cg = _mid_pulse_cuts(B, rows, ext, half, R)
         if cg:
             keep_x = np.ones(W, bool)
             for a_, b_ in cg:
