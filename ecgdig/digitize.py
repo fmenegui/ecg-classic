@@ -1568,11 +1568,11 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     if HALF_ALONE[0]:
         # a half pulse (only the plateau and the falling edge) is weak evidence: a deep S wave
         # after a flat baseline looks the same. Away from the 10 mm/mV default it needs
-        # another row that agrees
+        # two other rows that agree
         sn = [_snap(g) if _std_ok(g) else None for g in lv1]
         for r_, p in enumerate(pulses):
             if p is not None and p.get("half") and src[r_] == "L" and sn[r_] is not None and sn[r_] != 10.0 \
-                    and sum(1 for k, v in enumerate(sn) if v == sn[r_] and k != r_) == 0:
+                    and sum(1 for k, v in enumerate(sn) if v == sn[r_] and k != r_) < 2:
                 lv1[r_] = None; lv2[r_] = None; src[r_] = None
     reliable = [_snap(g) for g in lv1 if _std_ok(g)]
     if reliable:
