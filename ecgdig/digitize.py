@@ -1225,9 +1225,10 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     # layout. Flipping also requires the physics: 12 correctly read leads close Einthoven/
     # Goldberger at ~0.8, and three neighbouring precordial leads upside down mimic I, II, III
     # at ~0.35 (floor 0.5); the upright reading must not close
-    if flipped:
+    if flipped and not ORIENT_KEEP_DEFAULT[0]:
         out = keep if (np.isfinite(sc(keep)) and sc(keep) > sc(flip) + ORIENT_MARGIN[0]) else flip
     else:
+        # (a weak first flip gets no head start: upright unless upside down is clearly better)
         out = flip if (np.isfinite(sc(keep)) and sc(flip) > sc(keep) + ORIENT_MARGIN[0]
                        and limb(flip) >= 0.5 and limb(keep) <= 0.1) else keep
     chk = dict(keep=sc(keep), flip=sc(flip))
@@ -1243,6 +1244,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
 
 
 ORIENT_MARGIN = [5.0]
+ORIENT_KEEP_DEFAULT = [True]
 
 
 _PRE = [None]            # (cfg, rect, pap, D, B, glev, ginfo) of the last page, before orientation
