@@ -32,17 +32,34 @@ def gql(query, variables=None):
     if not key:
         sys.exit("RUNPOD_API_KEY is not set (repository secret missing?)")
     body = json.dumps({"query": query, "variables": variables or {}}).encode()
-    req = urllib.request.Request(API, data=body, headers={"Content-Type": "application/json",
-                                                          "Authorization": f"Bearer {key}",
-                                                          "User-Agent": "ecgdig-gpu-train"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        out = json.loads(r.read())
+    hdr = {"Content-Type": "application/json", "User-Agent": "ecgdig-gpu-train"}
+    try:   # bearer header first; older keys only work as the api_key query parameter
+        req = urllib.request.Request(API, data=body, headers=dict(hdr, Authorization=f"Bearer {key}"))
+        with urllib.request.urlopen(req, timeout=60) as r:
+            out = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        if e.code not in (401, 403):
+            raise
+        req = urllib.request.Request(f"{API}?api_key={key}", data=body, headers=hdr)
+        with urllib.request.urlopen(req, timeout=60) as r:
+            out = json.loads(r.read())
     if out.get("errors"):
         raise RuntimeError("; ".join(e.get("message", str(e)) for e in out["errors"]))
     return out["data"]
 
 
+def check():
+    """Fails fast with a clear message when the key is not accepted."""
+    try:
+        me = gql("query { myself { id clientBalance } }")["myself"]
+    except urllib.error.HTTPError as e:
+        sys.exit(f"RunPod rejected the API key (HTTP {e.code}): check that the secret RUNPOD_API_KEY holds a "
+                 "valid key with read/write (GraphQL) permission")
+    print(f"RunPod account ok, balance {me.get('clientBalance')} USD", file=sys.stderr)
+
+
 def start():
+    check()
     ref = os.environ["REF"]
     env = [{"key": "REF", "value": ref}, {"key": "JOB", "value": os.environ["JOB"]},
            {"key": "MAX_HOURS", "value": os.environ.get("MAX_HOURS", "1")}]
