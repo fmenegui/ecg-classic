@@ -98,6 +98,8 @@ def main():
     import cv2
     cv2.setNumThreads(1)   # the parent's OpenCV pool must not be inherited half-locked
     dev = "cuda" if torch.cuda.is_available() else "cpu"
+    if dev == "cpu" and os.environ.get("RUNPOD_POD_ID"):
+        sys.exit("CUDA is not available on this GPU pod; refusing to train on the CPU")
     torch.backends.cudnn.benchmark = True
     net = build(a.encoder, a.weights).to(dev)
     n_par = sum(p.numel() for p in net.parameters())

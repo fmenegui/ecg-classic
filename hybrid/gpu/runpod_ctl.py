@@ -3,6 +3,7 @@
     python hybrid/gpu/runpod_ctl.py start            # prints pod_id=... (GitHub step output)
     python hybrid/gpu/runpod_ctl.py follow --out DIR  # streams the pod log, fetches the result
     python hybrid/gpu/runpod_ctl.py stop             # terminates $POD_ID (and stray ecgdig-* pods)
+    python hybrid/gpu/runpod_ctl.py run --out DIR    # start + follow, replacing pods whose CUDA fails
 
 Environment: RUNPOD_API_KEY; start: GPU, MAX_HOURS, JOB, REF; follow/stop: POD_ID.
 Standard library only.
@@ -73,7 +74,7 @@ def check():
     print(f"RunPod account ok, balance {me.get('clientBalance')} USD", file=sys.stderr)
 
 
-def start():
+def start(exclude=()):
     check()
     ref = os.environ["REF"]
     env = [{"key": "REF", "value": ref}, {"key": "JOB", "value": os.environ["JOB"]},
@@ -81,6 +82,7 @@ def start():
     cmd = ("bash -c 'curl -fsSL https://raw.githubusercontent.com/fmenegui/ecg-digitalization-classic/"
            "${REF}/hybrid/gpu/pod.sh -o /pod.sh && bash /pod.sh'")
     gpus = [os.environ.get("GPU") or FALLBACK_GPUS[0]] + [g for g in FALLBACK_GPUS if g != os.environ.get("GPU")]
+    gpus = [g for g in gpus if g not in exclude] + [g for g in gpus if g in exclude]
     q = """mutation($input: PodFindAndDeployOnDemandInput) {
              podFindAndDeployOnDemand(input: $input) { id machineId costPerHr gpuCount } }"""
     last = None
@@ -99,7 +101,7 @@ def start():
             print(f"started {d['id']} on {g} (>= {vcpu} vCPU), {d.get('costPerHr')} USD/h", file=sys.stderr)
             print(f"pod_id={d['id']}")
             print(f"gpu={g}")
-            return
+            return d["id"], g
     sys.exit(f"no GPU available: {last}")
 
 
@@ -125,9 +127,11 @@ def follow(out: Path):
                 seen = len(log)
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:   # pod still booting
             print(f"[waiting: {getattr(e, 'code', '')} {type(e).__name__}]", flush=True)
-        if status == "done":
+        if status in ("done", "nogpu"):
             break
         time.sleep(60)
+    if status == "nogpu":
+        return status
     try:
         data = _get(base + "/result.tar.gz", timeout=600)
         tarfile.open(fileobj=io.BytesIO(data), mode="r:gz").extractall(out)
@@ -140,6 +144,22 @@ def follow(out: Path):
             pass
     if status != "done":
         sys.exit(f"pod did not finish in time (status: {status!r})")
+    return status
+
+
+def run(out: Path, tries=3):
+    """start + follow; a pod whose CUDA does not work is terminated and replaced (up to `tries`)."""
+    bad = []
+    for _ in range(tries):
+        pod, g = start(exclude=bad[-1:])
+        os.environ["POD_ID"] = pod
+        Path("pod_ids.txt").open("a").write(pod + "\n")
+        if follow(out) != "nogpu":
+            return
+        print(f"pod {pod} ({g}): CUDA not usable, terminating it and trying another pod", flush=True)
+        stop()
+        bad.append(g)
+    sys.exit("no pod with a working GPU")
 
 
 def stop():
@@ -161,7 +181,7 @@ def stop():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["start", "follow", "stop"])
+    ap.add_argument("cmd", choices=["start", "follow", "stop", "run"])
     ap.add_argument("--out", type=Path, default=Path("result"))
     a = ap.parse_args()
-    {"start": start, "follow": lambda: follow(a.out), "stop": stop}[a.cmd]()
+    {"start": start, "follow": lambda: follow(a.out), "stop": stop, "run": lambda: run(a.out)}[a.cmd]()

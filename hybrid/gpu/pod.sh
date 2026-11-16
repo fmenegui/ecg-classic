@@ -16,6 +16,11 @@ echo "setup" > "$OUT/status.txt"
   cd repo
   git log --oneline -1
   pip install -q -e . onnx onnxruntime segmentation-models-pytorch==0.3.4 timm
+  # some hosts expose the GPU to nvidia-smi but fail CUDA initialization ("CUDA unknown error");
+  # training would then silently run on the CPU, so stop here and let the workflow try another pod
+  if ! python -c "import torch; assert torch.cuda.is_available(); print('cuda ok', torch.cuda.get_device_name(0), (torch.ones(1, device='cuda') * 2).item())"; then
+    echo "nogpu" > "$OUT/status.txt"; echo "CUDA not usable on this pod"; sleep infinity
+  fi
   echo "running" > "$OUT/status.txt"
   echo "command: $JOB"
   # GPU use every 2 minutes in the log (utilization %, memory): shows whether the GPU is starved
