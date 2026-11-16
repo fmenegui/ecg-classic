@@ -34,10 +34,11 @@ res["hybrid"]   # {"chosen": "model" | "classical", "score_classical": ..., "sco
 | Date | Model | PhysioNet 135 | Notes |
 |---|---|---|---|
 | 14/11 | 4,700 CPU steps (loss 0.42, still falling) | classical 14.57 → network only 13.69 dB; best of the two per image 15.49 dB | wins on screens and crumpled photos, loses on renders and phone photos |
+| 16/11 | same model, current classical pipeline | classical 14.70, network only 12.16, best of the two per image 15.37 dB; automatic choice (page score + 1.0 × limb closure, margin 0.2) 14.80 dB | the internal score finds only a fraction of the oracle gain; the downstream rules (row filters) were tuned on the classical map and drop rows the network draws well (12x1 photo, ECG 70) |
 
 ## Plan
 
-1. **Train longer.** The first model stopped at a loss still falling; chained CPU runs (`init_run`) continue it.
+1. **Train on a GPU.** The first model is tiny and stopped at a loss still falling. `.github/workflows/gpu-train.yml` starts a RunPod pod (secret `RUNPOD_API_KEY`), trains a U-Net with a pretrained encoder (`hybrid/train_gpu.py`), returns the ONNX and always terminates the pod; chained CPU runs (`init_run`) remain as a fallback.
 2. **Selection without ground truth.** Calibrate `_reading_score` on PhysioNet (where both readings are known) so that the per-image choice gets close to the 15.49 dB oracle; then confirm on PM-ECG-ID, paired.
 3. **Closer to real captures.** Phone-photo optics (perspective blur, vignetting, uneven light), printer dot patterns and the black/grey grids where the classical map fails; pseudo-labels from pages the classical reader gets right (high internal quality) to adapt to real paper and cameras, still without any test image.
 4. **Per-lead choice.** When both readings agree on the layout and time axis, keep each lead from the reading with the better lead score.

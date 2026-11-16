@@ -58,7 +58,7 @@ class Config:
     # with ink_model: "model" reads the page with the network's ink map only; "select" reads it
     # both ways and keeps the reading with the better internal quality (no ground truth)
     hybrid: str = "select"
-    hybrid_margin: float = 0.0  # the network's reading must beat the classical one by this much
+    hybrid_margin: float = 0.2  # the network's reading must beat the classical one by this much
     prewarp: bool = False          # coarse perspective from the outline of the gridded area
     adaptive_threshold: bool = True  # light trace: redo the binarization with a lower threshold
     pulse_rows: bool = True       # baselines from the calibration pulses when there are >= 3
@@ -825,7 +825,7 @@ TL_COVER = [True]
 PULSE_ROWS_SNAP = [True]
 TRACK_BASE_TRACE = [True]
 LABEL_GAPS = [True]
-HYB_W_LIMB = [0.2]   # weight of the limb closure in the hybrid reading score (calibrated on PhysioNet)
+HYB_W_LIMB = [1.0]   # weight of the limb closure in the hybrid reading score (PhysioNet 135, 16/11)
 GAP_ROBUST_LR = [True]
 HALF_ALONE = [True]
 MID_PULSE_CUT = [True]
