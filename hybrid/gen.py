@@ -163,10 +163,20 @@ def _degrade(rng, img):
         k = rng.uniform(1.5, 3.0)
         small = cv2.resize(f, (max(8, int(W / k)), max(8, int(H / k))), interpolation=cv2.INTER_AREA)
         f = cv2.resize(small, (W, H), interpolation=cv2.INTER_LINEAR)
-    # blur (printing + capture)
-    s = rng.uniform(0, 1.6)
+    # light print / faded toner: the whole page washes towards the paper
+    if rng.random() < 0.2:
+        al = rng.uniform(0.3, 1.0)
+        f = f * al + 255.0 * (1 - al)
+    # blur (printing + capture); now and then a camera out of focus or shaken
+    s = rng.uniform(0, 1.6) if rng.random() > 0.15 else rng.uniform(1.6, 2.8)
     if s > 0.2:
         f = cv2.GaussianBlur(f, (0, 0), s)
+    if rng.random() < 0.12:
+        L_ = int(rng.integers(3, 7)); k_ = np.zeros((L_, L_), np.float32)
+        k_[L_ // 2, :] = 1.0
+        M_ = cv2.getRotationMatrix2D((L_ / 2 - 0.5, L_ / 2 - 0.5), rng.uniform(0, 180), 1.0)
+        k_ = cv2.warpAffine(k_, M_, (L_, L_)); k_ /= max(k_.sum(), 1e-6)
+        f = cv2.filter2D(f, -1, k_)
     # illumination: gradient, shadow, colour balance
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
     g = 1 - rng.uniform(0, 0.45) * (0.5 + 0.5 * np.sin(rng.uniform(0, 6.28) + (xx * rng.normal() + yy * rng.normal()) / (3 * W)))
@@ -186,7 +196,15 @@ def _degrade(rng, img):
         a = rng.uniform(0, 3.14); fr = rng.uniform(0.6, 1.4)
         f = f * (1 - rng.uniform(0.05, 0.25) * (0.5 + 0.5 * np.sin(fr * (xx * np.cos(a) + yy * np.sin(a)))))[..., None]
     f = f + rng.normal(0, rng.uniform(0, 10), f.shape)
+    f = np.clip(f, 0, 255)
+    # tone curve (over/under exposure) and washed-out colours of a phone photo
+    if rng.random() < 0.3:
+        f = 255.0 * (f / 255.0) ** rng.uniform(0.5, 2.0)
     f = np.clip(f, 0, 255).astype(np.uint8)
+    if rng.random() < 0.4:
+        hsv = cv2.cvtColor(f, cv2.COLOR_BGR2HSV).astype(np.float32)
+        hsv[..., 1] = np.clip(hsv[..., 1] * rng.uniform(0.3, 1.2), 0, 255)
+        f = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
     # stippled B&W (fax/B&W scanner)
     if rng.random() < 0.22:
         gr = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY).astype(np.float32)
