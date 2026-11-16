@@ -44,6 +44,14 @@ def _cpus():
     return len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 4)
 
 
+def _worker_init(_):
+    # one thread per data worker: torch and OpenCV would each start one thread per HOST core
+    # (94 on a RunPod pod) inside every worker and stall the machine
+    import cv2
+    torch.set_num_threads(1)
+    cv2.setNumThreads(1)
+
+
 class Stream(torch.utils.data.IterableDataset):
     def __init__(self, size, seed):
         self.size, self.seed = size, seed
@@ -85,13 +93,17 @@ def main():
     a.out.mkdir(parents=True, exist_ok=True)
     if a.workers <= 0:
         a.workers = int(min(32, max(2, _cpus() - 1)))
+    torch.set_num_threads(min(8, _cpus()))
+    import cv2
+    cv2.setNumThreads(1)   # the parent's OpenCV pool must not be inherited half-locked
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     torch.backends.cudnn.benchmark = True
     net = build(a.encoder, a.weights).to(dev)
     n_par = sum(p.numel() for p in net.parameters())
     print(f"device {dev} encoder {a.encoder} parameters {n_par} workers {a.workers}", flush=True)
     dl = torch.utils.data.DataLoader(Stream(a.size, 1234), batch_size=a.batch, num_workers=a.workers,
-                                     persistent_workers=True, pin_memory=dev == "cuda", prefetch_factor=4)
+                                     persistent_workers=True, pin_memory=dev == "cuda", prefetch_factor=4,
+                                     worker_init_fn=_worker_init, multiprocessing_context="spawn")
     # fixed validation set (same crops every time)
     vr = np.random.default_rng(999)
     val = [sample(vr, a.size) for _ in range(256)]
