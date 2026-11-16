@@ -8,7 +8,7 @@ from ecgdig.geometry import _nanmedian_axis, _nanmedian3x3
 from ecgdig.extract import _median5_cells, column_runs, viterbi_track
 
 
-def test_nanmedian_axis_igual_ao_numpy():
+def test_nanmedian_axis_matches_numpy():
     rng = np.random.default_rng(0)
     a = rng.random((37, 50)).astype(np.float32)
     a[rng.random(a.shape) < 0.3] = np.nan
@@ -23,7 +23,7 @@ def test_nanmedian_axis_igual_ao_numpy():
     np.testing.assert_array_equal(ref[~np.isnan(ref)], got[~np.isnan(got)])
 
 
-def test_nanmedian3x3_igual_ao_generic_filter():
+def test_nanmedian3x3_matches_generic_filter():
     from scipy.ndimage import generic_filter
     rng = np.random.default_rng(1)
     f = rng.normal(size=(12, 17))
@@ -36,7 +36,7 @@ def test_nanmedian3x3_igual_ao_generic_filter():
     np.testing.assert_array_equal(ref[~np.isnan(ref)], got[~np.isnan(got)])
 
 
-def test_median5_cells_igual_ao_scipy():
+def test_median5_cells_matches_scipy():
     from scipy.ndimage import median_filter
     rng = np.random.default_rng(2)
     cells = rng.random((9, 11, 6, 6)).astype(np.float32)
@@ -70,7 +70,7 @@ def _column_runs_ref(B, D, ya, yb, xa, xb):
 
 
 @pytest.mark.parametrize("seed", [0, 1, 2])
-def test_column_runs_igual_a_referencia(seed):
+def test_column_runs_matches_reference(seed):
     rng = np.random.default_rng(seed)
     D = rng.random((80, 60)).astype(np.float32)
     D[rng.random(D.shape) < 0.5] *= 0.1
@@ -86,7 +86,7 @@ def test_column_runs_igual_a_referencia(seed):
     assert viterbi_track(ref, 40.0, 10.0, lw=3.0, w_edge=0.3) == viterbi_track(got, 40.0, 10.0, lw=3.0, w_edge=0.3)
 
 
-def test_column_runs_faixa_alem_da_imagem():
+def test_column_runs_band_past_the_image():
     B = np.zeros((20, 10), bool)
     B[15:, 4] = True
     D = B.astype(np.float32)

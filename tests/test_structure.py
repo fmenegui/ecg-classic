@@ -28,7 +28,7 @@ def _page(cols_rows, W=3200, H=2200, seed=0, margin=15):
     return B, edges
 
 
-def test_col_struct_acha_colunas_com_alturas_proprias():
+def test_col_struct_finds_columns_with_their_own_heights():
     left = [400, 500, 650, 850, 1010, 1090]
     right = [450, 600, 750, 950, 1350, 1600]
     B, edges = _page([left, right])
@@ -40,13 +40,13 @@ def test_col_struct_acha_colunas_com_alturas_proprias():
     assert abs(cols[0][1] - edges[1]) <= 40           # boundary between the columns
 
 
-def test_col_struct_ignora_pagina_comum():
+def test_col_struct_ignores_ordinary_page():
     rows = [400, 650, 900, 1150]
     B, _ = _page([rows, rows, rows, rows])
     assert colalign.col_struct(B, R) is None
 
 
-def test_col_align_realinha_sem_sobrepor():
+def test_col_align_realigns_without_overlap():
     left = [400, 500, 650]
     right = [450, 700, 1000]
     B, _ = _page([left, left, right, right], margin=0)   # no blank gap between the columns
@@ -58,7 +58,7 @@ def test_col_align_realinha_sem_sobrepor():
         _, _, _, B2, info = colalign.col_align(rect, pap, D, B, R)
     finally:
         colalign.STRUCT_FIRST[0] = False
-    assert info is not None and info["how"] == "trilhos"
+    assert info is not None and info["how"] == "tracks"
     ref = np.array(info["ref"])
     assert np.diff(ref).min() >= 240                   # interval = the largest across columns
     # after realignment, every reference row has ink across the whole trace width
@@ -67,7 +67,7 @@ def test_col_align_realinha_sem_sobrepor():
         assert cov > 0.9
 
 
-def test_unwrap_usa_a_maior_regiao():
+def test_unwrap_uses_the_largest_region():
     T = 25.0
     h, w = 12, 16
     ii, jj = np.mgrid[0:h, 0:w]
@@ -116,7 +116,7 @@ def _find_words_ref(text_mask, R, min_h_mm=1.4, max_h_mm=8.0):
     return words
 
 
-def test_find_words_igual_a_varredura_completa():
+def test_find_words_matches_full_sweep():
     rng = np.random.default_rng(5)
     m = np.zeros((400, 900), bool)
     for _ in range(260):                               # loose small boxes of various sizes

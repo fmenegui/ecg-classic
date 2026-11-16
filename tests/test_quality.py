@@ -17,14 +17,14 @@ def _page(sig):
     return out
 
 
-def test_ecg_limpo_tem_nota_alta():
+def test_clean_ecg_scores_high():
     sig = _page(synth_signals(np.random.default_rng(3)).astype(np.float32))
     q = assess(sig, LEADS, 500, prefusion=sig)
     assert q["score"] > 0.8
     assert all(v["score"] > 0.6 for v in q["leads"].values())
 
 
-def test_traco_trocado_por_ruido_tem_nota_baixa():
+def test_trace_replaced_by_noise_scores_low():
     rng = np.random.default_rng(4)
     sig = _page(synth_signals(rng).astype(np.float32))
     bad = LEADS.index("V5")
@@ -35,7 +35,7 @@ def test_traco_trocado_por_ruido_tem_nota_baixa():
     assert q["leads"]["V5"]["score"] < min(v["score"] for k, v in q["leads"].items() if k != "V5")
 
 
-def test_derivacao_ausente():
+def test_missing_lead():
     sig = _page(synth_signals(np.random.default_rng(5)).astype(np.float32))
     sig[LEADS.index("V1")] = np.nan
     q = assess(sig, LEADS, 500)
