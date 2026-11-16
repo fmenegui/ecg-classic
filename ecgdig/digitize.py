@@ -69,6 +69,8 @@ class Config:
     col_align: bool = True      # colunas com linhas de base próprias: realinha cada faixa
     limb_log: bool = True       # física no layout como log-verossimilhança do resíduo
     fit: str = "none"          # "lsf": renderização inversa com o perfil de pena medido
+    refuse_below: float | None = None  # derivações com nota de qualidade abaixo disto saem como NaN
+    orient_check: bool = True     # 0 x 180 graus decidido pelo layout quando pulsos e rótulos não desempatam
 
 
 def _pick_rows(peaks, cov, n_expected):
@@ -401,7 +403,32 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
     return gaps
 
 
-def _rows_pulses(B, pap, R):
+def _rows_from_hint(B, R, rows, cov):
+    """Linhas já conhecidas (estrutura por colunas realinhada): só extensões e pulsos, sem as
+    regras que descartam linhas."""
+    peaks = np.asarray(rows, dtype=int)
+    spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else 40 * R
+    half = 0.45 * float(np.min(np.diff(peaks))) if len(peaks) > 1 else 0.45 * spacing
+    ext = [row_extent(B, y, half, R) for y in peaks]
+    pulses = []
+    for i, (y, e) in enumerate(zip(peaks, ext)):
+        up_sp = (y - peaks[i - 1]) if i > 0 else spacing
+        try:
+            p_ = detect_pulse(B, y, half, e[0], R, up=max(half, min(0.95 * up_sp, 25 * R))) if e else None
+        except Exception:  # noqa: BLE001
+            p_ = None
+        pulses.append(p_)
+    ok = [p for p in pulses if p is not None]
+    if len(ok) >= 2:   # pulsos valem se concordarem em altura e coluna
+        h0 = float(np.median([p["foot"] - p["top"] for p in ok])); x0_ = float(np.median([p["x_start"] for p in ok]))
+        pulses = [p if (p is not None and abs((p["foot"] - p["top"]) - h0) <= 0.2 * h0 and abs(p["x_start"] - x0_) <= 3 * R)
+                  else None for p in pulses]
+    else:
+        pulses = [None] * len(pulses)
+    return peaks, cov, ext, pulses, spacing
+
+
+def _rows_pulses(B, pap, R, rows_hint=None):
     """Linhas de traçado candidatas (sem texto/bordas), extensões e pulsos."""
     H, W = B.shape
     _prow_set = [None]
@@ -411,6 +438,8 @@ def _rows_pulses(B, pap, R):
     Br = clean_grid_segments(B, R, axes=(1,)) if GRID_SEGS[0] else B
     Bb = clean_grid_segments(Br, R, axes=(0,)) if GRID_SEGS[0] else B
     peaks, cov = find_rows(Br, R)
+    if rows_hint is not None:
+        return _rows_from_hint(B, R, rows_hint, cov)
     if len(peaks) == 0:
         return peaks, cov, [], [], 40 * R
     tl, raw = trace_likeness(Br, peaks, R, return_raw=True)
@@ -468,6 +497,17 @@ def _rows_pulses(B, pap, R):
         # traço claro (a projeção horizontal se confunde); as linhas de projeção que não
         # coincidem com nenhum pulso e estão longe de todos ficam (linha sem pulso)
         prow, _pp = pulse_rows(B, R)
+        if prow is not None and PULSE_ROWS_GUARD[0] and len(peaks) >= 4:
+            # a projeção achou um bloco regular de linhas (passo constante a 12%) e os "pés"
+            # dos pulsos não caem nelas (pulso comido pela grade escura dá pés em qualquer
+            # altura) ou são poucos: vale a projeção. Sem isto, 4 pés errados trocavam 12
+            # linhas certas por 3
+            d_ = np.diff(np.sort(np.asarray(peaks, float)))
+            sp_ = float(np.median(d_))
+            if sp_ > 0 and np.all(np.abs(d_ - sp_) <= 0.12 * sp_):
+                hit = float(np.mean([np.min(np.abs(np.asarray(peaks, float) - q)) <= 0.25 * sp_ for q in prow]))
+                if hit < 0.8 or len(prow) < 0.5 * len(peaks):
+                    prow = None
         _prow_set[0] = prow
         if prow is not None and PULSE_HALF[0] and len(prow) >= 2:
             # pulsos achados só em linhas alternadas (pulso apagado/fraco nas outras): linhas
@@ -704,20 +744,34 @@ def _orient(arrs, R):
         return n_
 
     best, best_score = None, -1
+    scores, hard = [], []
     for c in cands:
         Bc, pc = rot(B, c), rot(pap, c)
         pk, _, ext_c, pulses, _ = _rows_pulses(Bc, pc, R)
         # pulsos à esquerda + rótulos legíveis (página impressa de cabeça para baixo tem
         # pulsos dos dois lados em alguns aparelhos; o texto desempata)
         score = sum(p is not None for p in pulses) + upright_labels(Bc)
+        hard.append(float(score))
         if ORIENT_T[0]:
             # só desempata (vale menos que um pulso ou um rótulo) e só com concordância forte:
             # em ~1 de cada 10 páginas em pé a T fica menor que o que vem antes (FC alta, P grande)
             tq = _t_after_qrs(Bc, pk, ext_c, R)
             score += 0.9 * float(np.sign(tq)) if abs(tq) > 0.3 else 0.0
+        scores.append(float(score))
         if score > best_score:
             best, best_score = c, score
+    # margem da decisão (para quem chama saber se ela foi fraca) e escolha forçada
+    _orient.margin = abs(scores[0] - scores[1]) if len(scores) == 2 else float("inf")
+    # decisão "fraca": pulsos e rótulos diferem em no máximo 2 entre as duas orientações (um
+    # pulso ou rótulo falso acontece; e a onda T, o desempate, erra em ~1 de cada 10 páginas)
+    _orient.weak = bool(cands[0] is None and len(hard) == 2 and abs(hard[0] - hard[1]) <= 2.0)
+    if ORIENT_FORCE[0] is not None and cands[0] is None:
+        best = None if ORIENT_FORCE[0] == "keep" else cv2.ROTATE_180
     return [rot(a, best) for a in arrs], best
+
+
+PULSE_ROWS_GUARD = [True]
+ORIENT_FORCE = [None]   # "keep" / "flip": fixa a escolha entre 0 e 180 graus (uso interno)
 
 
 def _edge_cands(D, B, rows, ext, pulses, half, lev, R, rad=0.0):
@@ -1025,7 +1079,72 @@ def _baseline_guard(sig, fs, win_s=0.6, thr_mv=1.5):
     return out
 
 def digitize(image, cfg: Config | None = None, return_debug: bool = False):
+    """Imagem -> sinais. Quando a escolha entre 0 e 180 graus foi fraca (sem pulso nem rótulo
+    que desempate), a página é lida também na outra orientação e fica a de melhor layout: de
+    cabeça para baixo, as derivações de membros não fecham Einthoven/Goldberger e as
+    fronteiras e rótulos caem fora do lugar. Sem evidência clara, vale a página como veio."""
     cfg = cfg or Config()
+    _orient.weak = False
+    res = _digitize_once(image, cfg, return_debug)
+    if not (cfg.orient_check and _orient.weak and ORIENT_FORCE[0] is None):
+        if ORIENT_FORCE[0] is None:
+            _PRE[0] = None
+        return res
+    flipped = res.get("rotation") not in ("None", None)
+    # a outra orientação só até o layout, reaproveitando a retificação e a binarização (que não
+    # dependem da orientação): custa uma fração da página
+    ORIENT_FORCE[0] = "keep" if flipped else "flip"
+    _PRE_USE[0], _LAYOUT_ONLY[0] = True, True
+    try:
+        alt = _digitize_once(image, cfg, return_debug)
+    except Exception:  # noqa: BLE001
+        alt = None
+    finally:
+        _LAYOUT_ONLY[0] = False
+    if alt is None:
+        ORIENT_FORCE[0] = None; _PRE_USE[0] = False; _PRE[0] = None; _orient.weak = False
+        return res
+
+    def sc(r):
+        li = r.get("layout_info") or {}
+        return float(li.get("score", -np.inf))
+    def limb(r):
+        li = r.get("layout_info") or {}
+        return float((li.get("parts") or {}).get("limb", 0.0))
+    keep, flip = (alt, res) if flipped else (res, alt)
+    # a primeira decisão só é trocada quando a outra orientação é claramente melhor no layout.
+    # Para girar exige-se ainda a física: 12 derivações lidas certas fecham Einthoven/
+    # Goldberger em ~0,8, e três precordiais vizinhas de cabeça para baixo imitam I, II, III
+    # com ~0,35 (piso 0,5); a leitura em pé tem de não fechar
+    if flipped:
+        out = keep if (np.isfinite(sc(keep)) and sc(keep) > sc(flip) + ORIENT_MARGIN[0]) else flip
+    else:
+        out = flip if (np.isfinite(sc(keep)) and sc(flip) > sc(keep) + ORIENT_MARGIN[0]
+                       and limb(flip) >= 0.5 and limb(keep) <= 0.1) else keep
+    chk = dict(keep=sc(keep), flip=sc(flip))
+    try:
+        if out is not res:
+            out = _digitize_once(image, cfg, return_debug)   # a outra venceu: agora por inteiro
+    except Exception:  # noqa: BLE001
+        out = res
+    finally:
+        ORIENT_FORCE[0] = None; _PRE_USE[0] = False; _PRE[0] = None; _orient.weak = False
+    out["orientation_checked"] = chk
+    return out
+
+
+ORIENT_MARGIN = [5.0]
+
+
+_PRE = [None]            # (cfg, rect, pap, D, B, glev, ginfo) da última página, antes de orientar
+_PRE_USE = [False]       # reaproveita _PRE em vez de retificar e binarizar de novo
+_LAYOUT_ONLY = [False]   # para logo depois de escolher o layout (sem extrair os sinais)
+
+
+def _digitize_once(image, cfg: Config | None = None, return_debug: bool = False):
+    cfg = cfg or Config()
+    if _PRE_USE[0] and _PRE[0] is not None:
+        return _digitize_core(*_PRE[0], return_debug)
     img = cv2.imread(image, cv2.IMREAD_COLOR) if isinstance(image, str) else image
     if img is None:
         raise FileNotFoundError(image)
@@ -1070,12 +1189,24 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     if GRID_SEGS_ALL[0]:
         from .extract import clean_grid_segments
         B = clean_grid_segments(B, R)
+    _PRE[0] = (cfg, rect, pap, D, B, glev, ginfo)
+    return _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug)
+
+
+def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
+    """Da imagem retificada e binarizada em diante (tudo o que depende da orientação)."""
+    R = cfg.R
+    rect, pap, D, B = rect.copy(), pap.copy(), D.copy(), B.copy()   # _PRE fica intacto
     (rect, pap, D, B), rot = _orient([rect, pap, D, B], R)
     from .colalign import col_align, ENABLED as _CA
     _CA[0] = cfg.col_align
     rect, pap, D, B, col_info = col_align(rect, pap, D, B, R)
+    # estrutura por colunas achada pelos trilhos: as linhas (já realinhadas) e o número de
+    # colunas são conhecidos; não se procura de novo
+    rows_hint = col_info["ref"] if (col_info and (col_info.get("how") == "trilhos" or col_info.get("how", "").endswith("+empilha"))) else None
+    col_hint = len(col_info["cols"]) if rows_hint is not None else None
 
-    rows_all, cov, ext_all, pulses_all, spacing = _rows_pulses(B, pap, R)
+    rows_all, cov, ext_all, pulses_all, spacing = _rows_pulses(B, pap, R, rows_hint)
 
     def _weak(rows_, ext_):
         # quase nada de traço: < 2 linhas ou linhas curtas (< 40 mm)
@@ -1440,6 +1571,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         layout = cfg.layout if isinstance(cfg.layout, str) else "custom"
     else:
         ctx = _LayoutCtx(B, D, rows, pulses, R, x0_r, sc_r, speed, duration, qfull, base_q, levels)
+        ctx.col_hint = col_hint
         if col_cut:
             # o vão tirado da imagem era a fronteira de coluna mais forte que existe
             for r_ in range(len(rows)):
@@ -1458,6 +1590,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             layout = "rows"
         else:
             rows_spec, layout = layout_info["spec"], layout_info["name"]
+    if _LAYOUT_ONLY[0]:
+        return dict(layout=layout, layout_info=layout_info, rotation=str(rot))
 
     def seg_gain(r_, name):
         g1, g2 = levels[r_]
@@ -1730,13 +1864,40 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             sw = wt.sum(0)
             sig[li] = np.where(sw > 0, np.nansum(st * wt, 0) / np.maximum(sw, 1e-9), np.nan)
             nmeas[li] = sw  # "número efetivo de medidas" (peso total) -> variância na fusão
+    sig_pre = sig.copy()   # antes da fusão: o resíduo de Einthoven só existe aqui
     if cfg.einthoven and names is LEADS:
         sig = einthoven_fuse(sig, nmeas, fill=cfg.fill_limb)
     if BASELINE_GUARD[0]:
         sig = _baseline_guard(sig, cfg.fs)
+    # nota de qualidade por derivação (não altera o sinal, a menos que refuse_below peça)
+    quality = None
+    try:
+        from .quality import assess
+        quality = assess(sig, list(names), cfg.fs, prefusion=sig_pre if names is LEADS else None)
+        n_rows = max(1, len(rows))
+        page = dict(layout_confidence=(layout_info or {}).get("confidence"),
+                    layout_warning=(layout_info or {}).get("warning"),
+                    pulses_ratio=sum(p is not None for p in pulses) / n_rows)
+        # a confiança do layout é a parte que melhor separa página boa de ruim (ver quality.py)
+        ps = 1.0
+        if page["layout_confidence"] is not None:
+            ps = float(np.clip(page["layout_confidence"], 0.05, 1.0))
+        page["score"] = ps
+        quality["page"] = page
+        for q_ in quality["leads"].values():
+            q_["score"] = float(q_["score"] * ps)
+        quality["score"] = float(quality["score"] * ps)
+        if cfg.refuse_below is not None:
+            for li, l in enumerate(names):
+                if quality["leads"][l]["score"] < cfg.refuse_below:
+                    sig[li] = np.nan
+                    quality["leads"][l]["flags"].append("recusada")
+    except Exception as e:  # a nota nunca derruba a digitalização
+        quality = dict(error=f"{type(e).__name__}: {e}")
 
     gains_seg = {f"{r_}:{nm}": seg_gain(r_, nm) for r_, row in enumerate(rows_spec[:len(levels)]) for nm in row}
-    res = dict(signals=sig, fs=cfg.fs, leads=list(names), layout=layout, layout_rows=rows_spec,
+    # linhas que a hipótese de layout deixou de fora (moldura, régua) não aparecem no resultado
+    res = dict(signals=sig, fs=cfg.fs, leads=list(names), layout=layout, layout_rows=[r_ for r_ in rows_spec if r_],
                layout_info=layout_info, rotation=str(rot),
                gain_mm_per_mv=levels[0][0] if levels else None, gains=gains_seg, duration_s=duration,
                speed_mm_per_s=speed_nominal, speed_source=speed_src, duration_assumed=duration_assumed,
@@ -1744,7 +1905,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
                grid_residual_mm=ginfo["residual_rms_mm"], grid_residual_cell_mm=ginfo.get("residual_cell_rms_mm"),
                grid_snap_mm=ginfo.get("major_snap_mm"), grid_fine_mm=ginfo.get("fine_snap_mm"), line_width_px=lw, line_width_h_px=2 * rad_h,
                pulses_found=sum(p is not None for p in pulses),
-               pulses_right=sum(p is not None for p in rpulses), gain_rows_inferred=gain_flags)
+               pulses_right=sum(p is not None for p in rpulses), gain_rows_inferred=gain_flags,
+               quality=quality, col_struct=(dict(cols=col_info["cols"], how=col_info.get("how")) if col_info else None))
     if return_debug:
         dbg = rect.copy()
         for xs, yi, valid in traces_dbg:
@@ -1763,6 +1925,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         res["rectified"] = rect
         res["jobs"] = jobs_dbg
         res["ink"] = D
+        res["bin"] = B
     return res
 
 

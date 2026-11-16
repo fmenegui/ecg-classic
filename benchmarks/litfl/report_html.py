@@ -190,6 +190,8 @@ def write_html(path, S, results, ref, cmp=None, cfg_kw=None):
                    for k, v in by_field.items())
     cfg = ", ".join(f"{k}={v}" for k, v in (cfg_kw or {}).items()) or "padrão"
     data = dict(items=items, fields=LABELS)
+    # fora do f-string: o Python 3.11 (o do CI) não aceita barra invertida dentro da expressão
+    data_json = json.dumps(data, ensure_ascii=False, default=str).replace("</", "<\\/")
     page = f"""<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Benchmark LITFL</title>
@@ -221,7 +223,7 @@ def write_html(path, S, results, ref, cmp=None, cfg_kw=None):
 <div class="kv" id="d-kv"></div><p class="note" id="d-note"></p>
 <img id="d-img" alt=""><div class="row"><a id="d-src" href="#" target="_blank" rel="noopener">Imagem original no LITFL</a></div>
 </div></dialog>
-<script type="application/json" id="data">{json.dumps(data, ensure_ascii=False, default=str).replace("</", "<\\/")}</script>
+<script type="application/json" id="data">{data_json}</script>
 <script>{JS}</script>
 </body></html>
 """
