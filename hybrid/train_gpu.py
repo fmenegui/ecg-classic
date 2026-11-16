@@ -139,12 +139,12 @@ def main():
                           opset_version=17, dynamo=False)
         net.to(dev).train()
 
-    t0 = time.time(); log = []; it = iter(dl); best = None
+    t0 = time.time(); log = []; it = iter(dl); best = None; t_wait = 0.0
     for step in range(1, a.steps + 1):
         frac = max(step / a.steps, (time.time() - t0) / (a.minutes * 60))
         for g in opt.param_groups:
             g["lr"] = lr_at(frac)
-        x, y = next(it)
+        tw = time.time(); x, y = next(it); t_wait += time.time() - tw
         x, y = x.to(dev, non_blocking=True), y.to(dev, non_blocking=True)
         with torch.autocast(dev, enabled=dev == "cuda"):
             logit = net(x)
@@ -154,8 +154,10 @@ def main():
         scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
         if step % 100 == 0:
             el = time.time() - t0
+            mem = torch.cuda.max_memory_allocated() / 2 ** 30 if dev == "cuda" else 0.0
+            # data wait share: near 100% means the GPU is starved by the CPU crop generator
             print(f"step {step} loss {float(loss):.4f} lr {lr_at(frac):.2e} {el / step:.3f} s/step "
-                  f"cpus {_cpus()}", flush=True)
+                  f"data wait {100 * t_wait / el:.0f}% gpu mem {mem:.1f} GB cpus {_cpus()}", flush=True)
         if step % 2000 == 0 or frac >= 1.0:
             vl, iou = validate()
             log.append(dict(step=step, loss=float(loss), val_loss=vl, val_iou=iou, sec=round(time.time() - t0, 1)))

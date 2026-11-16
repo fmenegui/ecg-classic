@@ -58,7 +58,10 @@ def _grid_layer(rng, H, W, S):
     per = R * rng.uniform(0.97, 1.03)
     ang = np.deg2rad(rng.normal(0, 0.6))
     ph = rng.uniform(0, 5 * per, 2)
-    yy, xx = np.mgrid[0:H * S, 0:W * S].astype(np.float32) / S
+    # drawn at the final resolution with analytic anti-aliasing (pixel coverage of a line of
+    # width w at distance d): the same look as 4x supersampling at a quarter of the cost; only
+    # the trace (the label) needs supersampling
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32) + 0.5
     u = xx * np.cos(ang) + yy * np.sin(ang) + ph[0]
     v = -xx * np.sin(ang) + yy * np.cos(ang) + ph[1]
     w_min = rng.uniform(0.6, 1.6)
@@ -67,7 +70,7 @@ def _grid_layer(rng, H, W, S):
 
     def lines(c, period, w):
         d = np.abs(((c / period) + 0.5) % 1.0 - 0.5) * period
-        return (d < w / 2).astype(np.float32)
+        return np.clip(w / 2 - d + 0.5, 0.0, 1.0).astype(np.float32)
 
     minor = np.maximum(lines(u, per, w_min), lines(v, per, w_min))
     if dotted:
@@ -224,7 +227,7 @@ def sample(rng, size=192):
     paper = np.array(_rand_color(rng, dark=False), np.float32)
     if rng.random() < 0.7:  # mostly near-white/cream paper
         paper = np.array([rng.uniform(215, 255)] * 3, np.float32) * rng.uniform(0.94, 1.0, 3)
-    img = np.ones((H * S, W * S, 3), np.float32) * paper[None, None, :]
+    img = np.ones((H, W, 3), np.float32) * paper[None, None, :]
     for a, c in _grid_layer(rng, H, W, S):
         img = _blend(img, a, c)
     lay = _trace_layer(rng, H, W, S)
@@ -233,9 +236,8 @@ def sample(rng, size=192):
     ink = _rand_color(rng)
     if rng.random() < 0.2:  # trace with the same colour as the major grid (worst case)
         ink = (int(rng.integers(0, 60)),) * 3
-    img = _blend(img, lay.astype(np.float32) / 255.0 * rng.uniform(0.75, 1.0), ink)
-    img = cv2.resize(img, (W, H), interpolation=cv2.INTER_AREA)
     lab = cv2.resize(lay.astype(np.float32) / 255.0, (W, H), interpolation=cv2.INTER_AREA)
+    img = _blend(img, lab * rng.uniform(0.75, 1.0), ink)
     img = np.clip(img, 0, 255).astype(np.uint8)
     img = _distractors(rng, img, H, W, ink)
     img = _degrade(rng, img)
