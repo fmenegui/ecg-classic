@@ -84,9 +84,18 @@ def _chroma_trace(n, t, paper, R):
     # the trace runs across the page: its chromatic ink covers most of the columns (coloured
     # labels or stamps cover a few)
     reps = (int(np.ceil(H / P)), int(np.ceil(W / P)))
-    M = ((C - np.tile(Ct, reps)[:H, :W]) > CHROMA_TH[0]) & (paper > 0)
+    Cr = C - np.tile(Ct, reps)[:H, :W]
+    # away from the sheet border (the background seen past a curled edge is coloured too)
+    ke = int(10 * R) | 1
+    paper = cv2.erode((paper > 0).astype(np.uint8), np.ones((ke, ke), np.uint8))
+    # strong chromatic ink must exist (a coloured pen stands out by >= 0.3 even in a JPEG
+    # photo; colour noise and fringes stay below ~0.1), and it must reach most columns with
+    # more than a stray pixel each
+    if float(np.percentile(Cr[paper > 0], 99.9)) < 0.3:
+        return t
+    M = (Cr > CHROMA_TH[0]) & (paper > 0)
     xs = paper.any(0)
-    if not xs.any() or float(np.mean(M.any(0)[xs])) < 0.5:
+    if not xs.any() or float(np.mean((M.sum(0) >= max(2, int(0.3 * R)))[xs])) < 0.5:
         return t
     return np.clip(1.0 - C, 0.0, 1.2).astype(np.float32)
 
