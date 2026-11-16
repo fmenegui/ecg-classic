@@ -973,6 +973,7 @@ def _vote_x0(xl, xe, rad, span_px, R, weak=()):
 BASELINE_GUARD = [True]
 GAP_IGNORE_TEXT = [True]
 SPAN_SANITY = [True]
+GRID_SEGS_ALL = [False]
 GAP_PULSE_SLACK = [True]
 RPULSE_RARE = [True]
 
@@ -1045,6 +1046,9 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         D = Pn if cfg.ink_mix >= 1.0 else (cfg.ink_mix * Pn + (1 - cfg.ink_mix) * D).astype(np.float32)
         glev = 0.0 if cfg.ink_mix >= 1.0 else glev
     B = binarize(D, R, glev)
+    if GRID_SEGS_ALL[0]:
+        from .extract import clean_grid_segments
+        B = clean_grid_segments(B, R)
     (rect, pap, D, B), rot = _orient([rect, pap, D, B], R)
     from .colalign import col_align, ENABLED as _CA
     _CA[0] = cfg.col_align
