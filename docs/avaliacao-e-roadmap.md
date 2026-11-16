@@ -293,3 +293,59 @@ O PhysioNet (Kaggle) não roda fora do CI, porque precisa do token. As mudanças
 
 `benchmarks/pmcardio/ab.py <rodada A> <rodada B>` compara duas rodadas do `eval_pm.py` ECG a ECG (resumo, quantos melhoraram ou pioraram, layout lido em cada uma).
 
+
+## 8. Estrutura da página: os erros de layout do PM-ECG-ID, 15/11/2026
+
+A seção 7 mostrou que o erro do PM-ECG-ID está no layout: com o layout certo o clássico faz 11,9 dB; com o layout errado, −0,4 dB, e isso acontece em 37% dos ECGs. Esta rodada ataca essa parte. O conjunto de trabalho foi o cenário mais limpo da base, `photos_scans` (100 ECGs, 110 páginas, scanner de mesa): se a página é lida errada ali, o motivo é a estrutura, não o ruído. Das 94 páginas únicas, 21 saíam com o layout errado.
+
+### Resultado
+
+| conjunto | antes | depois |
+|---|---|---|
+| PM-ECG-ID `photos_scans`, 100 ECGs: SNR | 11,72 dB | **14,06 dB** |
+| PCC | 0,770 | **0,875** |
+| derivações em falha | 11,4% | **5,1%** |
+| páginas únicas com layout certo | 73 de 94 | **87 de 94** |
+| ECGs com ≥ 12,5 dB | 61 | 72 |
+| PM-ECG-ID, 60 ECGs (um por cenário): SNR / PCC / falha | 8,12 dB / 0,695 / 8,3% | 8,39 dB / 0,713 / 8,8% |
+| LITFL, 89 imagens reais: layout / tiras de ritmo | 0,921 / 0,930 | 0,933 / 0,965 |
+| sintéticos, 30 páginas | 20,797 dB | 20,796 dB |
+
+"Antes" é o commit 095f96c (seção 7) com o `find_words` novo. Nos scans, 17 ECGs melhoraram mais de 1 dB e 1 piorou (0,4 → −0,9 dB, uma página que já não era lida). No LITFL nenhuma imagem piorou; 3 passaram a ter layout ou tira de ritmo certos. A referência publicada pela PMcardio (> 12,5 dB, PCC > 0,91, 6,6% de falha) é da base inteira, com os 60 cenários; o número dos scans não se compara com ela. A base inteira e o PhysioNet só rodam no CI.
+
+### O que estava errado e o que mudou
+
+**1. Retificação: a semente do desembrulho da fase caía numa ilha** (`geometry._unwrap_quality`). O desembrulho 2D partia do melhor bloco da página. Em 5 dos 110 scans esse bloco fica numa região pequena e separada (margem, rodapé), o preenchimento cobria 10 a 30 blocos de 600 e a homografia saía de uma dúzia de pontos amontoados: página cisalhada, "escala implausível" ou 0 correspondências. Agora a semente é o melhor bloco da maior região conexa de blocos bons; se ela ainda deixa de fora mais de 30% dos blocos, as outras regiões entram com o inteiro escolhido pelo plano já desembrulhado (só quando esse plano ajusta com resíduo < T/8, ou seja, fora de papel amassado). Scans 8, 10, 20, 47: de 0,0 / 0,0 / −4,7 / 0,0 dB para 10,1 / 20,2 / 25,7 / 11,1 dB. Fotos amassadas, dobradas e com perspectiva conferidas: saída idêntica.
+
+**2. Colunas com alturas próprias** (`colalign.col_struct`). Em parte das páginas do PM-ECG-ID cada coluna tem as suas linhas de base (6x2 com a coluna da esquerda apertada e a da direita espaçada; 3x4 com as quatro colunas desencontradas). A projeção horizontal mistura tudo e o layout sai `3x4+2`, `6x1`, `3x4+3`. O `col_align` que já existia depende de vãos em branco entre as colunas, que nessas páginas não existem (grade escura, rótulo e QRS no vão). O `col_struct` varre a página em janelas de 20 mm, encadeia os picos de cobertura em trilhos (altura, início, fim) e toma como fronteira de coluna o ponto em que vários trilhos acabam e outros começam. As colunas são realinhadas para alturas de referência com o maior intervalo entre as colunas (sem sobrepor faixas, aumentando a altura da imagem se preciso), e as linhas e o número de colunas seguem como conhecidos para a detecção de linhas (`_rows_from_hint`) e para o motor de layout (`col_hint`). Scans 23, 49 (6x2) e 32, 50, 77 (3x4): de −1,9 / 4,8 / −2,2 / 0,0 / −1,7 dB para 9,1 / 19,3 / 17,3 / 23,9 / 16,0 dB.
+
+**3. Pés de pulso errados trocavam linhas certas** (`PULSE_ROWS_GUARD`). Com a grade preta comendo os pulsos, o `pulse_rows` achava 4 "pés" em alturas quaisquer e substituía as 12 linhas regulares da projeção por 3. Agora, quando a projeção dá 4 ou mais linhas em passo constante (12%) e os pés não caem nelas ou são menos da metade, vale a projeção.
+
+**4. Página em pé girada 180° por engano** (`Config.orient_check`). Sem pulso nem rótulo que desempate, a orientação era decidida pela onda T, que erra. Quando pulsos e rótulos diferem em no máximo 2 entre as duas orientações, a outra orientação é lida até o layout (a retificação e a binarização são reaproveitadas) e a primeira decisão só é trocada se a outra for claramente melhor (margem de 5 na pontuação); para girar exige-se ainda que a física feche na orientação girada (≥ 0,5) e não na original. Scan 33: −2,8 → 11,2 dB. Oito scans girados 180° de propósito continuam sendo desvirados.
+
+**5. Moldura lida como linha** (`layout_engine.ROW_DROP`). O motor de layout ganhou hipóteses que deixam de fora a primeira ou a última linha. Só valem quando todas as outras linhas têm pulso de calibração e a descartada não, ela está mais perto da vizinha que o passo, o layout que sobra é de 12 derivações e o fechamento de Einthoven/Goldberger melhora 0,25. Scan 66: −1,6 → 5,8 dB.
+
+**6. `ocr.find_words`** agrupava componentes com uma varredura quadrática (41 de 89 s numa página digital com muito texto). Com as caixas ordenadas e a busca limitada por bisseção: 3,39 s → 0,12 s, mesmas palavras (teste contra a varredura original).
+
+### Guardas que a validação exigiu
+
+Cada mecanismo novo errou em alguma página boa antes de ficar como está. O que fechou cada caso:
+
+- `col_struct` numa página comum (`brightness_-80/img_41`, scans 11 e 60): a linha é interrompida pelo pulso e pelo rótulo na troca de coluna e vira dois trilhos. Agora a estrutura é recusada se metade ou mais dos trilhos recomeça na mesma altura (± 2 mm) do outro lado, se as colunas não têm a mesma largura (± 20%), se a fronteira mais forte tem menos eventos que o dobro das linhas que atravessam a página, ou se as linhas de sempre já ficam a menos de 40% do passo de todas as colunas (a extração dá conta sem realinhar).
+- Descartar linha tirava a tira de ritmo de páginas reais (LITFL 0023, 0026, 0027, 0042) e fechava páginas de 4 linhas como `3x1` (scans 17, 81). Daí a exigência do pulso como testemunha e de layout de 12 derivações.
+- A checagem de orientação girava uma página de três precordiais (lidas de cabeça para baixo imitam I, II, III com fechamento 0,35) e desfazia um giro certo quando o Cabrera fechava a física na leitura invertida. Daí o piso de 0,5 e a regra de só trocar a primeira decisão com margem.
+
+### Custo
+
+Scans: mediana de 23 → 17 s por página na mesma máquina (2 processos em 2 núcleos; a base foi medida com concorrência, então a diferença real é menor). LITFL: 7,2 → 9,4 s por imagem, porque muitas páginas reais não têm pulso nem rótulo legível e passam pela segunda leitura até o layout.
+
+### O que ainda falha nos scans (14 ECGs abaixo de 5 dB)
+
+- 76 (6x2 com alturas próprias e 4 linhas que atravessam), 24 (3x4): o `col_struct` recusa a estrutura.
+- 59, 79 (6x2 lido como 3 tiras), 70, 45, 6 (12x1 e 6x2 com linhas a 5-8 mm): detecção de linhas.
+- 27 (3x4 com 2 linhas a mais), 13 (6x2 com pulsos nas duas colunas), 44 (layout certo, PCC 0,83, escala errada), 89 (2 páginas).
+- 35, 97, 30: layout certo com 4 a 5 dB; é extração, não estrutura.
+
+### O que não foi medido
+
+A base inteira do PM-ECG-ID (5.994 ECGs) e o PhysioNet (Kaggle) só rodam no CI. A amostra de 60 ECGs subiu pouco (8,12 → 8,39 dB): fora dos scans, o layout também falha por máscara da folha, linha de base que anda e imagem estourada (seção 7), que esta rodada não tocou.

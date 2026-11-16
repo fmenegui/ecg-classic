@@ -33,6 +33,8 @@ FAMILIES = ["3x4", "3x4-cabrera", "6x2", "6x2-cabrera", "12x1", "12x1-cabrera",
 STRIPS3 = [True]
 ROW_DROP = [True]    # hipóteses que deixam de fora linhas das pontas (moldura, régua)
 DROP_COST = [4.0]
+DROP_LIMB_GAIN = [0.25]
+DROP_NEAR = [0.88]
 if STRIPS3[0]:
     FAMILIES += ["3x1-limb", "3x1-aug", "3x1-v13", "3x1-v46"]
 FRACS = {1: [], 2: [0.5], 3: [1 / 3, 2 / 3], 4: [0.25, 0.5, 0.75]}
@@ -500,6 +502,8 @@ class Ctx:
                 continue
             if fam.startswith("3x1") and not STRIPS3[0]:
                 continue
+            if (a or pos) and (fam.startswith("3x1") or fam.startswith("6x1")):
+                continue      # descartar linhas só para fechar uma página de 12 derivações
             if fam in ("3x1-v13", "3x1-v46"):
                 # precordiais não têm física entre si (nada fecha como Einthoven): só com rótulo
                 # V lido no início de alguma linha; sem isso a hipótese vence só por não ter
@@ -552,9 +556,23 @@ class Ctx:
                 h0 = float(np.median([p["foot"] - p["top"] for p in okp])); x0_ = float(np.median([p["x_start"] for p in okp]))
                 trusted = [p is not None and abs((p["foot"] - p["top"]) - h0) <= 0.15 * h0 and abs(p["x_start"] - x0_) <= 3 * self.R
                            for p in self.pulses]
+            # só sai linha de ponta que está MAIS PERTO da vizinha do que o passo das outras: a
+            # moldura da grade fica colada no bloco de traçados; uma tira de ritmo de verdade
+            # fica a um passo (ou mais) da última linha
+            ys_ = np.asarray(self.rows, float)
+            gp = np.diff(ys_)
+            near_top = self.n >= 4 and gp[0] < DROP_NEAR[0] * float(np.median(gp[1:]))
+            near_bot = self.n >= 4 and gp[-1] < DROP_NEAR[0] * float(np.median(gp[:-1]))
             for a, nb in ((1, 0), (0, 1), (1, 1)):
                 drop = list(range(a)) + list(range(self.n - nb, self.n))
-                if self.n - len(drop) < 2:
+                if self.n - len(drop) < 3 or (a and not near_top) or (nb and not near_bot):
+                    continue
+                # e só quando o pulso de calibração aponta: todas as linhas que ficam têm
+                # pulso e a que sai não tem. (Em páginas reais a tira de ritmo às vezes fica
+                # mais perto que o passo e ainda piora o fechamento da física por não casar
+                # bem com a derivação da grade: sem o pulso como testemunha, ela saía)
+                if any(self.pulses[r] is not None for r in drop) or \
+                        any(self.pulses[r] is None for r in range(self.n) if r not in drop):
                     continue
                 # custo fixo por linha descartada, maior se ela tem pulso de calibração confiável.
                 # Não há medida segura de "parece traçado": a moldura herda os QRS da linha
@@ -583,10 +601,17 @@ class Ctx:
                 # numa grade cada derivação aparece uma vez (tiras de ritmo são linhas de 1)
                 grid_names = [nm for row in spec if len(row) > 1 for nm in row]
                 sc -= 3.0 * (len(grid_names) - len(set(map(_canon, grid_names))))
-            scored.append((sc, name, spec, parts))
+            scored.append((sc, name, spec, parts, cost))
         scored.sort(key=lambda z: -z[0])
         if not scored:
             return None
+        if any(z[4] > 0 for z in scored):
+            # descartar linha tira as penalidades dela (rótulo errado, fronteira fora do lugar):
+            # só vale se a física melhorar. Com a moldura lida como derivação, Einthoven/
+            # Goldberger não fecha; sem ela, fecha
+            full_ = [z for z in scored if z[4] == 0]
+            lim0 = full_[0][3]["limb"] if full_ else -1.0
+            scored = [z for z in scored if z[4] == 0 or z[3]["limb"] >= lim0 + DROP_LIMB_GAIN[0]]
         best = scored[0]
         margin = best[0] - scored[1][0] if len(scored) > 1 else 10.0
         conf = float(1 / (1 + np.exp(-margin / 2.0)))
@@ -608,5 +633,5 @@ class Ctx:
                 conf = min(conf, 0.55)
                 warn = f"nenhum rótulo lido; {best[1]} decidido só pela fisiologia (alternativa: {alts[0][1]})"
         return dict(name=best[1], spec=best[2], score=best[0], parts=best[3], confidence=conf,
-                    warning=warn, ranking=[(round(s, 2), n) for s, n, _, _ in scored[:6]],
+                    warning=warn, ranking=[(round(float(z[0]), 2), z[1]) for z in scored[:6]],
                     dropped=[r for r, row in enumerate(best[2]) if not row])

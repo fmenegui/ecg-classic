@@ -96,7 +96,9 @@ def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
     xs = np.nonzero(xsum > 0)[0]
     if len(ys) < 10 or len(xs) < 100 * R:
         return None
-    ya, yb = int(ys[0]), int(ys[-1]) + 1
+    # folga de 5 mm: a primeira/última linha de base não pode cair na borda da faixa (pico
+    # na borda não é pico para o find_peaks)
+    ya, yb = max(0, int(ys[0] - 5 * R)), min(H, int(ys[-1]) + 1 + int(5 * R))
     L, Rr = int(xs[0]), int(xs[-1]) + 1
     win, step, tol = int(win_mm * R), int(step_mm * R), link_mm * R
     x0s = list(range(L, max(L + 1, Rr - win + 1), step))
@@ -137,8 +139,8 @@ def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
     if len(part) < 4 or len(part) < len(full):
         return None        # página comum: as linhas atravessam a largura
     # fronteiras: pontos do interior em que trilhos parciais acabam/começam, agrupados
-    ev = sorted([(t["xb"] - win / 2, 0) for t in part if t["xb"] < Rr - 0.08 * span] +
-                [(t["xa"] + win / 2, 1) for t in part if t["xa"] > L + 0.08 * span])
+    ev = sorted([(t["xb"] - win / 2, 0, t["y"]) for t in part if t["xb"] < Rr - 0.08 * span] +
+                [(t["xa"] + win / 2, 1, t["y"]) for t in part if t["xa"] > L + 0.08 * span])
     if not ev:
         return None
     groups = [[ev[0]]]
@@ -147,14 +149,44 @@ def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
             groups[-1].append(e)
         else:
             groups.append([e])
-    # uma fronteira tem trilho acabando E trilho começando (basta uma linha mudar de altura)
-    cuts = [float(np.median([e[0] for e in g])) for g in groups
-            if len(g) >= 2 and any(k == 0 for _, k in g) and any(k == 1 for _, k in g)]
-    if not cuts or len(cuts) > 5:
+    # uma fronteira tem trilho acabando E trilho começando
+    def _same(g):
+        """Trilhos que acabam na fronteira e recomeçam na MESMA altura (± 2 mm) do outro lado:
+        a linha só foi interrompida (pulso, rótulo), não mudou de altura."""
+        e0 = [y for _, k, y in g if k == 0]; e1 = [y for _, k, y in g if k == 1]
+        return sum(1 for y in e0 if e1 and min(abs(y - z) for z in e1) <= 2 * R), min(len(e0), len(e1))
+    cand = [(float(np.median([e[0] for e in g])), len(g), _same(g)) for g in groups
+            if len(g) >= 2 and any(e[1] == 0 for e in g) and any(e[1] == 1 for e in g)]
+    if not cand or len(cand) > 5:
+        return None
+    # as colunas de um ECG têm a mesma largura: fica o conjunto de fronteiras (1 ou 3: duas ou
+    # quatro colunas) que divide a extensão em partes iguais (±20%) com mais trilhos mudando.
+    # Um trilho que muda de altura no meio de uma derivação (ST, onda T larga) dá uma
+    # "fronteira" fora do lugar, e cortar ali fatia o traço
+    from itertools import combinations
+    best = None
+    for k in (1, 3):
+        for sub in combinations(cand, k):
+            ed = [L] + [z[0] for z in sub] + [Rr]
+            wd = np.diff(ed)
+            if wd.min() < 35 * R or np.abs(wd - wd.mean()).max() > 0.2 * wd.mean():
+                continue
+            key = (sum(z[1] for z in sub), k)
+            if best is None or key > best[0]:
+                best = (key, [z[0] for z in sub], max(z[1] for z in sub),
+                        sum(z[2][0] for z in sub), sum(z[2][1] for z in sub))
+    if best is None:
+        return None
+    cuts = best[1]
+    # página comum com a linha interrompida na troca de coluna: metade ou mais das linhas
+    # continua na mesma altura do outro lado -> não há alturas próprias por coluna
+    if best[3] >= 0.5 * max(best[4], 1):
+        return None
+    # linhas que atravessam a página pesam contra: a fronteira mais forte precisa de pelo menos
+    # o dobro de eventos (uma página comum com platôs e rodapé dá trilhos parciais soltos)
+    if best[2] < max(4, 2 * len(full)):
         return None
     edges = [L] + cuts + [Rr]
-    if np.diff(edges).min() < 35 * R:
-        return None
     y_lo = max(0, int(min(t["y"] for t in tr) - 3 * R)); y_hi = min(H, int(max(t["y"] for t in tr) + 3 * R))
 
     def rows_of(ca, cb, frac, n=None):
@@ -248,6 +280,15 @@ def col_align(rect, pap, D, B, R):
             return rect, pap, D, B, None
         cols, P = st
         how = "trilhos"
+        # diferença pequena entre as colunas (< 40% do passo) e as linhas de sempre já saem
+        # certas: a extração dá conta sozinha (faixa larga + linha de base por trecho), e
+        # realinhar só arriscaria fatiar um QRS grande na emenda das faixas
+        from .extract import find_rows
+        pk0 = np.asarray(find_rows(B, R)[0], float)
+        if len(pk0) == P.shape[1] and len(pk0) >= 2:
+            sp0 = float(np.median(np.diff(pk0)))
+            if np.abs(P - pk0[None, :]).max() <= 0.4 * sp0:
+                return rect, pap, D, B, None
     if P is None:
         return rect, pap, D, B, None
     n = P.shape[1]

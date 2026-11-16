@@ -70,6 +70,7 @@ class Config:
     limb_log: bool = True       # física no layout como log-verossimilhança do resíduo
     fit: str = "none"          # "lsf": renderização inversa com o perfil de pena medido
     refuse_below: float | None = None  # derivações com nota de qualidade abaixo disto saem como NaN
+    orient_check: bool = True     # 0 x 180 graus decidido pelo layout quando pulsos e rótulos não desempatam
 
 
 def _pick_rows(peaks, cov, n_expected):
@@ -460,6 +461,17 @@ def _rows_pulses(B, pap, R, rows_hint=None):
         # traço claro (a projeção horizontal se confunde); as linhas de projeção que não
         # coincidem com nenhum pulso e estão longe de todos ficam (linha sem pulso)
         prow, _pp = pulse_rows(B, R)
+        if prow is not None and PULSE_ROWS_GUARD[0] and len(peaks) >= 4:
+            # a projeção achou um bloco regular de linhas (passo constante a 12%) e os "pés"
+            # dos pulsos não caem nelas (pulso comido pela grade escura dá pés em qualquer
+            # altura) ou são poucos: vale a projeção. Sem isto, 4 pés errados trocavam 12
+            # linhas certas por 3
+            d_ = np.diff(np.sort(np.asarray(peaks, float)))
+            sp_ = float(np.median(d_))
+            if sp_ > 0 and np.all(np.abs(d_ - sp_) <= 0.12 * sp_):
+                hit = float(np.mean([np.min(np.abs(np.asarray(peaks, float) - q)) <= 0.25 * sp_ for q in prow]))
+                if hit < 0.8 or len(prow) < 0.5 * len(peaks):
+                    prow = None
         _prow_set[0] = prow
         if prow is not None and PULSE_HALF[0] and len(prow) >= 2:
             # pulsos achados só em linhas alternadas (pulso apagado/fraco nas outras): linhas
@@ -696,20 +708,34 @@ def _orient(arrs, R):
         return n_
 
     best, best_score = None, -1
+    scores, hard = [], []
     for c in cands:
         Bc, pc = rot(B, c), rot(pap, c)
         pk, _, ext_c, pulses, _ = _rows_pulses(Bc, pc, R)
         # pulsos à esquerda + rótulos legíveis (página impressa de cabeça para baixo tem
         # pulsos dos dois lados em alguns aparelhos; o texto desempata)
         score = sum(p is not None for p in pulses) + upright_labels(Bc)
+        hard.append(float(score))
         if ORIENT_T[0]:
             # só desempata (vale menos que um pulso ou um rótulo) e só com concordância forte:
             # em ~1 de cada 10 páginas em pé a T fica menor que o que vem antes (FC alta, P grande)
             tq = _t_after_qrs(Bc, pk, ext_c, R)
             score += 0.9 * float(np.sign(tq)) if abs(tq) > 0.3 else 0.0
+        scores.append(float(score))
         if score > best_score:
             best, best_score = c, score
+    # margem da decisão (para quem chama saber se ela foi fraca) e escolha forçada
+    _orient.margin = abs(scores[0] - scores[1]) if len(scores) == 2 else float("inf")
+    # decisão "fraca": pulsos e rótulos diferem em no máximo 2 entre as duas orientações (um
+    # pulso ou rótulo falso acontece; e a onda T, o desempate, erra em ~1 de cada 10 páginas)
+    _orient.weak = bool(cands[0] is None and len(hard) == 2 and abs(hard[0] - hard[1]) <= 2.0)
+    if ORIENT_FORCE[0] is not None and cands[0] is None:
+        best = None if ORIENT_FORCE[0] == "keep" else cv2.ROTATE_180
     return [rot(a, best) for a in arrs], best
+
+
+PULSE_ROWS_GUARD = [True]
+ORIENT_FORCE = [None]   # "keep" / "flip": fixa a escolha entre 0 e 180 graus (uso interno)
 
 
 def _edge_cands(D, B, rows, ext, pulses, half, lev, R, rad=0.0):
@@ -1007,7 +1033,72 @@ def _baseline_guard(sig, fs, win_s=0.6, thr_mv=1.5):
     return out
 
 def digitize(image, cfg: Config | None = None, return_debug: bool = False):
+    """Imagem -> sinais. Quando a escolha entre 0 e 180 graus foi fraca (sem pulso nem rótulo
+    que desempate), a página é lida também na outra orientação e fica a de melhor layout: de
+    cabeça para baixo, as derivações de membros não fecham Einthoven/Goldberger e as
+    fronteiras e rótulos caem fora do lugar. Sem evidência clara, vale a página como veio."""
     cfg = cfg or Config()
+    _orient.weak = False
+    res = _digitize_once(image, cfg, return_debug)
+    if not (cfg.orient_check and _orient.weak and ORIENT_FORCE[0] is None):
+        if ORIENT_FORCE[0] is None:
+            _PRE[0] = None
+        return res
+    flipped = res.get("rotation") not in ("None", None)
+    # a outra orientação só até o layout, reaproveitando a retificação e a binarização (que não
+    # dependem da orientação): custa uma fração da página
+    ORIENT_FORCE[0] = "keep" if flipped else "flip"
+    _PRE_USE[0], _LAYOUT_ONLY[0] = True, True
+    try:
+        alt = _digitize_once(image, cfg, return_debug)
+    except Exception:  # noqa: BLE001
+        alt = None
+    finally:
+        _LAYOUT_ONLY[0] = False
+    if alt is None:
+        ORIENT_FORCE[0] = None; _PRE_USE[0] = False; _PRE[0] = None; _orient.weak = False
+        return res
+
+    def sc(r):
+        li = r.get("layout_info") or {}
+        return float(li.get("score", -np.inf))
+    def limb(r):
+        li = r.get("layout_info") or {}
+        return float((li.get("parts") or {}).get("limb", 0.0))
+    keep, flip = (alt, res) if flipped else (res, alt)
+    # a primeira decisão só é trocada quando a outra orientação é claramente melhor no layout.
+    # Para girar exige-se ainda a física: 12 derivações lidas certas fecham Einthoven/
+    # Goldberger em ~0,8, e três precordiais vizinhas de cabeça para baixo imitam I, II, III
+    # com ~0,35 (piso 0,5); a leitura em pé tem de não fechar
+    if flipped:
+        out = keep if (np.isfinite(sc(keep)) and sc(keep) > sc(flip) + ORIENT_MARGIN[0]) else flip
+    else:
+        out = flip if (np.isfinite(sc(keep)) and sc(flip) > sc(keep) + ORIENT_MARGIN[0]
+                       and limb(flip) >= 0.5 and limb(keep) <= 0.1) else keep
+    chk = dict(keep=sc(keep), flip=sc(flip))
+    try:
+        if out is not res:
+            out = _digitize_once(image, cfg, return_debug)   # a outra venceu: agora por inteiro
+    except Exception:  # noqa: BLE001
+        out = res
+    finally:
+        ORIENT_FORCE[0] = None; _PRE_USE[0] = False; _PRE[0] = None; _orient.weak = False
+    out["orientation_checked"] = chk
+    return out
+
+
+ORIENT_MARGIN = [5.0]
+
+
+_PRE = [None]            # (cfg, rect, pap, D, B, glev, ginfo) da última página, antes de orientar
+_PRE_USE = [False]       # reaproveita _PRE em vez de retificar e binarizar de novo
+_LAYOUT_ONLY = [False]   # para logo depois de escolher o layout (sem extrair os sinais)
+
+
+def _digitize_once(image, cfg: Config | None = None, return_debug: bool = False):
+    cfg = cfg or Config()
+    if _PRE_USE[0] and _PRE[0] is not None:
+        return _digitize_core(*_PRE[0], return_debug)
     img = cv2.imread(image, cv2.IMREAD_COLOR) if isinstance(image, str) else image
     if img is None:
         raise FileNotFoundError(image)
@@ -1049,6 +1140,14 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         D = Pn if cfg.ink_mix >= 1.0 else (cfg.ink_mix * Pn + (1 - cfg.ink_mix) * D).astype(np.float32)
         glev = 0.0 if cfg.ink_mix >= 1.0 else glev
     B = binarize(D, R, glev)
+    _PRE[0] = (cfg, rect, pap, D, B, glev, ginfo)
+    return _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug)
+
+
+def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
+    """Da imagem retificada e binarizada em diante (tudo o que depende da orientação)."""
+    R = cfg.R
+    rect, pap, D, B = rect.copy(), pap.copy(), D.copy(), B.copy()   # _PRE fica intacto
     (rect, pap, D, B), rot = _orient([rect, pap, D, B], R)
     from .colalign import col_align, ENABLED as _CA
     _CA[0] = cfg.col_align
@@ -1433,6 +1532,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             layout = "rows"
         else:
             rows_spec, layout = layout_info["spec"], layout_info["name"]
+    if _LAYOUT_ONLY[0]:
+        return dict(layout=layout, layout_info=layout_info, rotation=str(rot))
 
     def seg_gain(r_, name):
         g1, g2 = levels[r_]
