@@ -15,7 +15,7 @@ echo "setup" > "$OUT/status.txt"
   git clone --depth 1 -b "$REF" https://github.com/fmenegui/ecg-digitalization-classic repo
   cd repo
   git log --oneline -1
-  pip install -q -e . onnx onnxruntime segmentation-models-pytorch==0.3.4 timm
+  pip install -q -e . onnx onnxruntime segmentation-models-pytorch==0.3.4 timm wfdb
   # some hosts expose the GPU to nvidia-smi but fail CUDA initialization ("CUDA unknown error");
   # training would then silently run on the CPU, so stop here and let the workflow try another pod
   if ! python -c "import torch; assert torch.cuda.is_available(); print('cuda ok', torch.cuda.get_device_name(0), (torch.ones(1, device='cuda') * 2).item())"; then

@@ -23,7 +23,10 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gen import sample  # noqa: E402
+import gen  # noqa: E402
+import rowgen  # noqa: E402
+GENS = {"gen": gen.sample, "rowgen": rowgen.sample}
+sample = gen.sample
 
 
 def _cpus():
@@ -53,27 +56,28 @@ def _worker_init(_):
 
 
 class Stream(torch.utils.data.IterableDataset):
-    def __init__(self, size, seed):
-        self.size, self.seed = size, seed
+    def __init__(self, size, seed, gen_name="gen"):
+        self.size, self.seed, self.gen_name = size, seed, gen_name
 
     def __iter__(self):
         wi = torch.utils.data.get_worker_info()
         rng = np.random.default_rng(self.seed + (wi.id if wi else 0) * 7919 + int(time.time() * 1000) % 100000)
         while True:
-            im, lb = sample(rng, self.size)
+            im, lb = GENS[self.gen_name](rng, self.size)
             x = torch.from_numpy(im[..., ::-1].copy()).permute(2, 0, 1).float() / 255.0  # RGB
             yield x, torch.from_numpy(lb)[None]
 
 
-def gpu_aug(x, y, g):
+def gpu_aug(x, y, g, rot=True):
     """Cheap augmentations on the GPU, so that one generated batch can feed several steps (the CPU crop
     generator is the bottleneck). The label moves with the image; colour changes keep it."""
     if torch.rand(1, generator=g).item() < 0.5:
         x, y = x.flip(3), y.flip(3)
     if torch.rand(1, generator=g).item() < 0.5:
         x, y = x.flip(2), y.flip(2)
-    k = int(torch.randint(0, 4, (1,), generator=g))
-    x, y = torch.rot90(x, k, (2, 3)), torch.rot90(y, k, (2, 3))
+    if rot:   # not for row strips: the row runs horizontally through the centre
+        k = int(torch.randint(0, 4, (1,), generator=g))
+        x, y = torch.rot90(x, k, (2, 3)), torch.rot90(y, k, (2, 3))
     n = x.shape[0]
     dev = x.device
     x = x[:, torch.randperm(3, generator=g).to(dev)]                         # ink / grid / paper colours
@@ -109,6 +113,9 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--encoder", default="resnet34")
     ap.add_argument("--weights", default="imagenet")
+    ap.add_argument("--gen", default="gen", choices=sorted(GENS),
+                    help="gen: page ink map; rowgen: the centre row's trace in a strip (row network)")
+    ap.add_argument("--init", type=Path, default=None, help="state_dict to start from (e.g. the ink model's unet.pt)")
     ap.add_argument("--reuse", type=int, default=1,
                     help="steps per generated batch (> 1: the extra steps see GPU-augmented copies)")
     ap.add_argument("--val", type=int, default=256, help="fixed validation crops")
@@ -124,15 +131,18 @@ def main():
     if dev == "cpu" and os.environ.get("RUNPOD_POD_ID"):
         sys.exit("CUDA is not available on this GPU pod; refusing to train on the CPU")
     torch.backends.cudnn.benchmark = True
-    net = build(a.encoder, a.weights).to(dev)
+    net = build(a.encoder, a.weights)
+    if a.init and a.init.exists():
+        print("init from", a.init, net.load_state_dict(torch.load(a.init, map_location="cpu"), strict=False), flush=True)
+    net = net.to(dev)
     n_par = sum(p.numel() for p in net.parameters())
     print(f"device {dev} encoder {a.encoder} parameters {n_par} workers {a.workers}", flush=True)
-    dl = torch.utils.data.DataLoader(Stream(a.size, 1234), batch_size=a.batch, num_workers=a.workers,
+    dl = torch.utils.data.DataLoader(Stream(a.size, 1234, a.gen), batch_size=a.batch, num_workers=a.workers,
                                      persistent_workers=True, pin_memory=dev == "cuda", prefetch_factor=4,
                                      worker_init_fn=_worker_init, multiprocessing_context="spawn")
     # fixed validation set (same crops every time)
     vr = np.random.default_rng(999)
-    val = [sample(vr, a.size) for _ in range(a.val)]
+    val = [GENS[a.gen](vr, a.size) for _ in range(a.val)]
     vx = torch.stack([torch.from_numpy(im[..., ::-1].copy()).permute(2, 0, 1).float() / 255.0 for im, _ in val])
     vy = torch.stack([torch.from_numpy(lb)[None] for _, lb in val])
     opt = torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=1e-4)
@@ -145,7 +155,7 @@ def main():
         return a.lr * 0.5 * (1 + math.cos(math.pi * min(1.0, (frac - 0.02) / 0.98))) + 1e-6
 
     def validate():
-        net.eval(); tot = 0.0; inter = 0.0; uni = 0.0
+        net.eval(); tot = 0.0; inter = 0.0; uni = 0.0; cerr = []
         with torch.no_grad(), torch.autocast(dev, enabled=dev == "cuda"):
             for i in range(0, len(vx), 16):
                 x, y = vx[i:i + 16].to(dev), vy[i:i + 16].to(dev)
@@ -153,7 +163,16 @@ def main():
                 tot += float(F.binary_cross_entropy_with_logits(lg, y, pos_weight=pos_w)) * len(x)
                 p = (torch.sigmoid(lg) > 0.5).float(); yb = (y > 0.5).float()
                 inter += float((p * yb).sum()); uni += float(((p + yb) > 0).float().sum())
+                if a.gen == "rowgen":   # height error per column (px, 10 px = 1 mm = 0.1 mV at 10 mm/mV)
+                    pr = torch.sigmoid(lg)[:, 0]; yy = y[:, 0]
+                    hh = torch.arange(pr.shape[1], device=pr.device, dtype=pr.dtype)[None, :, None]
+                    cp = (pr * hh).sum(1) / pr.sum(1).clamp_min(1e-6)
+                    cy = (yy * hh).sum(1) / yy.sum(1).clamp_min(1e-6)
+                    ok = yy.sum(1) > 0.5
+                    cerr.append((cp - cy).abs()[ok].float().cpu())
         net.train()
+        validate.col_err = float(torch.cat(cerr).median()) if cerr else float("nan")
+        validate.col_err90 = float(torch.cat(cerr).quantile(0.9)) if cerr else float("nan")
         return tot / len(vx), inter / max(uni, 1.0)
 
     def export(tag=""):
@@ -176,7 +195,7 @@ def main():
             xb, yb = xb.to(dev, non_blocking=True), yb.to(dev, non_blocking=True)
             x, y = xb, yb
         else:
-            x, y = gpu_aug(xb, yb, g_aug)
+            x, y = gpu_aug(xb, yb, g_aug, rot=a.gen != "rowgen")
         with torch.autocast(dev, enabled=dev == "cuda"):
             logit = net(x)
         logit = logit.float()
@@ -191,8 +210,10 @@ def main():
                   f"data wait {100 * t_wait / el:.0f}% gpu mem {mem:.1f} GB cpus {_cpus()}", flush=True)
         if step % 2000 == 0 or frac >= 1.0:
             vl, iou = validate()
-            log.append(dict(step=step, loss=float(loss), val_loss=vl, val_iou=iou, sec=round(time.time() - t0, 1)))
-            print(f"VAL step {step} val_loss {vl:.4f} IoU {iou:.4f}", flush=True)
+            log.append(dict(step=step, loss=float(loss), val_loss=vl, val_iou=iou, col_err=validate.col_err,
+                            col_err90=validate.col_err90, sec=round(time.time() - t0, 1)))
+            print(f"VAL step {step} val_loss {vl:.4f} IoU {iou:.4f} col_err median {validate.col_err:.2f} px "
+                  f"p90 {validate.col_err90:.2f} px", flush=True)
             (a.out / "train_log.json").write_text(json.dumps(log))
             torch.save(net.state_dict(), a.out / "unet.pt")
             if best is None or iou > best:
@@ -205,7 +226,7 @@ def main():
     export()
     (a.out / "meta.json").write_text(json.dumps(dict(encoder=a.encoder, parameters=n_par, steps=step,
                                                      best_val_iou=best, size=a.size, batch=a.batch,
-                                                     reuse=a.reuse)))
+                                                     reuse=a.reuse, gen=a.gen)))
     print("ok", a.out / "trace_seg.onnx", flush=True)
 
 
