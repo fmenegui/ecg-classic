@@ -210,11 +210,11 @@ def _local_contrast(D, R, blob, glev, lo, tile_mm=50.0):
     return np.minimum(D * F, 1.0)
 
 
-def _remove_long_vertical(B, R, min_mm=45.0):
-    """Linha vertical (quase) contínua de >= 45 mm: borda da área da grade, dobra/sombra da
-    folha, linha de grade escura que a correção de perspectiva deixou curva. Nenhum traço de
-    ECG sobe 45 mm seguidos (QRS de 4 mV a 10 mm/mV = 40 mm, e nunca reto) e um pulso tem
-    ~10 mm. Sem isso, o rastreio sobe pela borda e a linha começa na borda da grade."""
+def _remove_long_vertical(B, R, min_mm=100.0):
+    """Linha vertical (quase) contínua de >= 10 cm: borda da área da grade, dobra/sombra da
+    folha, linha de grade escura que a correção de perspectiva deixou curva. Um S profundo
+    chega a 6-7 mV (60-70 mm a 10 mm/mV) e cruza linhas vizinhas; um pulso tem ~10 mm. Sem
+    isso, o rastreio sobe pela borda e a linha começa na borda da grade."""
     H, W = B.shape
     L = max(5, int(8 * R))
     V = cv2.morphologyEx(B.astype(np.uint8), cv2.MORPH_OPEN, np.ones((L, 1), np.uint8))
@@ -224,7 +224,14 @@ def _remove_long_vertical(B, R, min_mm=45.0):
     Vc = cv2.morphologyEx(V, cv2.MORPH_CLOSE, np.ones((int(2 * R) | 1, 3), np.uint8))
     n, lab, st, _ = cv2.connectedComponentsWithStats(Vc, connectivity=8)
     longc = np.zeros(n, bool)
-    longc[1:] = (st[1:, cv2.CC_STAT_HEIGHT] >= min_mm * R) & (st[1:, cv2.CC_STAT_WIDTH] <= 6 * R)
+    hh, ww = st[1:, cv2.CC_STAT_HEIGHT], st[1:, cv2.CC_STAT_WIDTH]
+    cx = st[1:, cv2.CC_STAT_LEFT] + 0.5 * ww
+    xs_ = np.nonzero(B.any(0))[0]
+    x_lo, x_hi = (float(np.percentile(xs_, 0.5)), float(np.percentile(xs_, 99.5))) if len(xs_) else (0, W)
+    # >= 10 cm em qualquer lugar; >= 45 mm só nas margens do bloco de tinta (borda da grade):
+    # QRS fundos ficam dentro das linhas
+    margin = (cx <= x_lo + 15 * R) | (cx >= x_hi - 15 * R)
+    longc[1:] = (ww <= 6 * R) & ((hh >= min_mm * R) | ((hh >= 45 * R) & margin))
     if not longc.any():
         return B
     rm = longc[lab] & (V > 0)
