@@ -42,6 +42,11 @@ CABRERA_NO_EVIDENCE = [10.0]
 LABEL_HI = [15.0]
 BND_RELATIVE = [True]
 BND_OTHER_ROWS = [True]
+# QRS da própria linha também não é marca de fronteira (em formatos simultâneos o QRS cai na
+# mesma posição em todas as linhas e imita uma fronteira); barra solta lida como "I" não
+# desmente o nome de outro segmento (fragmento de QRS colado ao rótulo)
+BND_OWN_QRS = [False]
+OCR_SINGLE_NEUTRAL = [False]
 BND_COHERENT = [True]
 LIMB_LOG = [True]
 
@@ -319,7 +324,7 @@ class Ctx:
                 st = self._steep = [self._trace_mask_steep(k) for k in range(self.n)]
             tm = tm.copy()
             for k in range(self.n):
-                if k != r:
+                if k != r or BND_OWN_QRS[0]:
                     tm |= st[k]
         a, b = max(0, int(y - 4 * R)), min(H, int(y + 4 * R))
         hw_ = BND_HALF_MM[0]
@@ -383,7 +388,8 @@ class Ctx:
             # I/II/III só diferem pelo número de barras: uma barra colada ao traço ou ao
             # pulso some e "II" vira "I". Confusão entre eles custa metade
             cap = 0.5 if (top in ("I", "II", "III") and _canon(name) in ("I", "II", "III")) else 1.0
-            if w.get("single") and top == "I" and _canon(name) in ("II", "III"):
+            if w.get("single") and top == "I" and (_canon(name) in ("II", "III") or
+                                                   (OCR_SINGLE_NEUTRAL[0] and _canon(name) != "I")):
                 cap = 0.0  # uma barra só não desmente II/III: as outras podem ter colado no traço
             parts["ocr"] += max(-cap, (d.get(name, 0.0) - d[top]) / 0.15)
         # rótulo confiável sem segmento que o explique: a hipótese ignora uma derivação impressa
