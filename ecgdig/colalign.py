@@ -107,6 +107,7 @@ def _col_rows(B, R, xa, xb):
 
 
 EQUAL_SPLIT = [True]
+PAIR_MERGE = [True]
 # columns with rows at their own heights (each column with its own spacing): the
 # (column, row) bands move to stacked new rows instead of the median across columns
 RELAYOUT = [True]
@@ -130,9 +131,23 @@ def _rows_are_traces(B, R, cols, pks, lr):
 
 
 def _equal_split(B, R, ya, yb, lr):
+    out = _equal_split_k(B, R, ya, yb, lr, (4, 2))
+    if PAIR_MERGE[0] and out is not None and len(out[0]) == 4:
+        # 4 columns whose halves agree (columns 1-2 and 3-4 with the same rows) are a 2-column
+        # page with its own heights per half: split in 2
+        pk = out[1]
+        if all(len(pk[i]) == len(pk[i + 1]) and np.all(np.abs(np.asarray(pk[i], float) - np.asarray(pk[i + 1], float)) < 1.5 * R)
+               for i in (0, 2)):
+            two = _equal_split_k(B, R, ya, yb, lr, (2,))
+            if two is not None:
+                return two[0]
+    return out[0] if out is not None else None
+
+
+def _equal_split_k(B, R, ya, yb, lr, ks):
     L, Rr = lr
     P = B[ya:yb].sum(0).astype(np.float64)
-    for k in (4, 2):
+    for k in ks:
         w = (Rr - L) / k
         if w < 40 * R:
             continue
@@ -154,9 +169,9 @@ def _equal_split(B, R, ya, yb, lr):
             # in one column and a footer in another swap the row indices) and >= 5 mm
             if sp > 0 and np.abs(dl).max() >= 5 * R and np.abs(dl).max() <= 0.5 * sp and \
                     np.median(np.abs(dl), 1).max() >= 3 * R:
-                return cols
+                return cols, pks
             if RELAYOUT[0] and sp > 0 and np.abs(dl).max() > 0.5 * sp and _rows_are_traces(B, R, cols, pks, lr):
-                return cols
+                return cols, pks
     return None
 
 
