@@ -12,7 +12,7 @@ ecgdig turns a picture of a paper ECG (scan, rasterized PDF or phone photo) into
 | PM-ECG-ID, pages whose format was read correctly (72% of single-page ECGs) | SNR 11.5 dB, PCC 0.856 | |
 | PM-ECG-ID, `photos_scans` (100 desk scans) | SNR 14.1 dB, PCC 0.875 | |
 | [PhysioNet (Kaggle)](benchmarks/physionet/) training images, 135 local (15 records × 9 captures) | SNR **14.68 dB** | a deep-learning entry ranked 24th of 1,425: 19.7 dB (private leaderboard) |
-| [LITFL](benchmarks/litfl/), 102 real pages, no signal ground truth | layout 92%, rhythm strips 93%, layout + speed + duration + gain 91% | hand-reviewed reference |
+| [LITFL](benchmarks/litfl/), real pages without a signal ground truth (70 of the 102 that the site served to CI) | layout 93%, rhythm strips 94%, layout + speed + duration + gain 91%; Einthoven residual 0.45 | hand-reviewed reference |
 | Synthetic pages with exact ground truth: medium / heavy degradation / creased paper | 21.6 / 19.4 / 18.1 dB | |
 
 SNR and PCC follow each benchmark's own metric: per lead, with a small time alignment and the offset removed; on PM-ECG-ID a lead that is missing or less than half covered counts as SNR 0 and PCC 0. Where the format is read correctly, the classical pipeline is close to PMcardio; the remaining gap is mostly pages whose format is misread (crossing traces, unreadable labels) and the hardest degradations (blur 31/41, resolution 1/16–1/32, near-invisible traces). Details, history and next steps: [`docs/evaluation-and-roadmap.md`](docs/evaluation-and-roadmap.md).

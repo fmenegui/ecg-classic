@@ -9,7 +9,7 @@
 | PM-ECG-ID, whole database (5,994–6,000 ECGs): SNR / PCC / failed leads | 6.99 dB / 0.591 / 22.2% (`7a60059`) | **7.91 dB / 0.656 / 15.3%** (`43cb3a6`) | PMcardio, published: > 12.5 dB / > 0.91 / 6.62% |
 | PM-ECG-ID, `photos_scans` (100 ECGs, desk scanner) | 11.5 dB / PCC 0.752 | 14.1 dB / PCC 0.875 | (whole-database reference above) |
 | PhysioNet (Kaggle) training images, 135 local (15 records × 9 captures) | 3.3 dB | **14.68 dB** | a deep-learning entry ranked 24th of 1,425: 19.7 dB (private leaderboard) |
-| LITFL, 102 real pages: layout / rhythm strips / layout+speed+duration+gain | 92.2 / 87.9 / 83.3% | 92–93 / 93–97 / 91% | hand-reviewed reference |
+| LITFL real pages: layout / rhythm strips / layout+speed+duration+gain / Einthoven residual | 92.2 / 87.9 / 83.3% / 0.62 (102 pages) | 92.9 / 94.0 / 91.4% / 0.45 (the 70 pages the site served to CI) | hand-reviewed reference |
 | Synthetic (exact ground truth): medium / heavy / fold | 21.6 / 16.7 / 9.7 dB | 21.6 / 19.4 / 18.1 dB | — |
 
 **Where the PM-ECG-ID gap is.** When the page format is read correctly (72% of the single-page ECGs), the classical pipeline reaches 11.5 dB and PCC 0.86, close to PMcardio's whole-database numbers. When it is read wrong, the ECG is near 0 dB. On the first whole-database run the format was wrong or unreadable on 37% of the single-page ECGs; most of the work of 15–16/11 went into that, and the share fell to 28%.
