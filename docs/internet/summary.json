@@ -5,50 +5,48 @@
   "conf": 0.8175744761936437,
   "dup_II": {
    "r": 0.999,
-   "rms_uV": 8.8
+   "rms_uV": 7.6
   },
   "dup_V1": {
-   "r": 0.984,
-   "rms_uV": 7.9
+   "r": 0.986,
+   "rms_uV": 7.4
   },
-  "einthoven_uV": 16.1,
-  "rms_II_uV": 285.4
+  "einthoven_uV": 22.7,
+  "rms_II_uV": 260.2
  },
  "ge_rot": {
   "layout": "3x4+2",
   "speed": 25.0,
-  "conf": 0.9999984684007314,
+  "conf": 0.9999999999978362,
   "dup_II": {
-   "r": 0.998,
-   "rms_uV": 11.6
+   "r": 0.999,
+   "rms_uV": 8.6
   },
   "dup_V1": {
-   "r": 0.983,
-   "rms_uV": 8.2
+   "r": 0.989,
+   "rms_uV": 6.5
   },
-  "einthoven_uV": 23.8,
-  "rms_II_uV": 293.2
+  "einthoven_uV": 17.2,
+  "rms_II_uV": 260.8
  },
  "schiller11": {
   "layout": "6x1-prec",
-  "speed": 50.0,
+  "speed": 25.0,
   "conf": 0.8175744761936437
  },
  "schiller12": {
   "layout": "6x1-prec",
   "speed": 50.0,
-  "conf": 0.9999893834663679
+  "conf": 0.8175744761936437
  },
  "photo0": {
   "layout": "6x1-prec",
   "speed": 50.0,
-  "conf": 0.9951041616261564
+  "conf": 0.9996638285639273
  },
  "photo1": {
-  "layout": "6x1-limb-cabrera",
+  "layout": "6x1-prec",
   "speed": 50.0,
-  "conf": 0.55,
-  "einthoven_uV": 235.4,
-  "rms_II_uV": 604.7
+  "conf": 0.55
  }
 }

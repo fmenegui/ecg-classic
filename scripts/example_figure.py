@@ -43,8 +43,8 @@ ax = fig.add_axes([0.03, 0.52, 0.45, 0.45]); ax.imshow(cv2.cvtColor(img, cv2.COL
 ax.set_title("Input (synthetic photo: rotation, perspective, shadow, JPEG)", fontsize=10)
 ax = fig.add_axes([0.52, 0.52, 0.45, 0.45]); ax.imshow(cv2.cvtColor(r["debug_image"], cv2.COLOR_BGR2RGB)); ax.axis("off")
 ax.set_title("Rectified + extracted traces (blue)", fontsize=10)
-ax = fig.add_axes([0.06, 0.28, 0.91, 0.19]); panel(ax, "II", 0, 10); ax.legend(loc="upper right", fontsize=9)
-ax = fig.add_axes([0.06, 0.05, 0.91, 0.19]); panel(ax, "V4", 7.5, 10); ax.set_xlabel("s")
+ax = fig.add_axes([0.06, 0.31, 0.91, 0.16]); panel(ax, "II", 0, 10); ax.legend(loc="upper right", fontsize=9)
+ax = fig.add_axes([0.06, 0.07, 0.91, 0.16]); panel(ax, "V4", 7.5, 10); ax.set_xlabel("s")
 out = ROOT / "docs" / "example.png"
 fig.savefig(out); plt.close(fig)
 print("written", out, r["layout"])

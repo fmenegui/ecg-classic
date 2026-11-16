@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import warnings
 from pathlib import Path
 
 import cv2
@@ -33,10 +34,30 @@ def _thumb(img, side=1400):
     return cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_AREA) if s < 1 else img
 
 
+def failed_figure(path, rel, row, err, out):
+    """A page ecgdig could not read: the input image and the error."""
+    img = cv2.cvtColor(_thumb(cv2.imread(str(path))), cv2.COLOR_BGR2RGB)
+    fig = plt.figure(figsize=(14, 8.6), dpi=110)
+    scen = rel.split("/")[0].replace("augmentation_", "")
+    fig.text(0.015, 0.985, f"{scen} · {Path(rel).stem}", fontsize=14, weight="bold", va="top")
+    fig.text(0.015, 0.95, f"printed format {row['ECG format']} · not read ({err}) · all 12 leads count as failures "
+             "(SNR 0, PCC 0)", fontsize=11, va="top", color="#333")
+    ax = fig.add_axes([0.15, 0.03, 0.7, 0.86]); ax.imshow(img); ax.axis("off")
+    ax.set_title("Input image", fontsize=10, loc="left")
+    out.mkdir(parents=True, exist_ok=True)
+    name = f"{scen}__{Path(rel).stem}.png".replace("/", "_")
+    fig.savefig(out / name); plt.close(fig)
+    print(name, "failed:", err, flush=True)
+    return name, 0.0, 0.0
+
+
 def figure(path, rel, lead, L, meta, out):
     row = meta.loc[rel]
     ecg = row["ECG ID"]
-    r = digitize(str(path), Config(), return_debug=True)
+    try:
+        r = digitize(str(path), Config(), return_debug=True)
+    except Exception as e:  # noqa: BLE001
+        return failed_figure(path, rel, row, e, out)
     o = dict(ok=True, leads=r["leads"], signals=r["signals"].astype(np.float32), layout=r.get("layout"),
              seg={k: [np.nonzero(np.isfinite(m))[0][[0, -1]] if np.isfinite(m).any() else None for m in v]
                   for k, v in r.get("per_segment", {}).items()})
@@ -48,10 +69,10 @@ def figure(path, rel, lead, L, meta, out):
         ok = [l for l in LEADS if per[l]]
         lead = min(ok, key=lambda l: abs(per[l]["snr"] - snr)) if ok else "II"
     g = L[ecg][:, LEADS.index(lead)].astype(float)
-    F = o["signals"][o["leads"].index(lead)].astype(float)
-    segs = [s for s in o["seg"].get(lead, []) if s is not None]
     p = None
+    segs = [s for s in o["seg"].get(lead, []) if s is not None] if lead in o["leads"] else []
     if segs:
+        F = o["signals"][o["leads"].index(lead)].astype(float)
         seg = min(segs, key=lambda s: abs((s[1] - s[0] + 1) - len(g)))
         p = E._best_shift(g, F, int(seg[0]), span=int(seg[1] - seg[0] + 1 - len(g)))
         if p is not None:
@@ -87,6 +108,7 @@ def figure(path, rel, lead, L, meta, out):
 
 def main():
     import pandas as pd
+    warnings.filterwarnings("ignore")
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", type=Path, required=True)
     ap.add_argument("--gt", type=Path, required=True)

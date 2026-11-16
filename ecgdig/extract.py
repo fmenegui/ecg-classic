@@ -223,6 +223,29 @@ def _local_contrast(D, R, blob, glev, lo, tile_mm=50.0):
     return np.minimum(D * F, 1.0)
 
 
+# a straight, thin line (centre within 0.12 mm of a straight fit, median width <= 0.5 mm) is a
+# ruled line even with trace on both sides; stacked QRS chains wiggle (0.15-0.25 mm) and are
+# 0.6-1 mm wide (PM-ECG-ID scans 53, 64 vs PhysioNet 119693645-0005: 15.2 dB with the line removed)
+LONG_VLINES_STRAIGHT = [True]
+
+
+def _straight_thin(lab, V, i, st_i, R):
+    x0, y0, w, h = (int(v) for v in st_i[:4])
+    m = (lab[y0:y0 + h, x0:x0 + w] == i) & (V[y0:y0 + h, x0:x0 + w] > 0)
+    rows = np.nonzero(m.any(1))[0]
+    if len(rows) < 0.9 * h:
+        return False
+    mr = m[rows]
+    cols = np.arange(w, dtype=np.float64)
+    cnt = mr.sum(1)
+    cen = (mr * cols).sum(1) / cnt
+    first = mr.argmax(1); last = w - 1 - mr[:, ::-1].argmax(1)
+    wid = last - first + 1
+    p = np.polyfit(rows.astype(np.float64), cen, 1)
+    res = float(np.std(cen - np.polyval(p, rows)))
+    return res <= 0.12 * R and float(np.median(wid)) <= 0.5 * R
+
+
 def _remove_long_vertical(B, R, min_mm=100.0):
     """(Almost) continuous vertical line >= 10 cm: border of the grid area, fold/shadow of the
     sheet, dark grid line left curved by the perspective correction. A deep S reaches 6-7 mV
@@ -261,6 +284,8 @@ def _remove_long_vertical(B, R, min_mm=100.0):
             rgt = B[y0:y0 + h_, min(W, x0 + w_ + gm):min(W, x0 + w_ + gm + wm)]
             cl = float(lft.any(0).mean()) if lft.shape[1] >= 3 * R else 0.0
             cr = float(rgt.any(0).mean()) if rgt.shape[1] >= 3 * R else 0.0
+            if LONG_VLINES_STRAIGHT[0] and _straight_thin(lab, V, i, st[i], R):
+                continue   # a ruled line (fold, curved grid line), not a chain of QRS
             if min(cl, cr) >= LONG_VLINES_SIDE[0] or (h_ < min_mm * R and h_ < 0.7 * yspan):
                 longc[i] = False
     if not longc.any():

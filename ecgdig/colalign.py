@@ -21,6 +21,7 @@ LONG_EXTENT = [True]
 ROW_DIST6 = [True]   # rows of one column >= 6 mm apart (was 8): tight aVL/aVF
 STRUCT = [True]     # structure from baseline tracks when there are no blank gaps between columns
 STRUCT_FIRST = [False]   # tracks before the equal-width column hypothesis
+TRACKS_MANY_ROWS = [True]   # the tracks structure needs >= max(2, n/3) rows that change height
 
 
 def _gaps(B, R, ya, yb):
@@ -412,6 +413,12 @@ def col_align(rect, pap, D, B, R):
         if st is None:
             return None
         cols, P = st
+        if TRACKS_MANY_ROWS[0]:
+            # own heights per column means several rows move: one row off (a header text line
+            # in one column and another one in the next) is not a column structure
+            dev = np.abs(P - np.median(P, 0)[None, :]).max(0)
+            if int((dev >= 2.5 * R).sum()) < max(2, int(np.ceil(P.shape[1] / 3))):
+                return None
         # small difference between columns (< 40% of the step) and the usual rows already come
         # out right: extraction copes alone (wide band + per-stretch baseline), and realigning
         # would only risk slicing a large QRS at the band seams

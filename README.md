@@ -37,18 +37,18 @@ Each figure shows the input image, the page rectified by the grid with the extra
 | | |
 |---|---|
 | ![](docs/gallery/photos_scans__img_85_page_0.png) | ![](docs/gallery/photos_screens__img_50_page_0.png) |
-| Desk scan near the scenario median | Photo of a screen (moiré): the rhythm row is misread |
+| Desk scan near the scenario median | Photo of a screen (moiré): the columns are split in the wrong place and the page is read as three strips |
 
 ### Bad
 
 | | |
 |---|---|
 | ![](docs/gallery/blur_kernel_31__img_49_page_0.png) | ![](docs/gallery/resolution_scale_down_factor_16__img_2_page_0.png) |
-| Blur 31: trace and grid merge | Resolution 1/16: a 12x1 page read as 6x2 + rhythm |
+| Blur 31: trace and grid merge; a 6x2 page read as three strips | Resolution 1/16: a 12x1 page read as 6x2 + rhythm, no lead aligns |
 | ![](docs/gallery/photos_crumbles__img_81_page_0.png) | ![](docs/gallery/digital_data_opacity_015__img_60_page_0.png) |
-| Crumpled paper: the grid is lost in the folds | Opacity 0.15: the trace is almost invisible |
+| Crumpled paper: the grid is lost in the folds | Opacity 0.15: no trace row is found |
 | ![](docs/gallery/contrast_gamma_0.666__img_70_page_0.png) | |
-| 12x1 page whose rows are 2–8 mm apart and cross | |
+| 12x1 page whose rows are 2–8 mm apart and cross: no format fits the rows found | |
 
 ## Install and use
 
