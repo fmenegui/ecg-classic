@@ -23,7 +23,7 @@ on:
         default: false
         type: boolean
       ink_model_run:
-        description: 'Hybrid: run id of a trace-seg artifact (trace_seg.onnx) to use as ink model (optional)'
+        description: 'Hybrid: run id of a training run (hybrid-train or gpu-train) whose trace_seg.onnx is the ink model (optional)'
         required: false
         default: ''
         type: string
@@ -55,7 +55,9 @@ jobs:
         if: ${{ inputs.ink_model_run != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download ${{ inputs.ink_model_run }} -n trace-seg-${{ inputs.ink_model_run }} -D model
+        run: |
+          gh run download ${{ inputs.ink_model_run }} -D model_dl
+          f=$(find model_dl -name trace_seg.onnx | head -1); mkdir -p model; cp "$f" model/trace_seg.onnx; ls -la model
       - name: Evaluate
         env:
           ECGDIG_FLAGS: ${{ inputs.flags }}
