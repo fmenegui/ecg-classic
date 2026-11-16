@@ -9,7 +9,7 @@ ext/
 
 # LITFL benchmark: downloaded images and outputs
 benchmarks/litfl/cache/
-results/
+/results/
 
 # signals written next to the internet figures (regenerate with scripts/internet_figures.py)
 docs/internet/*.csv
