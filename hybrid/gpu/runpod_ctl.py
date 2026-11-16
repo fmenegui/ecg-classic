@@ -62,6 +62,8 @@ def check():
                 print(f"REST API accepts the key (HTTP {r.status})", file=sys.stderr)
         except urllib.error.HTTPError as e2:
             print(f"REST API: HTTP {e2.code} {e2.read()[:200]!r}", file=sys.stderr)
+        except Exception as e2:  # noqa: BLE001
+            print(f"REST API not reachable: {e2}", file=sys.stderr)
         try:
             print(f"GraphQL said: {e.read()[:300]!r}", file=sys.stderr)
         except Exception:  # noqa: BLE001
