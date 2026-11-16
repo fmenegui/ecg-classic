@@ -1,7 +1,7 @@
-"""Baixa do PM-ECG-ID (Zenodo 13617673) só o necessário, por faixas HTTP (o zip tem 34 GB).
+"""Download only what is needed from PM-ECG-ID (Zenodo 13617673), by HTTP ranges (the zip is 34 GB).
 
-    python benchmarks/pmcardio/fetch.py --out data/pm --shard 3 --nshards 20   # imagens com Image ID % 20 == 3
-    python benchmarks/pmcardio/fetch.py --out data/pm --per-scenario 2          # amostra estratificada
+    python benchmarks/pmcardio/fetch.py --out data/pm --shard 3 --nshards 20   # images with Image ID % 20 == 3
+    python benchmarks/pmcardio/fetch.py --out data/pm --per-scenario 2          # stratified sample
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def main():
             keep += list(g[g["Image ID"].isin(ids)].index)
         m = m.loc[keep]
     if a.shard is not None:
-        # fatia por (cenário, Image ID): as páginas de um ECG ficam juntas
+        # shard by (scenario, Image ID): the pages of one ECG stay together
         key = m["scen"].astype("category").cat.codes.astype(np.int64) * 1000 + m["Image ID"].astype(np.int64)
         m = m[key % a.nshards == a.shard]
     sel = list(m["Image relative path"])

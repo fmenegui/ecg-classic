@@ -1,22 +1,22 @@
-"""Ajuste por renderização inversa com o perfil de pena medido (LSF).
+"""Fit by inverse rendering with the measured pen profile (LSF).
 
-Modelo de formação da imagem para um traço isolado: a tinta num pixel p depende só da
-distância de p à curva do ECG,
+Image formation model for an isolated trace: the ink at pixel p depends only on the
+distance from p to the ECG curve,
 
     M(p) = alpha_k * LSF(d(p, C)),
 
-onde C é a poligonal (x_k, y_k) com x_k numa grade fixa (passo h px, a curva é função do
-tempo), d é a distância euclidiana ao segmento mais próximo (união: a tinta não soma onde a
-pena passa duas vezes, ela satura) e LSF é o perfil transversal da pena + borrão, medido
-na própria imagem nos trechos planos (não paramétrico: serve para pena fina borrada e para
-pena grossa nítida). alpha_k é a densidade de tinta de cada segmento (traços rápidos saem
-mais claros em scans e fotos), com prior em 1.
+where C is the polyline (x_k, y_k) with x_k on a fixed grid (step h px; the curve is a
+function of time), d is the Euclidean distance to the nearest segment (union: ink does not
+add up where the pen passes twice, it saturates) and LSF is the cross profile of pen + blur,
+measured on the image itself on flat stretches (non-parametric: works for a thin blurred
+pen and for a thick sharp one). alpha_k is the ink density of each segment (fast strokes
+come out lighter in scans and photos), with a prior at 1.
 
-As incógnitas y_k (e alpha_k) saem de mínimos quadrados robustos (Cauchy) entre M e o mapa
-de tinta D num tubo em volta da curva inicial, com regularização fraca de segunda ordem.
-Como a curva é parametrizada pelo tempo, não há problema de ordem dos pontos no QRS.
+The unknowns y_k (and alpha_k) come from robust least squares (Cauchy) between M and the
+ink map D in a tube around the initial curve, with weak second-order regularization.
+Because the curve is parametrized by time, there is no point-ordering problem in the QRS.
 
-Sem aprendizado: é a inversa do renderizador, com o renderizador medido na imagem.
+No learning: it is the inverse of the renderer, with the renderer measured on the image.
 """
 from __future__ import annotations
 
@@ -24,8 +24,8 @@ import numpy as np
 
 
 def estimate_lsf(D, xg, yg, rsup_max=7.0, step=0.25):
-    """Perfil transversal da tinta em função da distância à linha central (trechos planos).
-    Devolve (d_tab, lsf_tab, rsup) ou None."""
+    """Cross profile of the ink as a function of distance to the centre line (flat stretches).
+    Returns (d_tab, lsf_tab, rsup) or None."""
     H, W = D.shape
     xg = np.asarray(xg, float); yg = np.asarray(yg, float)
     xi = np.arange(int(np.ceil(xg[0])), int(np.floor(xg[-1])) + 1)
@@ -45,7 +45,7 @@ def estimate_lsf(D, xg, yg, rsup_max=7.0, step=0.25):
     yy = np.round(yi)[:, None].astype(int) + off[None, :]
     ok = (yy >= 0) & (yy < H) & (xi[:, None] >= 0) & (xi[:, None] < W)
     vals = np.where(ok, D[np.clip(yy, 0, H - 1), np.clip(xi, 0, W - 1)[:, None]], np.nan)
-    # centro sub-pixel por coluna: centróide da tinta acima de 20% do máximo local
+    # sub-pixel centre per column: centroid of the ink above 20% of the local maximum
     v = np.nan_to_num(vals)
     w = np.clip(v - 0.2 * v.max(1, keepdims=True), 0, None)
     yc = (w * yy).sum(1) / np.maximum(w.sum(1), 1e-9)
@@ -65,7 +65,7 @@ def estimate_lsf(D, xg, yg, rsup_max=7.0, step=0.25):
     if ok.sum() < 6:
         return None
     tab = np.interp(dt, dt[ok], tab[ok])
-    # fundo (papel) -> 0; perfil monotônico não crescente
+    # background (paper) -> 0; monotone non-increasing profile
     bg = float(np.median(tab[-4:]))
     tab = np.clip(tab - bg, 0, None)
     tab = np.minimum.accumulate(tab)
@@ -81,7 +81,7 @@ def estimate_lsf(D, xg, yg, rsup_max=7.0, step=0.25):
 
 
 def _seg_dist(px, py, x0, y0, x1, y1):
-    """Distância de (px,py) aos segmentos (x0,y0)-(x1,y1) (arrays broadcast) + u + ponto."""
+    """Distance from (px,py) to segments (x0,y0)-(x1,y1) (broadcast arrays) + u + point."""
     vx, vy = x1 - x0, y1 - y0
     L2 = vx * vx + vy * vy + 1e-12
     u = np.clip(((px - x0) * vx + (py - y0) * vy) / L2, 0.0, 1.0)
@@ -92,8 +92,8 @@ def _seg_dist(px, py, x0, y0, x1, y1):
 
 def lsf_refine(D, xg, yg, lsf=None, h=1.0, lam=0.02, lam_a=0.5, c_rob=0.15, max_dev=4.0,
                maxiter=80, use_alpha=True):
-    """Refina a curva (xg, yg) do traço de uma derivação. Devolve (x, y) na grade de passo h
-    (ou os originais se o modelo não puder ser estimado)."""
+    """Refine the trace curve (xg, yg) of one lead. Returns (x, y) on the step-h grid
+    (or the inputs if the model cannot be estimated)."""
     import cv2
     from scipy.optimize import minimize
     xg = np.asarray(xg, float); yg = np.asarray(yg, float)
@@ -115,12 +115,12 @@ def lsf_refine(D, xg, yg, lsf=None, h=1.0, lam=0.02, lam_a=0.5, c_rob=0.15, max_
     if n < 10:
         return xg, yg
     y0 = np.interp(xk, xg, yg)
-    # tubo: pixels a menos de rsup+1.5 px da curva inicial
+    # tube: pixels within rsup+1.5 px of the initial curve
     m = int(np.ceil(rsup + max_dev)) + 2
     bx0 = max(0, int(np.floor(xk[0])) - m); bx1 = min(W, int(np.ceil(xk[-1])) + m + 1)
     by0 = max(0, int(np.floor(y0.min())) - m); by1 = min(H, int(np.ceil(y0.max())) + m + 1)
     hh, ww = by1 - by0, bx1 - bx0
-    S = 4  # rasteriza com 1/4 px para a distância
+    S = 4  # rasterize at 1/4 px for the distance
     canvas = np.full((hh * 1, ww * 1), 255, np.uint8)
     pts = np.stack([(xk - bx0), (y0 - by0)], 1)
     cv2.polylines(canvas, [np.round(pts * S).astype(np.int32)], False, 0, 1, cv2.LINE_8, shift=2)
@@ -131,11 +131,11 @@ def lsf_refine(D, xg, yg, lsf=None, h=1.0, lam=0.02, lam_a=0.5, c_rob=0.15, max_
         return xg, yg
     px = px.astype(float) + bx0; py = py.astype(float) + by0
     Dv = D[py.astype(int), px.astype(int)].astype(float)
-    # segmentos candidatos por pixel: índices cujo x cobre [px - rsup, px + rsup]
+    # candidate segments per pixel: indices whose x covers [px - rsup, px + rsup]
     kspan = int(np.ceil((rsup + 0.5) / h)) + 1
     kc = np.clip(np.round((px - xk[0]) / h).astype(int), 0, n - 2)
     offs = np.arange(-kspan, kspan + 1)
-    K = np.clip(kc[:, None] + offs[None, :], 0, n - 2)  # segmento K: (K, K+1)
+    K = np.clip(kc[:, None] + offs[None, :], 0, n - 2)  # segment K: (K, K+1)
     PX = px[:, None]; PY = py[:, None]
     X0 = xk[K]; X1 = xk[K + 1]
     ns = n - 1
@@ -166,7 +166,7 @@ def lsf_refine(D, xg, yg, lsf=None, h=1.0, lam=0.02, lam_a=0.5, c_rob=0.15, max_
         gy0 = g_d * (-dym * inv) * (1 - um)
         gy1 = g_d * (-dym * inv) * um
         gy = np.bincount(km, gy0, minlength=n) + np.bincount(km + 1, gy1, minlength=n)
-        # regularização de 2ª ordem em y (px)
+        # second-order regularization on y (px)
         d2 = y[:-2] - 2 * y[1:-1] + y[2:]
         loss += 0.5 * lam * (d2 * d2).sum()
         gy[:-2] += lam * d2; gy[1:-1] -= 2 * lam * d2; gy[2:] += lam * d2

@@ -1,17 +1,17 @@
-"""Avaliação no treino da competição do Kaggle "PhysioNet - Digitization of ECG Images".
+"""Evaluation on the training set of the Kaggle competition "PhysioNet - Digitization of ECG Images".
 
-Formato (conferido com `run.py inspect`):
-  train.csv               id, fs, sig_len (fs varia: 250, 500, 512, 1000 Hz; 10 s)
-  train/<id>/<id>.csv     12 colunas (I..V6), sig_len linhas; vazio onde a derivação não aparece
-  train/<id>/<id>-NNNN.png  9 imagens do mesmo registro (NNNN = tipo de captura: render,
-                          scans, fotos de celular etc.)
+Format (checked with `run.py inspect`):
+  train.csv               id, fs, sig_len (fs varies: 250, 500, 512, 1000 Hz; 10 s)
+  train/<id>/<id>.csv     12 columns (I..V6), sig_len rows; empty where the lead is not shown
+  train/<id>/<id>-NNNN.png  9 images of the same record (NNNN = capture type: render,
+                          scans, phone photos etc.)
 
-Métrica: SNR por imagem = 10·log10(Σ sinal² / Σ ruído²) somando as 12 derivações, só nas
-amostras que o papel mostra. Duas versões:
-  - bruto: sem nenhum ajuste;
-  - alinhado: por derivação, desloca até ±0,2 s e remove a diferença de média (o que a
-    métrica da competição e a do PhysioNet 2024 toleram). É uma reimplementação: o placar
-    oficial pode diferir em detalhes.
+Metric: SNR per image = 10·log10(Σ signal² / Σ noise²) summed over the 12 leads, only on the
+samples the paper shows. Two versions:
+  - raw: no adjustment at all;
+  - aligned: per lead, shift by up to ±0.2 s and remove the mean difference (what the
+    competition metric and PhysioNet 2024 tolerate). It is a reimplementation: the official
+    leaderboard may differ in details.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ LEADS = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V
 
 
 def _snr_record(gt, pred, fs, align=True, max_shift_s=0.2):
-    """gt, pred: (12, n) no fs do gabarito. Retorna (snr_db, por_derivação)."""
+    """gt, pred: (12, n) at the ground-truth fs. Returns (snr_db, per_lead)."""
     sig_p = noise_p = 0.0
     per = {}
     ms = int(round(max_shift_s * fs))
@@ -42,8 +42,8 @@ def _snr_record(gt, pred, fs, align=True, max_shift_s=0.2):
         p = np.nan_to_num(pred[i], nan=0.0)
         gi = g[m]
         best = None
-        # passo de 1 amostra: com passo grosso (4 ms) o SNR de um render varia ~6 dB com
-        # um deslocamento de 1 ms (QRS íngreme), o que torna a comparação entre versões ruído
+        # 1-sample step: with a coarse step (4 ms) the SNR of a render varies ~6 dB with a
+        # 1 ms shift (steep QRS), which turns the comparison between versions into noise
         shifts = range(-ms, ms + 1) if align else [0]
         idx = np.nonzero(m)[0]
         for s in shifts:
@@ -69,7 +69,7 @@ def _snr_record(gt, pred, fs, align=True, max_shift_s=0.2):
 
 
 def _to_gt_grid(sig500, fs, n):
-    """Reamostra a saída do ecgdig (500 Hz, começa em t=0) para o fs e o tamanho do gabarito."""
+    """Resample the ecgdig output (500 Hz, starts at t=0) to the ground-truth fs and length."""
     out = np.full((12, n), np.nan)
     t_gt = np.arange(n) / fs
     t_me = np.arange(sig500.shape[1]) / 500.0
@@ -79,7 +79,7 @@ def _to_gt_grid(sig500, fs, n):
         if m.sum() < 2:
             continue
         v = np.interp(t_gt, t_me[m], y[m], left=np.nan, right=np.nan)
-        # buracos internos (amostras desconhecidas) continuam desconhecidos
+        # internal holes (unknown samples) stay unknown
         holes = ~np.isfinite(np.interp(t_gt, t_me, np.where(m, 0.0, np.nan)))
         v[holes] = np.nan
         out[i] = v
@@ -101,7 +101,7 @@ def _load_gt(gt_p):
 
 
 def _work(job):
-    """Uma imagem: digitaliza, mede, salva sinais (250 Hz) e sobreposição."""
+    """One image: digitize, measure, save signals (250 Hz) and an overlay."""
     from ecgdig import digitize, Config
     import cv2
     rid, typ, fs, img_p, gt_p, out, cfg_kw, keep_raw = job
@@ -113,7 +113,7 @@ def _work(job):
         n = G.shape[1]
         r = digitize(str(img_p), Config(**cfg_kw), return_debug=True)
         S12 = np.full((12, r["signals"].shape[1]), np.nan)
-        for k_, nm in enumerate(r["leads"]):  # layout livre pode ter nomes fora dos 12
+        for k_, nm in enumerate(r["leads"]):  # a free layout may have names outside the 12
             if nm in LEADS:
                 S12[LEADS.index(nm)] = r["signals"][k_]
         P = _to_gt_grid(S12, fs, n)
@@ -132,7 +132,7 @@ def _work(job):
         snr_raw, _ = _snr_record(G, P, fs, align=False)
         snr_al, per = _snr_record(G, P, fs, align=True)
         rec.update(snr_raw=snr_raw, snr=snr_al, per_lead=per)
-        # sinais a 250 Hz (float16) para o diagnóstico fora do runner
+        # signals at 250 Hz (float16) for diagnosis outside the runner
         step = max(1, int(round(fs / 250)))
         (out / "sig").mkdir(exist_ok=True)
         np.savez_compressed(out / "sig" / f"{rid}-{typ}.npz", gt=G[:, ::step].astype(np.float16),
@@ -160,7 +160,7 @@ def _work(job):
 
 
 def evaluate(a):
-    from run import download  # mesmo módulo de download/CLI
+    from run import download  # same download/CLI module
     from concurrent.futures import ProcessPoolExecutor
     import ast
 
@@ -189,7 +189,7 @@ def evaluate(a):
             try:
                 gt_p = download(f"train/{rid}/{rid}.csv", cache / rid)
             except Exception as e:  # noqa: BLE001
-                print("sem gabarito", rid, e, flush=True)
+                print("no ground truth", rid, e, flush=True)
                 continue
             jobs = []
             for typ in TYPES:
@@ -208,12 +208,12 @@ def _report(out, results, cfg_kw):
     by = defaultdict(list)
     for r in ok:
         by[r["type"]].append(r)
-    L = ["# PhysioNet (Kaggle): SNR do ecgdig", "",
-         f"{len({r['id'] for r in results})} registros, {len(results)} imagens, {len(ok)} processadas "
-         f"({len(results) - len(ok)} exceções). Config: {cfg_kw or 'padrão'}.", "",
-         "SNR por imagem somando as 12 derivações nas amostras mostradas. *Alinhado*: até ±0,2 s e média "
-         "removida por derivação (reimplementação; o placar oficial pode diferir).", "",
-         "| Tipo | n | SNR alinhado (média) | mediana | SNR bruto (média) | layout mais comum | s/imagem |",
+    L = ["# PhysioNet (Kaggle): ecgdig SNR", "",
+         f"{len({r['id'] for r in results})} records, {len(results)} images, {len(ok)} processed "
+         f"({len(results) - len(ok)} exceptions). Config: {cfg_kw or 'default'}.", "",
+         "SNR per image summed over the 12 leads on the shown samples. *Aligned*: up to ±0.2 s and mean "
+         "removed per lead (reimplementation; the official leaderboard may differ).", "",
+         "| Type | n | aligned SNR (mean) | median | raw SNR (mean) | most common layout | s/image |",
          "|---|---|---|---|---|---|---|"]
     for t in sorted(by):
         v = [r["snr"] for r in by[t] if np.isfinite(r["snr"])]
@@ -223,16 +223,16 @@ def _report(out, results, cfg_kw):
                  f"{np.mean([r['seconds'] for r in by[t]]):.1f} |")
     allv = [r["snr"] for r in ok if np.isfinite(r["snr"])]
     if allv:
-        L += ["", f"**Todas: {np.mean(allv):.2f} dB (mediana {np.median(allv):.2f}).** Exceções contam como 0 dB "
-              f"na média da competição; com elas: {np.mean(allv + [0.0] * (len(results) - len(ok))):.2f} dB."]
+        L += ["", f"**All: {np.mean(allv):.2f} dB (median {np.median(allv):.2f}).** Exceptions count as 0 dB "
+              f"in the competition mean; with them: {np.mean(allv + [0.0] * (len(results) - len(ok))):.2f} dB."]
     perl = defaultdict(list)
     for r in ok:
         for l, v in r.get("per_lead", {}).items():
             perl[l].append(v)
     if perl:
-        L += ["", "| Derivação | SNR médio |", "|---|---|"] + [f"| {l} | {np.mean(perl[l]):.2f} dB |" for l in LEADS if l in perl]
+        L += ["", "| Lead | mean SNR |", "|---|---|"] + [f"| {l} | {np.mean(perl[l]):.2f} dB |" for l in LEADS if l in perl]
     err = [r for r in results if not r.get("ok")]
     if err:
-        L += ["", "## Exceções", ""] + [f"- {r['id']}-{r['type']}: {r.get('error')}" for r in err[:30]]
+        L += ["", "## Exceptions", ""] + [f"- {r['id']}-{r['type']}: {r.get('error')}" for r in err[:30]]
     (out / "report.md").write_text("\n".join(L) + "\n")
     print("\n".join(L))

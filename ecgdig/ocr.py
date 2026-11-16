@@ -1,10 +1,9 @@
-"""OCR clássico dos rótulos das derivações (sem aprendizado).
+"""Classical OCR of lead labels (no learning).
 
-O vocabulário é minúsculo (~15 palavras), então reconhecimento por casamento de
-modelos funciona: cada rótulo é renderizado em várias fontes TrueType; a palavra
-candidata na imagem é recortada, normalizada em altura e comparada por correlação
-normalizada (após suavização, para tolerar diferenças de fonte), com penalidade de
-razão de aspecto. Devolve, por palavra, uma distribuição sobre os rótulos.
+The vocabulary is tiny (~15 words), so template matching works: each label is rendered in
+several TrueType fonts; the candidate word in the image is cropped, normalized in height and
+compared by normalized correlation (after smoothing, to tolerate font differences), with an
+aspect-ratio penalty. Returns, per word, a distribution over the labels.
 """
 from __future__ import annotations
 
@@ -14,7 +13,7 @@ from functools import lru_cache
 import numpy as np
 import cv2
 
-# rótulo impresso -> nome canônico (layouts.LEAD_NAMES)
+# printed label -> canonical name (layouts.LEAD_NAMES)
 VOCAB = {
     "I": "I", "II": "II", "III": "III",
     "aVR": "aVR", "aVL": "aVL", "aVF": "aVF", "AVR": "aVR", "AVL": "aVL", "AVF": "aVF",
@@ -22,7 +21,7 @@ VOCAB = {
     "V1": "V1", "V2": "V2", "V3": "V3", "V4": "V4", "V5": "V5", "V6": "V6",
     "v1": "V1", "v2": "V2", "v3": "V3", "v4": "V4", "v5": "V5", "v6": "V6",
     "avr": "aVR", "avl": "aVL", "avf": "aVF",
-    # tira de ritmo rotulada entre parênteses: "Rhythm (II) 10 mm/mV"
+    # rhythm strip labelled in parentheses: "Rhythm (II) 10 mm/mV"
     "(I)": "I", "(II)": "II", "(III)": "III", "(V1)": "V1", "(V5)": "V5", "(aVF)": "aVF",
 }
 _FONT_DIRS = ["/usr/share/fonts/truetype/freefont", "/usr/share/fonts/truetype/liberation",
@@ -30,7 +29,7 @@ _FONT_DIRS = ["/usr/share/fonts/truetype/freefont", "/usr/share/fonts/truetype/l
 _FONTS = ["FreeSerif.ttf", "FreeSerifBold.ttf", "FreeSans.ttf", "FreeSansBold.ttf", "FreeMono.ttf",
           "LiberationSans-Regular.ttf", "LiberationSerif-Regular.ttf", "LiberationSansNarrow-Regular.ttf",
           "DejaVuSans.ttf", "DejaVuSerif.ttf", "DejaVuSansCondensed.ttf", "DejaVuSansMono.ttf"]
-TH = 32  # altura normalizada (px)
+TH = 32  # normalized height (px)
 
 
 def _font_paths():
@@ -45,7 +44,7 @@ def _font_paths():
 
 
 def _norm(mask: np.ndarray, width: int | None = None) -> np.ndarray:
-    """Recorte justo -> altura TH (largura proporcional ou forçada), suavizado, média 0 / norma 1."""
+    """Tight crop -> height TH (proportional or forced width), smoothed, zero mean / unit norm."""
     ys, xs = np.nonzero(mask)
     if len(ys) == 0:
         return None
@@ -53,8 +52,8 @@ def _norm(mask: np.ndarray, width: int | None = None) -> np.ndarray:
     h, w = m.shape
     W = width or max(1, int(round(TH * w / h)))
     r = cv2.resize(m, (W, TH), interpolation=cv2.INTER_AREA)
-    # margem: um "I" recortado justo é um bloco uniforme (variância zero); com margem a
-    # forma (barra fina dentro do vazio) passa a ser comparável
+    # margin: a tightly cropped "I" is a uniform block (zero variance); with a margin its
+    # shape (thin bar inside empty space) becomes comparable
     r = cv2.GaussianBlur(r, (0, 0), 1.6)
     r = r - r.mean()
     n = np.linalg.norm(r)
@@ -63,7 +62,7 @@ def _norm(mask: np.ndarray, width: int | None = None) -> np.ndarray:
 
 @lru_cache(maxsize=1)
 def templates():
-    """[(texto, nome_canônico, aspecto, molde_normalizado)]"""
+    """[(text, canonical_name, aspect, normalized_template)]"""
     from PIL import Image, ImageDraw, ImageFont
     out = []
     for fp in _font_paths():
@@ -92,13 +91,13 @@ def _tvec(i, W):
 
 
 def classify_word(mask: np.ndarray) -> dict:
-    """Distribuição {nome_canônico: similaridade em [0,1]} para um recorte binário."""
+    """Distribution {canonical_name: similarity in [0,1]} for a binary crop."""
     ys, xs = np.nonzero(mask)
     if len(ys) < 6:
         return {}
     asp_c = (np.ptp(xs) + 1) / (np.ptp(ys) + 1)
-    # "I": uma única barra vertical — recorte justo é um bloco uniforme (correlação
-    # normalizada indefinida). Decide pela forma: 1 componente, aspecto de barra, cheio.
+    # "I": a single vertical bar; a tight crop is a uniform block (normalized correlation is
+    # undefined). Decide by shape: 1 component, bar aspect, filled.
     n_cc, _, st_cc, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=8)
     big = [i for i in range(1, n_cc) if st_cc[i, cv2.CC_STAT_AREA] > 0.1 * len(ys)]
     if len(big) == 1 and asp_c < 0.42:
@@ -124,16 +123,15 @@ def classify_word(mask: np.ndarray) -> dict:
 
 
 def find_words(text_mask: np.ndarray, R: float, min_h_mm=1.4, max_h_mm=8.0):
-    """Agrupa componentes conexas em palavras (caixas). Retorna lista de (x0,y0,x1,y1).
+    """Group connected components into words (boxes). Returns a list of (x0,y0,x1,y1).
 
-    Mesma varredura sequencial de sempre, mas só entre as caixas que podem estar ao alcance
-    (as caixas ficam ordenadas por x0; busca binária dá a faixa). Numa página com milhares de
-    componentes (grade pontilhada, ruído) o laço completo, quadrático, levava dezenas de
-    segundos."""
+    Same sequential sweep as always, but only among boxes that can be in reach (boxes are
+    sorted by x0; a binary search gives the range). On a page with thousands of components
+    (dotted grid, noise) the full quadratic loop took tens of seconds."""
     from bisect import bisect_left, bisect_right
     n, lab, st, _ = cv2.connectedComponentsWithStats(text_mask.astype(np.uint8), connectivity=8)
     boxes = []
-    for x, y, w, h, a in st[1:].tolist():        # int do Python: contas escalares mais rápidas
+    for x, y, w, h, a in st[1:].tolist():        # Python ints: faster scalar arithmetic
         if a < 4 or h > max_h_mm * R or w > 25 * R:
             continue
         boxes.append([x, y, x + w, y + h])
@@ -150,7 +148,7 @@ def find_words(text_mask: np.ndarray, R: float, min_h_mm=1.4, max_h_mm=8.0):
         changed = True
         while changed:
             changed = False
-            # alcance: gap < 0.7 * max(altura de cur, altura da outra) nos dois sentidos
+            # reach: gap < 0.7 * max(height of cur, height of the other) in both directions
             g = 0.7 * max(cur[3] - cur[1], hmax, 1)
             j = bisect_right(x0s, cur[0] - g - wmax)
             hi = bisect_left(x0s, cur[2] + g)
@@ -160,12 +158,12 @@ def find_words(text_mask: np.ndarray, R: float, min_h_mm=1.4, max_h_mm=8.0):
                     hh = max(cur[3] - cur[1], c[3] - c[1], 1)
                     vo = min(cur[3], c[3]) - max(cur[1], c[1])
                     gap = max(c[0] - cur[2], cur[0] - c[2])
-                    # minúsculas/sinal de menos: sobreposição vertical parcial basta
+                    # lowercase/minus sign: partial vertical overlap is enough
                     if gap < 0.7 * hh and vo > -0.1 * hh and vo > 0.25 * min(c[3] - c[1], cur[3] - cur[1]) - 1:
                         cur = [min(cur[0], c[0]), min(cur[1], c[1]), max(cur[2], c[2]), max(cur[3], c[3])]
                         used[j] = True; changed = True
                         g = 0.7 * max(cur[3] - cur[1], hmax, 1)
-                        hi = bisect_left(x0s, cur[2] + g)       # cur cresceu: o alcance à direita também
+                        hi = bisect_left(x0s, cur[2] + g)       # cur grew: so did the reach to the right
                 j += 1
         h = cur[3] - cur[1]
         if min_h_mm * R <= h <= max_h_mm * R:
@@ -175,7 +173,7 @@ def find_words(text_mask: np.ndarray, R: float, min_h_mm=1.4, max_h_mm=8.0):
 
 @lru_cache(maxsize=1)
 def char_templates():
-    """[(caractere, aspecto, máscara)] para dígitos 1-6 e R/L/F."""
+    """[(character, aspect, mask)] for digits 1-6 and R/L/F."""
     from PIL import Image, ImageDraw, ImageFont
     out = []
     for fp in _font_paths():
@@ -190,7 +188,7 @@ def char_templates():
 
 
 def _last_char(mask: np.ndarray):
-    """Recorte do último caractere: última componente conexa (ou os 40% da direita)."""
+    """Crop of the last character: last connected component (or the right 40%)."""
     ys, xs = np.nonzero(mask)
     m = mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1].astype(np.uint8)
     n, lab, st, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
@@ -228,8 +226,8 @@ def classify_char(mask: np.ndarray, allowed: str) -> dict:
 
 
 def _trim_marks(mask: np.ndarray):
-    """Remove marcas baixas nas pontas da palavra (seta '↓ V1', ponto, dois-pontos):
-    grupos de colunas cuja altura é < 60% da palavra. Retorna None se nada mudou."""
+    """Remove low marks at the ends of the word (arrow '↓ V1', dot, colon): column groups
+    whose height is < 60% of the word. Returns None if nothing changed."""
     colp = mask.any(0)
     nz = np.nonzero(colp)[0]
     if len(nz) == 0:
@@ -260,8 +258,8 @@ OCR_TRIM_BARS = [True]
 
 
 def _trim_bars(mask: np.ndarray):
-    """Variantes sem barras finas nas pontas: separador de coluna ('|V2'), marca de troca de
-    derivação ou linha tracejada vertical colada ao rótulo. Até 3 de cada lado."""
+    """Variants without thin bars at the ends: column separator ('|V2'), lead-switch mark
+    or a dashed vertical line touching the label. Up to 3 on each side."""
     colp = mask.any(0)
     nz = np.nonzero(colp)[0]
     if len(nz) == 0:
@@ -292,9 +290,9 @@ def _trim_bars(mask: np.ndarray):
 
 
 def read_label(mask: np.ndarray) -> dict:
-    """Palavra inteira + refinamento do último caractere para as famílias V* e aV*.
-    Se a leitura for fraca, tenta de novo sem marcas baixas nas pontas (setas, pontos) e
-    sem barras finas nas pontas (separador de coluna, marca de troca de derivação)."""
+    """Whole word + refinement of the last character for the V* and aV* families.
+    If the reading is weak, retry without low marks at the ends (arrows, dots) and without
+    thin bars at the ends (column separator, lead-switch mark)."""
     d = _read_label(mask)
     if not d or max(d.values()) < 0.5:
         t = _trim_marks(mask)
@@ -305,7 +303,7 @@ def read_label(mask: np.ndarray) -> dict:
     if OCR_TRIM_BARS[0] and (not d or max(d.values()) < 0.5):
         for t in _trim_bars(mask):
             d2 = _read_label(t)
-            # exige leitura clara: a variante aparada não pode virar "I" (uma barra só)
+            # demand a clear reading: the trimmed variant may not become "I" (a single bar)
             if d2 and max(d2.values()) >= 0.5 and list(d2) != ["I"] and \
                     (not d or max(d2.values()) > max(d.values())):
                 d = d2
@@ -334,7 +332,7 @@ def _read_label(mask: np.ndarray) -> dict:
 
 SPEED_WORDS = {"25mm/s": 25.0, "50mm/s": 50.0, "25 mm/s": 25.0, "50 mm/s": 50.0,
                "12.5mm/s": 12.5, "12,5mm/s": 12.5,
-               # negativos: palavras parecidas que NÃO são velocidade
+               # negatives: similar words that are NOT a speed
                "10mm/mV": 0.0, "5mm/mV": 0.0, "20mm/mV": 0.0, "10 mm/mV": 0.0, "10/5mm/mV": 0.0,
                "150 Hz": 0.0, "40Hz": 0.0, "bpm": 0.0}
 
@@ -355,8 +353,8 @@ def speed_templates():
 
 
 def read_speed(text_mask: np.ndarray, R: float, min_score=0.45, debug=False):
-    """Procura 'NN mm/s' no texto da página. Retorna (velocidade, escore) ou (None, 0).
-    A palavra inteira identifica o padrão 'mm/s'; o 1º dígito (2/5/1) decide a velocidade."""
+    """Look for 'NN mm/s' in the page text. Returns (speed, score) or (None, 0).
+    The whole word identifies the 'mm/s' pattern; the first digit (2/5/1) decides the speed."""
     best = (None, 0.0)
     for w in find_words(text_mask, R, min_h_mm=1.0, max_h_mm=6.0):
         x0, y0, x1, y1 = w
@@ -383,9 +381,9 @@ def read_speed(text_mask: np.ndarray, R: float, min_score=0.45, debug=False):
             print("   palavra", w, "melhor", v_best, round(sc_best, 3))
         if sc_best < min_score or not v_best:
             continue
-        # 1º dígito: componente mais à esquerda
-        # pela projeção de colunas (letras quebradas por impressão térmica/limiar viram
-        # várias componentes; a 1ª coluna vazia depois da tinta separa o 1º dígito)
+        # first digit: leftmost component
+        # by column projection (letters broken by thermal printing/thresholding become
+        # several components; the first empty column after the ink separates the first digit)
         colp = crop.any(0)
         nz = np.nonzero(colp)[0]
         first = None

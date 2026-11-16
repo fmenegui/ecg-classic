@@ -1,12 +1,12 @@
 """
-Gerador de ECGs sintéticos com ground truth exato, para validar o digitalizador.
+Synthetic ECG generator with exact ground truth, for validating the digitizer.
 
-- Sinal: modelo de dipolo cardíaco 3D (ondas P, Q, R, S, T gaussianas com vetores
-  próprios) projetado nas 12 derivações -> as relações de Einthoven/Goldberger são
-  satisfeitas por construção (II = I + III, aVR + aVL + aVF = 0).
-- Imagem: papel milimetrado 25 mm/s, 10 mm/mV, layout 3x4 + ritmo (II), pulsos de
-  calibração, rótulos, cabeçalho, e degradações (rotação, perspectiva, sombra,
-  ruído, blur, JPEG).
+- Signal: 3D cardiac dipole model (Gaussian P, Q, R, S, T waves with their own vectors)
+  projected onto the 12 leads -> Einthoven/Goldberger relations hold by construction
+  (II = I + III, aVR + aVL + aVF = 0).
+- Image: grid paper at 25 mm/s, 10 mm/mV, 3x4 layout + rhythm strip (II), calibration
+  pulses, labels, header, and degradations (rotation, perspective, shadow, noise, blur,
+  JPEG).
 """
 from __future__ import annotations
 
@@ -17,14 +17,14 @@ LEADS = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V
 FS = 500
 DUR = 10.0
 
-# Layout 3x4 padrão (linhas x colunas) + tira de ritmo
+# standard 3x4 layout (rows x columns) + rhythm strip
 LAYOUT_3x4 = [["I", "aVR", "V1", "V4"],
               ["II", "aVL", "V2", "V5"],
               ["III", "aVF", "V3", "V6"]]
 
 
 def _lead_vectors():
-    """Vetores de derivação no espaço (x, y, z) do dipolo."""
+    """Lead vectors in the (x, y, z) space of the dipole."""
     I = np.array([1.0, 0.0, 0.0])
     II = np.array([np.cos(np.pi / 3), np.sin(np.pi / 3), 0.0])
     III = II - I
@@ -32,7 +32,7 @@ def _lead_vectors():
     aVL = I - II / 2
     aVF = II - I / 2
     vecs = [I, II, III, aVR, aVL, aVF]
-    # precordiais no plano horizontal (x, z), z anterior
+    # precordial leads on the horizontal plane (x, z), z anterior
     for ang in [115, 95, 75, 55, 35, 15]:
         a = np.deg2rad(ang)
         vecs.append(np.array([np.cos(a), 0.15, np.sin(a)]) * 1.4)
@@ -40,19 +40,19 @@ def _lead_vectors():
 
 
 def synth_signals(rng: np.random.Generator) -> np.ndarray:
-    """Retorna array (12, 5000) em mV."""
+    """Returns an array (12, 5000) in mV."""
     n = int(FS * DUR)
     t = np.arange(n) / FS
     hr = rng.uniform(50, 115)
     rr = 60.0 / hr
-    # tempos dos batimentos com leve variabilidade
+    # beat times with slight variability
     beats = []
     tb = rng.uniform(0.1, rr)
     while tb < DUR + 0.5:
         beats.append(tb)
         tb += rr * rng.normal(1.0, 0.03)
 
-    # ondas: (offset rel. R [s], largura [s], vetor 3D)
+    # waves: (offset relative to R [s], width [s], 3D vector)
     def rv(scale):
         v = rng.normal(0, 1, 3)
         v /= np.linalg.norm(v) + 1e-9
@@ -73,7 +73,7 @@ def synth_signals(rng: np.random.Generator) -> np.ndarray:
         for off, w, vec in waves:
             g = np.exp(-0.5 * ((t - (b + off)) / w) ** 2)
             dip += g[:, None] * vec[None, :]
-    # deriva de linha de base e ruído no dipolo (mantém Einthoven)
+    # baseline wander and noise on the dipole (keeps Einthoven)
     for k in range(3):
         f = rng.uniform(0.05, 0.4)
         dip[:, k] += rng.uniform(0, 0.06) * np.sin(2 * np.pi * f * t + rng.uniform(0, 6.28))
@@ -83,12 +83,12 @@ def synth_signals(rng: np.random.Generator) -> np.ndarray:
 
 
 GRID_STYLES = [
-    # (cor linhas finas BGR, cor linhas grossas BGR, cor papel BGR)
-    ((190, 190, 250), (120, 120, 235), (245, 245, 255)),   # rosa/vermelho clássico
+    # (thin-line BGR colour, thick-line BGR colour, paper BGR colour)
+    ((190, 190, 250), (120, 120, 235), (245, 245, 255)),   # classic pink/red
     ((200, 205, 255), (90, 100, 230), (250, 250, 255)),
-    ((170, 200, 245), (80, 140, 230), (235, 248, 255)),    # laranja
-    ((215, 215, 215), (160, 160, 160), (252, 252, 252)),   # cinza (impressão P&B)
-    ((235, 215, 195), (200, 160, 120), (255, 252, 248)),   # azul
+    ((170, 200, 245), (80, 140, 230), (235, 248, 255)),    # orange
+    ((215, 215, 215), (160, 160, 160), (252, 252, 252)),   # grey (black-and-white print)
+    ((235, 215, 195), (200, 160, 120), (255, 252, 248)),   # blue
 ]
 
 
@@ -100,8 +100,8 @@ def render(sig: np.ndarray, rng: np.random.Generator, ppmm: float | None = None,
            degrade: str = "medium", layout="3x4+1", ticks: bool | None = None,
            speed: float = 25.0, gain_limb: float = 10.0, gain_prec: float = 10.0,
            label_style: str | None = None):
-    """Renderiza o ECG em papel. layout: nome em layouts.LIBRARY ou lista de linhas.
-    Retorna (img_bgr, shown (12,N) bool, meta) — meta traz o ground truth do layout."""
+    """Render the ECG on paper. layout: name in layouts.LIBRARY or list of rows.
+    Returns (img_bgr, shown (12,N) bool, meta); meta carries the layout ground truth."""
     from .layouts import LIBRARY, lead_signal, is_limb, to_standard
     if ppmm is None:
         ppmm = float(rng.uniform(5.5, 12.0))
@@ -148,7 +148,7 @@ def render(sig: np.ndarray, rng: np.random.Generator, ppmm: float | None = None,
 
     x_sig0 = 22.5
     n_all = sig.shape[1]
-    dur = min(DUR, 250.0 / speed)                 # duração exibida
+    dur = min(DUR, 250.0 / speed)                 # displayed duration
     n = int(round(dur * FS))
     nr = len(spec)
     top, bottom = 55.0, 200.0
@@ -170,7 +170,7 @@ def render(sig: np.ndarray, rng: np.random.Generator, ppmm: float | None = None,
         xa = 12.0
         if g1 == g2:
             pts = [(xa, y0), (xa + 2, y0), (xa + 2, y0 - g1), (xa + 7, y0 - g1), (xa + 7, y0), (xa + 9, y0)]
-        else:  # pulso em degrau: ganho dos membros e depois das precordiais
+        else:  # step pulse: limb gain, then precordial gain
             pts = [(xa, y0), (xa + 2, y0), (xa + 2, y0 - g1), (xa + 4.5, y0 - g1), (xa + 4.5, y0 - g2),
                    (xa + 7, y0 - g2), (xa + 7, y0), (xa + 9, y0)]
         pts = np.array([P(*p) for p in pts], np.int32)
@@ -194,7 +194,7 @@ def render(sig: np.ndarray, rng: np.random.Generator, ppmm: float | None = None,
                 org = (int((xl + 1.0) * ppmm), int((y0 - lab_dy) * ppmm))
             elif label_style == "below":
                 org = (int((xl + 1.0) * ppmm), int((y0 + 0.35 * sp) * ppmm))
-            else:  # junto ao início, um pouco acima da linha de base
+            else:  # next to the start, slightly above the baseline
                 org = (int((xl + 0.8) * ppmm), int((y0 - 3.5) * ppmm))
             if c == 0 and label_style != "above":
                 org = (int((x_sig0 - 1.0) * ppmm), org[1])
@@ -210,16 +210,16 @@ def render(sig: np.ndarray, rng: np.random.Generator, ppmm: float | None = None,
 
 
 def _nonrigid(img, rng, bg):
-    """Deformação não rígida de papel fotografado: curvatura cilíndrica suave + 1–2 vincos.
+    """Non-rigid deformation of photographed paper: smooth cylindrical curl + 1–2 creases.
 
-    Vinco = deslocamento contínuo com quebra de derivada ao longo de uma reta (as duas metades
-    da folha ficam em planos diferentes), com faixa de sombra. Nenhum polinômio global de grau
-    baixo representa essa quebra; é o caso que motiva a retificação local."""
+    Crease = continuous displacement with a derivative break along a line (the two halves of
+    the sheet lie on different planes), with a shadow band. No low-degree global polynomial
+    represents that break; it is the case that motivates local rectification."""
     H, W = img.shape[:2]
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
     dx = np.zeros((H, W), np.float32); dy = np.zeros((H, W), np.float32)
     shade = np.ones((H, W), np.float32)
-    # curvatura (folha arqueada): compressão perto das bordas + barriga vertical
+    # curl (arched sheet): compression near the edges + vertical bulge
     a = rng.uniform(0.004, 0.012) * W
     dx += a * np.sin(np.pi * (xx / W - 0.5))
     dy += rng.uniform(-0.008, 0.008) * H * np.cos(np.pi * (xx / W - 0.5))
@@ -228,8 +228,8 @@ def _nonrigid(img, rng, bg):
         nx, ny = np.cos(th), np.sin(th)
         c = rng.uniform(0.3, 0.7, 2) * [W, H]
         dist = (xx - c[0]) * nx + (yy - c[1]) * ny
-        k = rng.uniform(0.008, 0.025) * rng.choice([-1, 1])     # mudança de inclinação na dobra
-        t = rng.uniform(-0.01, 0.01)                             # cisalhamento ao longo do vinco
+        k = rng.uniform(0.008, 0.025) * rng.choice([-1, 1])     # slope change at the fold
+        t = rng.uniform(-0.01, 0.01)                             # shear along the crease
         r = np.maximum(dist, 0)
         dx += k * r * nx - t * r * ny
         dy += k * r * ny + t * r * nx
@@ -244,7 +244,7 @@ def degrade_image(img, rng, level, meta):
         return img
     fold = level == "fold"
     lv = {"light": 0.4, "medium": 1.0, "heavy": 1.8, "fold": 1.0}[level]
-    # rotação + translação sobre fundo de "mesa"
+    # rotation + translation over a "table" background
     ang = rng.uniform(-3, 3) * lv
     meta["angle"] = ang
     pad = int(0.06 * max(H, W))
@@ -255,7 +255,7 @@ def degrade_image(img, rng, level, meta):
     canvas = cv2.warpAffine(canvas, M, (Wc, Hc), flags=cv2.INTER_LINEAR, borderValue=bg)
     if fold:
         canvas = _nonrigid(canvas, rng, bg)
-    # perspectiva leve
+    # slight perspective
     if lv >= 1.0:
         d = 0.025 * (lv - 0.6) * min(Hc, Wc)
         src = np.float32([[0, 0], [Wc, 0], [Wc, Hc], [0, Hc]])
@@ -263,14 +263,14 @@ def degrade_image(img, rng, level, meta):
         Hm = cv2.getPerspectiveTransform(src, dst)
         canvas = cv2.warpPerspective(canvas, Hm, (Wc, Hc), flags=cv2.INTER_LINEAR, borderValue=bg)
     img = canvas.astype(np.float32)
-    # iluminação não uniforme (sombra)
+    # uneven illumination (shadow)
     yy, xx = np.mgrid[0:Hc, 0:Wc].astype(np.float32)
     gx, gy = rng.uniform(-1, 1, 2)
     shade = 1.0 - 0.25 * lv * (0.5 + 0.5 * ((gx * xx / Wc + gy * yy / Hc)))
     img *= shade[..., None]
-    # tom de cor (balanço de branco)
+    # colour tone (white balance)
     img *= rng.uniform(1 - 0.06 * lv, 1 + 0.06 * lv, 3)[None, None, :]
-    # blur + ruído
+    # blur + noise
     k = rng.uniform(0.3, 1.0) * lv
     img = cv2.GaussianBlur(img, (0, 0), k)
     img += rng.normal(0, 4 * lv, img.shape)
@@ -282,7 +282,7 @@ def degrade_image(img, rng, level, meta):
 
 def make_dataset(out_dir, n=20, seed=0, degrade="medium", layout="3x4+1", speed=25.0,
                  gain_limb=10.0, gain_prec=10.0):
-    """layout="mix" sorteia layout, velocidade e ganho dividido (conjunto de layout difícil)."""
+    """layout="mix" draws layout, speed and split gain at random (hard layout set)."""
     import os, json
     from .layouts import LIBRARY
     os.makedirs(out_dir, exist_ok=True)
@@ -296,9 +296,9 @@ def make_dataset(out_dir, n=20, seed=0, degrade="medium", layout="3x4+1", speed=
             sp = 50.0 if rng.random() < 0.2 else 25.0
             gl, gp = [(10, 10), (10, 10), (10, 5), (5, 5), (20, 10)][rng.integers(5)]
             nrows = len(LIBRARY[lay])
-            if nrows > 7 and gl > 5:      # 12x1: linhas a ~12 mm -> ganho baixo (como os aparelhos)
+            if nrows > 7 and gl > 5:      # 12x1: rows ~12 mm apart -> low gain (like devices do)
                 gl, gp = (5, 5)
-            elif nrows > 4 and gl > 10:   # 6x2 com 20 mm/mV não cabe
+            elif nrows > 4 and gl > 10:   # 6x2 at 20 mm/mV does not fit
                 gl, gp = (10, 5)
         img, shown, meta = render(sig, rng, degrade=degrade, layout=lay, speed=sp,
                                   gain_limb=float(gl), gain_prec=float(gp))

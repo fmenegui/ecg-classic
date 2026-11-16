@@ -1,4 +1,4 @@
-"""Os atalhos de velocidade têm de dar o mesmo resultado dos cálculos de referência."""
+"""The speed shortcuts must give the same result as the reference computations."""
 import warnings
 
 import numpy as np
@@ -12,8 +12,8 @@ def test_nanmedian_axis_igual_ao_numpy():
     rng = np.random.default_rng(0)
     a = rng.random((37, 50)).astype(np.float32)
     a[rng.random(a.shape) < 0.3] = np.nan
-    a[:, 7] = np.nan                         # coluna toda NaN
-    a[:36, 9] = np.nan                       # só um valor
+    a[:, 7] = np.nan                         # whole column NaN
+    a[:36, 9] = np.nan                       # a single value
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         ref = np.nanmedian(a, axis=0)
@@ -45,7 +45,7 @@ def test_median5_cells_igual_ao_scipy():
 
 
 def _column_runs_ref(B, D, ya, yb, xa, xb):
-    """A versão antiga, coluna a coluna."""
+    """The old version, column by column."""
     out = []
     sub, subD = B[ya:yb, xa:xb], D[ya:yb, xa:xb]
     yy = np.arange(ya, yb, dtype=np.float64)
@@ -82,7 +82,7 @@ def test_column_runs_igual_a_referencia(seed):
         assert [(int(a), int(b)) for a, b, _, _ in cr] == [(int(a), int(b)) for a, b, _, _ in cg]
         assert all(isinstance(a, np.integer) and isinstance(b, np.integer) for a, b, _, _ in cg)
         np.testing.assert_allclose([c[2:] for c in cr], [c[2:] for c in cg], rtol=1e-12, atol=1e-12)
-    # o Viterbi dá o mesmo caminho com os segmentos de uma ou de outra versão
+    # Viterbi gives the same path with the segments of either version
     assert viterbi_track(ref, 40.0, 10.0, lw=3.0, w_edge=0.3) == viterbi_track(got, 40.0, 10.0, lw=3.0, w_edge=0.3)
 
 
@@ -90,7 +90,7 @@ def test_column_runs_faixa_alem_da_imagem():
     B = np.zeros((20, 10), bool)
     B[15:, 4] = True
     D = B.astype(np.float32)
-    got = column_runs(B, D, 10, 40, 0, 10)      # yb passa do fim: a faixa é cortada
+    got = column_runs(B, D, 10, 40, 0, 10)      # yb goes past the end: the band is clipped
     (top, bot, cen, mass), = got[4]
     assert (top, bot) == (15, 19) and cen == pytest.approx(17.0) and mass == pytest.approx(5.0)
     assert all(not c for i, c in enumerate(got) if i != 4)

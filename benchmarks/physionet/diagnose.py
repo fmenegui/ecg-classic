@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
-"""Decomposição do erro: quanto SNR cada tipo de erro custa.
+"""Error decomposition: how much SNR each kind of error costs.
 
-Para cada imagem (sinais salvos em sig/*.npz pela avaliação), aplica correções "oráculo"
-cumulativas, cada uma usando o gabarito só para o seu tipo de erro, e mede o SNR depois de
-cada passo (mesma métrica da avaliação: soma nas 12 derivações):
+For each image (signals saved in sig/*.npz by the evaluation), apply cumulative "oracle"
+corrections, each using the ground truth only for its own kind of error, and measure the SNR
+after each step (same metric as the evaluation: sum over the 12 leads):
 
-  0 métrica      : alinhamento da competição (±0,2 s e média por derivação)
-  1a rótulos     : cada derivação do gabarito pode usar o canal previsto que melhor a explica
-                   (layout/nome errado: derivação trocada ou linha atribuída à derivação errada)
-  1 cobertura    : buracos dentro de derivações previstas recebem o gabarito (derivação
-                   inteira ausente não conta aqui: é erro de layout, fica no resto)
-  2 origem       : deslocamento comum a todas as derivações até ±1,5 s
-  3 deriva       : por derivação, escala de tempo (±3 %) + deslocamento
-  3b deriva local: janelas de 0,5 s com deslocamento próprio até ±80 ms (distorção
-                   horizontal não linear: vinco, borda do scanner, papel curvo)
-  4 ganho        : por derivação, fator de amplitude ótimo
-  5 linha de base: diferença lenta (< 0,7 Hz) removida
-  resto          : forma (traçado, picos cortados, fusões)
+  0 metric      : competition alignment (±0.2 s and mean per lead)
+  1a labels     : each ground-truth lead may use the predicted channel that explains it best
+                  (wrong layout/name: swapped lead or row assigned to the wrong lead)
+  1 coverage    : holes inside predicted leads get the ground truth (a whole missing lead
+                  does not count here: it is a layout error, it stays in the remainder)
+  2 origin      : shift common to all leads, up to ±1.5 s
+  3 drift       : per lead, time scale (±3 %) + shift
+  3b local drift: 0.5 s windows with their own shift up to ±80 ms (non-linear horizontal
+                  distortion: crease, scanner edge, curved paper)
+  4 gain        : per lead, optimal amplitude factor
+  5 baseline    : slow difference (< 0.7 Hz) removed
+  remainder     : shape (tracing, clipped peaks, merges)
 
-O ganho de cada passo é a perda atribuível àquele erro (na ordem acima).
+The gain of each step is the loss attributable to that error (in the order above).
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ import numpy as np
 from scipy.ndimage import uniform_filter1d
 
 LEADS = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
-STEPS = ["métrica", "rótulos", "cobertura", "origem", "deriva", "deriva local", "ganho", "linha de base"]
+STEPS = ["metric", "labels", "coverage", "origin", "drift", "local drift", "gain", "baseline"]
 
 
 def _snr(G, P):
@@ -84,7 +84,7 @@ def _align1(g, p, fs):
 
 
 def _metric_align(G, P, fs):
-    """Alinhamento da competição: por derivação, lag ±0,2 s e média."""
+    """Competition alignment: per lead, lag ±0.2 s and mean."""
     ms = int(0.2 * fs)
     Q = np.full_like(P, np.nan)
     for i in range(12):
@@ -106,8 +106,8 @@ def decompose(G, P, fs, return_signals=False):
     P = P.astype(np.float64)
     out = {}
     Q = _metric_align(G, P, fs)
-    out["métrica"] = _snr(G, Q)
-    # 1a rótulos: melhor canal previsto para cada derivação do gabarito
+    out["metric"] = _snr(G, Q)
+    # 1a labels: best predicted channel for each ground-truth lead
     Pl = P.copy()
     base = [_snr(G[i:i + 1], Q[i:i + 1]) for i in range(12)]
     for i in range(12):
@@ -121,14 +121,14 @@ def decompose(G, P, fs, return_signals=False):
             if v > best[0] + 0.5:
                 best = (v, j)
         Pl[i] = P[best[1]]
-    out["rótulos"] = _snr(G, _metric_align(G, Pl, fs))
+    out["labels"] = _snr(G, _metric_align(G, Pl, fs))
     P = Pl
-    # 1 cobertura (só buracos em derivações com previsão)
+    # 1 coverage (only holes in leads with a prediction)
     has = np.array([np.isfinite(P[i][np.isfinite(G[i])]).mean() >= 0.2 if np.isfinite(G[i]).any() else False
                     for i in range(12)])
     P1 = np.where(np.isfinite(P) | ~np.isfinite(G) | ~has[:, None], P, G)
-    out["cobertura"] = _snr(G, _metric_align(G, P1, fs))
-    # 2 origem comum (até ±1,5 s)
+    out["coverage"] = _snr(G, _metric_align(G, P1, fs))
+    # 2 common origin (up to ±1.5 s)
     ms = int(1.5 * fs)
     best = (np.inf, 0)
     for s in range(-ms, ms + 1, max(1, int(fs / 100))):
@@ -144,9 +144,9 @@ def decompose(G, P, fs, return_signals=False):
         if e < best[0]:
             best = (e, s)
     P2 = np.stack([_shift(P1[i], best[1]) for i in range(12)])
-    out["origem"] = _snr(G, _metric_align(G, P2, fs))
-    out["origem_s"] = best[1] / fs
-    # 3 deriva: escala de tempo por derivação ancorada no início do trecho mostrado
+    out["origin"] = _snr(G, _metric_align(G, P2, fs))
+    out["origin_s"] = best[1] / fs
+    # 3 drift: time scale per lead anchored at the start of the shown stretch
     P3 = np.full_like(P2, np.nan)
     for i in range(12):
         g = G[i]
@@ -179,9 +179,9 @@ def decompose(G, P, fs, return_signals=False):
         a, s = best[1]
         q = np.interp(t0 + (x - t0) * a, x[okp], p[okp], left=np.nan, right=np.nan)
         P3[i] = _shift(q, s)
-    out["deriva"] = _snr(G, _metric_align(G, P3, fs))
+    out["drift"] = _snr(G, _metric_align(G, P3, fs))
     Q3 = _metric_align(G, P3, fs)
-    # 3b deriva local: deslocamento por janela de 0,5 s
+    # 3b local drift: shift per 0.5 s window
     P3b = Q3.copy()
     win, ms = int(0.5 * fs), int(0.08 * fs)
     for i in range(12):
@@ -192,7 +192,7 @@ def decompose(G, P, fs, return_signals=False):
         for a0 in range(idx[0], idx[-1] + 1, win):
             sl = np.arange(a0, min(a0 + win, idx[-1] + 1))
             g = G[i][sl]
-            best = (float(((g - np.nan_to_num(Q3[i][sl], nan=0.0)) ** 2).mean()), 0)  # sem deslocamento
+            best = (float(((g - np.nan_to_num(Q3[i][sl], nan=0.0)) ** 2).mean()), 0)  # no shift
             for s_ in range(-ms, ms + 1):
                 j = sl - s_
                 ok = (j >= 0) & (j < len(G[i]))
@@ -200,15 +200,15 @@ def decompose(G, P, fs, return_signals=False):
                 q[ok] = Q3[i][j[ok]]
                 if np.isfinite(q).sum() < 0.6 * len(sl):
                     continue
-                e = float(((g - np.nan_to_num(q, nan=0.0)) ** 2).mean())  # buraco conta como 0, como na métrica
+                e = float(((g - np.nan_to_num(q, nan=0.0)) ** 2).mean())  # a hole counts as 0, as in the metric
                 if e < best[0]:
                     best = (e, s_)
             j = sl - best[1]
             ok = (j >= 0) & (j < len(G[i]))
             P3b[i][sl[ok]] = Q3[i][j[ok]]
-    out["deriva local"] = _snr(G, P3b)
+    out["local drift"] = _snr(G, P3b)
     Q3 = P3b
-    # 4 ganho por derivação
+    # 4 gain per lead
     P4 = Q3.copy()
     for i in range(12):
         m = np.isfinite(G[i]) & np.isfinite(Q3[i])
@@ -218,8 +218,8 @@ def decompose(G, P, fs, return_signals=False):
         q = Q3[i][m] - Q3[i][m].mean()
         k = float(g @ q / max(q @ q, 1e-12))
         P4[i][m] = q * np.clip(k, 0.3, 3.0) + G[i][m].mean()
-    out["ganho"] = _snr(G, P4)
-    # 5 linha de base: diferença lenta
+    out["gain"] = _snr(G, P4)
+    # 5 baseline: slow difference
     P5 = P4.copy()
     w = int(1.4 * fs)
     for i in range(12):
@@ -230,7 +230,7 @@ def decompose(G, P, fs, return_signals=False):
         cnt = uniform_filter1d(m.astype(float), w)
         low = uniform_filter1d(d, w) / np.maximum(cnt, 1e-6)
         P5[i] = np.where(m, P4[i] + low, P4[i])
-    out["linha de base"] = _snr(G, P5)
+    out["baseline"] = _snr(G, P5)
     if return_signals:
         return out, P5
     return out

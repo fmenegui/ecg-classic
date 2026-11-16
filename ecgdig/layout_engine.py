@@ -1,21 +1,20 @@
 """
-Motor de layout por hipótese e verificação.
+Layout engine by hypothesis and verification.
 
-Entrada: a estrutura já detectada (linhas de traçado, pulsos com 1 ou 2 níveis, eixo do
-tempo por linha, traço rápido de cada linha inteira). Saída: o layout mais provável —
-nomes impressos de cada segmento de cada linha, ganho de cada segmento — com uma
-pontuação decomposta e uma confiança.
+Input: the structure already detected (trace rows, pulses with 1 or 2 levels, time axis per
+row, quick trace of each full row). Output: the most likely layout (printed names of each
+segment of each row, gain of each segment) with a decomposed score and a confidence.
 
-Hipóteses: famílias da biblioteca (padrão e Cabrera; 3x4, 6x2, 12x1) no topo da página,
-com as linhas restantes como tiras de ritmo de derivação livre, e uma hipótese "livre"
-(nº de segmentos por linha pelas evidências de fronteira, nomes pelo OCR).
+Hypotheses: library families (standard and Cabrera; 3x4, 6x2, 12x1) at the top of the page,
+with the remaining rows as rhythm strips of any lead, and a "free" hypothesis (number of
+segments per row from the boundary evidence, names from OCR).
 
-Pontuação (log-verossimilhança informal, termos independentes):
-  OCR       rótulo lido perto do início de cada segmento
-  fronteira marcas/rótulos nas posições de troca de derivação (e ausência nas outras)
-  membros   instantes com >= 3 derivações de membros simultâneas devem caber no espaço
-            2D de Einthoven/Goldberger (resíduo de mínimos quadrados)
-  duplicata a mesma derivação em duas tiras no mesmo instante deve coincidir
+Score (informal log-likelihood, independent terms):
+  OCR       label read near the start of each segment
+  boundary  marks/labels at the lead-switch positions (and their absence elsewhere)
+  limb      instants with >= 3 simultaneous limb leads must fit the 2D Einthoven/Goldberger
+            space (least-squares residual)
+  duplicate the same lead in two strips at the same instant must coincide
 """
 from __future__ import annotations
 
@@ -31,7 +30,7 @@ from . import ocr
 FAMILIES = ["3x4", "3x4-cabrera", "6x2", "6x2-cabrera", "12x1", "12x1-cabrera",
             "6x1-prec", "6x1-limb", "6x1-limb-cabrera"]
 STRIPS3 = [True]
-ROW_DROP = [True]    # hipóteses que deixam de fora linhas das pontas (moldura, régua)
+ROW_DROP = [True]    # hypotheses that leave out edge rows (frame, ruler)
 DROP_COST = [4.0]
 DROP_LIMB_GAIN = [0.25]
 DROP_NEAR = [0.88]
@@ -46,9 +45,9 @@ CABRERA_NO_EVIDENCE = [10.0]
 LABEL_HI = [15.0]
 BND_RELATIVE = [True]
 BND_OTHER_ROWS = [True]
-# QRS da própria linha também não é marca de fronteira (em formatos simultâneos o QRS cai na
-# mesma posição em todas as linhas e imita uma fronteira); barra solta lida como "I" não
-# desmente o nome de outro segmento (fragmento de QRS colado ao rótulo)
+# the row's own QRS is not a boundary mark either (in simultaneous formats the QRS falls at
+# the same position in every row and mimics a boundary); a loose bar read as "I" does not
+# contradict the name of another segment (QRS fragment touching the label)
 BND_OWN_QRS = [False]
 OCR_SINGLE_NEUTRAL = [False]
 BND_COHERENT = [True]
@@ -65,8 +64,8 @@ def _sign(name):
 
 
 def _limb_ratio(V, A):
-    """Resíduo relativo de Einthoven/Goldberger: V (n, T) medidas, A (n, 2) coeficientes
-    em (I, II). Mínimos quadrados por instante, vetorizado por padrão de amostras válidas."""
+    """Relative Einthoven/Goldberger residual: V (n, T) measurements, A (n, 2) coefficients
+    on (I, II). Least squares per instant, vectorized by pattern of valid samples."""
     ok = ~np.isnan(V)
     num = den = 0.0
     nt = 0
@@ -89,21 +88,21 @@ def _limb_ratio(V, A):
     return float(np.sqrt(num / den)), nt
 
 class Ctx:
-    """Tudo o que o motor precisa, já medido pelo pipeline."""
+    """Everything the engine needs, already measured by the pipeline."""
 
     def __init__(self, B, D, rows, pulses, R, x0_r, sc_r, speed, duration, qtr, base_r, levels):
         self.B, self.D, self.rows, self.pulses, self.R = B, D, list(rows), pulses, R
         self.x0_r, self.sc_r, self.speed, self.duration = x0_r, sc_r, speed, duration
         self.qtr, self.base_r, self.levels = qtr, base_r, levels  # levels[r] = (g1, g2|None)
         self.n = len(rows)
-        self.t = np.arange(0.0, duration, 0.01)  # grade de 100 Hz para pontuar
+        self.t = np.arange(0.0, duration, 0.01)  # 100 Hz grid for scoring
         self.vals = [self._row_px(r) for r in range(self.n)]
         self.words = self._read_words()
         self.bnd = {r: {q: self._boundary_evidence(r, q) for q in sorted({f for v in FRACS.values() for f in v})}
                     for r in range(self.n)}
         if BND_RELATIVE[0]:
-            # evidência relativa ao fundo da própria linha: grade vazando, marcas de tempo ou
-            # ruído dão "fronteira" em qualquer x; o que conta é a posição se destacar
+            # evidence relative to the row's own background: grid leakage, time marks or noise
+            # give a "boundary" at any x; what counts is the position standing out
             allf = [f for v in FRACS.values() for f in v]
             bgq = [q for q in np.arange(0.08, 0.93, 0.05) if min(abs(q - f) for f in allf) > 0.03]
             for r in range(self.n):
@@ -112,9 +111,9 @@ class Ctx:
                     self.bnd[r] = {q: float(np.clip((e - bg) / (1 - bg + 1e-6), 0, 1))
                                    for q, e in self.bnd[r].items()}
         if BND_COHERENT[0] and self.n >= 3:
-            # fronteira de coluna é a mesma em todas as linhas do bloco; um QRS que cai por
-            # acaso na posição só aparece numa linha. Evidência vista em menos da metade das
-            # linhas vale proporcionalmente menos
+            # a column boundary is the same in every row of the block; a QRS falling at the
+            # position by chance shows up in one row only. Evidence seen in fewer than half
+            # of the rows counts proportionally less
             qs = list(self.bnd[0].keys())
             for q in qs:
                 c = np.mean([self.bnd[r][q] > 0.5 for r in range(self.n)])
@@ -123,7 +122,7 @@ class Ctx:
                     self.bnd[r][q] *= f
         self._hp = {}
 
-    # ------------------------------------------------------------------ sinais
+    # ------------------------------------------------------------------ signals
     def x_of(self, r, t):
         return self.x0_r[r] + self.sc_r[r] * np.asarray(t) * self.speed * self.R
 
@@ -134,7 +133,7 @@ class Ctx:
         if ok.sum() < 10:
             return np.full(len(self.t), np.nan)
         v = np.interp(self.x_of(r, self.t), xs[ok], q["cen"][ok], left=np.nan, right=np.nan)
-        return self.base_r[r] - v  # px acima da linha de base
+        return self.base_r[r] - v  # px above the baseline
 
     def seg_gain(self, r, name):
         g1, g2 = self.levels[r]
@@ -143,14 +142,14 @@ class Ctx:
         return g1
 
     def seg_signal(self, r, k, c, name):
-        """(máscara de tempo, sinal em mV no nome CANÔNICO, passa-alta) do segmento c de k."""
+        """(time mask, signal in mV under the CANONICAL name, high-pass) of segment c of k."""
         n = len(self.t)
         i0, i1 = c * n // k, (c + 1) * n // k
         key = (r, k, c, name)
         if key not in self._hp:
             v = np.full(n, np.nan)
             seg = self.vals[r][i0:i1] / (self.seg_gain(r, name) * self.R)
-            # margem de 40 ms longe das fronteiras (marcas, troca de derivação)
+            # 40 ms margin away from the boundaries (marks, lead switch)
             m = 4
             seg2 = seg.copy()
             if c > 0:
@@ -161,7 +160,7 @@ class Ctx:
             ok = ~np.isnan(v)
             if ok.sum() > 20:
                 vi = np.interp(np.arange(n), np.nonzero(ok)[0], v[ok])
-                hp = vi - median_filter(vi, size=61, mode="nearest")  # remove deriva (~0.6 s)
+                hp = vi - median_filter(vi, size=61, mode="nearest")  # removes drift (~0.6 s)
                 hp[~ok] = np.nan
             else:
                 hp = v
@@ -178,7 +177,7 @@ class Ctx:
                     x = q["x0"] + i
                     if 0 <= x < W:
                         m[max(0, int(t) - 2):min(H, int(b) + 3), x] = 1
-        for p in self.pulses:  # pulsos não são texto
+        for p in self.pulses:  # pulses are not text
             if p is not None:
                 top = min(p["top"], p.get("top2", p["top"]))
                 m[max(0, int(top) - 3):int(p["foot"]) + 4, max(0, p["x_start"] - 3):p["x_end"] + 4] = 1
@@ -186,12 +185,12 @@ class Ctx:
 
     def _read_words(self):
         R = self.R
-        # texto = componentes pequenas e isoladas (não encostam no traço) + tinta fora do
-        # caminho do traço (rótulo que encosta num QRS).
+        # text = small isolated components (not touching the trace) + ink off the trace path
+        # (label touching a QRS).
         Bt = self.B
         from .extract import GRID_SEGS, clean_grid_segments
         if GRID_SEGS[0]:
-            # pedaços de grade monocromática grudados nas letras desfazem a componente isolada
+            # pieces of monochrome grid stuck to the letters break up the isolated component
             Bt = clean_grid_segments(Bt, R)
         n_, lab, st, _ = cv2.connectedComponentsWithStats(Bt.astype(np.uint8), connectivity=8)
         small = (st[:, cv2.CC_STAT_WIDTH] < 25 * R) & (st[:, cv2.CC_STAT_HEIGHT] < 9 * R)
@@ -205,8 +204,8 @@ class Ctx:
         iso = small[lab] & ~pulse_m
         txt = (iso | (Bt & ~tm)) & ~pulse_m
         if OCR_QRS_BARS[0]:
-            # linha vertical longa (separador de coluna tracejado, borda) colada ao rótulo faz a
-            # palavra passar da altura máxima e sumir: traços verticais > 6 mm não são letra
+            # a long vertical line (dashed column separator, border) touching the label pushes
+            # the word past the maximum height and it vanishes: vertical strokes > 6 mm are not letters
             lv = cv2.morphologyEx(txt.astype(np.uint8), cv2.MORPH_OPEN,
                                   np.ones((max(3, int(6 * R)), 1), np.uint8)) > 0
             if lv.any():
@@ -223,16 +222,16 @@ class Ctx:
                 continue
             isolated = iso[y0:y1, x0:x1].sum() >= 0.8 * crop.sum()
             single = list(d) == ["I"]
-            if single and not isolated:  # barra vertical colada ao traço = fragmento de QRS
+            if single and not isolated:  # vertical bar touching the trace = QRS fragment
                 continue
             cy = 0.5 * (y0 + y1)
             r = int(np.argmin([abs(cy - y) for y in self.rows]))
             dk = float(np.percentile(self.D[y0:y1, x0:x1][crop], 90))
             words.append(dict(box=w, row=r, x=x0, dist=d, best=best, h=y1 - y0, single=single, dark=dk))
-        # consenso de altura: todos os rótulos de uma página usam a mesma fonte
+        # height consensus: all labels of a page use the same font
         conf = [w for w in words if not w["single"] and w["best"] >= 0.55]
         conf_ok = len(conf) >= 3
-        # barras soltas ("I") muito maiores ou menores que os rótulos da página são pulso ou QRS
+        # loose bars ("I") much taller or shorter than the page labels are pulses or QRS
         multi = [w["h"] for w in words if not w["single"] and w["best"] >= 0.45]
         if len(multi) >= 2:
             hm = float(np.median(multi))
@@ -241,12 +240,12 @@ class Ctx:
         if conf_ok:
             hl = float(np.median([w["h"] for w in conf]))
             dl = float(np.median([w["dark"] for w in conf]))
-            # mesma fonte (altura) e mesma tinta (intensidade): vazamento de grade e
-            # fragmentos de traço são mais claros que o texto impresso da própria página
+            # same font (height) and same ink (intensity): grid leakage and trace fragments
+            # are lighter than the page's own printed text
             words = [w for w in words if 0.7 * hl <= w["h"] <= 1.35 * hl and w["dark"] >= 0.8 * dl]
-        # palavra pertence à linha cuja faixa a contém (rótulo acima OU abaixo do traço)
-        # 2ª passada local: linha sem rótulo no início -> abertura 3x3 na janela esperada
-        # (remove fiapos finos de grade grudados nas letras)
+        # a word belongs to the row whose band contains it (label above OR below the trace)
+        # 2nd local pass: row without a label at its start -> 3x3 opening in the expected window
+        # (removes thin grid slivers stuck to the letters)
         H, W = txt.shape
         for r in range(self.n):
             xs = float(self.x_of(r, 0.0))
@@ -259,7 +258,7 @@ class Ctx:
             xa, xb = max(0, int(xs - 25 * R)), min(W, int(xs + 15 * R))
             win = cv2.morphologyEx((txt[ya:yb, xa:xb]).astype(np.uint8), cv2.MORPH_OPEN,
                                    np.ones((3, 3), np.uint8))
-            # restos de grade viram pontinhos: remove componentes muito menores que uma letra
+            # grid remnants become dots: remove components much smaller than a letter
             hl_ = hl if conf_ok else 2.5 * R
             n2, l2, st2, _ = cv2.connectedComponentsWithStats(win, connectivity=8)
             keep = st2[:, cv2.CC_STAT_AREA] >= max(25, 0.06 * hl_ * hl_)
@@ -275,9 +274,9 @@ class Ctx:
                 words.append(dict(box=box, row=r, x=box[0], dist=d, best=max(d.values()), h=y1 - y0,
                                   single=False, dark=dk))
         if OCR_QRS_BARS[0]:
-            # barras soltas lidas como "I" repetidas ao longo de uma linha são QRS finos (pico
-            # isolado do traço partido), não rótulos: um rótulo aparece uma vez por segmento.
-            # Com >= 3 numa linha, ficam só as do começo da linha.
+            # loose bars read as "I" repeated along a row are thin QRS (isolated peak of a
+            # broken trace), not labels: a label appears once per segment. With >= 3 in a
+            # row, only those at the start of the row stay.
             for r in range(self.n):
                 sg = [w for w in words if w["row"] == r and w.get("single")]
                 if len(sg) >= 3:
@@ -287,8 +286,8 @@ class Ctx:
         return words
 
     def label_near(self, r, x_mm_lo, x_mm_hi, x_ref_mm=None):
-        """Palavra da linha r cuja borda esquerda cai em [lo, hi] mm; entre várias, a de
-        maior escore ponderado pela proximidade de x_ref (início do segmento)."""
+        """Word of row r whose left edge falls in [lo, hi] mm; among several, the one with the
+        highest score weighted by closeness to x_ref (segment start)."""
         R = self.R
         out, best = None, -1.0
         for w in self.words:
@@ -297,8 +296,8 @@ class Ctx:
                 continue
             sc = w["best"]
             if w.get("single"):
-                # barra solta lida como "I": fragmento de QRS, aresta de pulso ou uma barra
-                # de "II" que sobrou; perde para uma leitura de vários caracteres ao lado
+                # loose bar read as "I": QRS fragment, pulse edge or a leftover bar of "II";
+                # it loses to a multi-character reading next to it
                 sc *= 0.7
             if x_ref_mm is not None:
                 sc *= float(np.exp(-abs(x0 / R - x_ref_mm) / 8.0))
@@ -306,9 +305,9 @@ class Ctx:
                 out, best = w, sc
         return out
 
-    # -------------------------------------------------------------- fronteiras
+    # -------------------------------------------------------------- boundaries
     def _boundary_evidence(self, r, q):
-        """[0,1]: marca vertical que não é traço, ou rótulo logo após a posição."""
+        """[0,1]: vertical mark that is not trace, or a label just after the position."""
         R = self.R
         x = float(self.x_of(r, q * self.duration))
         H, W = self.B.shape
@@ -317,12 +316,12 @@ class Ctx:
         w = self.label_near(r, (x - 1.5 * R) / R, (x + 8 * R) / R)
         if w is not None:
             e = max(e, min(1.0, w["best"] / 0.6))
-        # marca vertical: tinta fora do traço numa coluna perto de x cruzando a base
+        # vertical mark: ink off the trace in a column near x crossing the baseline
         tm = getattr(self, "_tm", None)
         if tm is None:
             tm = self._tm = self._trace_mask_thin()
         if BND_OTHER_ROWS[0]:
-            # QRS alto de uma linha vizinha cruza esta linha: é traço, não marca de fronteira
+            # a tall QRS of a neighbouring row crosses this row: it is trace, not a boundary mark
             st = getattr(self, "_steep", None)
             if st is None:
                 st = self._steep = [self._trace_mask_steep(k) for k in range(self.n)]
@@ -355,25 +354,25 @@ class Ctx:
         m = np.zeros((H, W), bool)
         for q in self.qtr:
             for i, (t, b) in enumerate(zip(q["top"], q["bot"])):
-                if not np.isnan(t) and b - t < 3 * self.R:  # só trechos não verticais
+                if not np.isnan(t) and b - t < 3 * self.R:  # non-vertical stretches only
                     x = q["x0"] + i
                     if 0 <= x < W:
                         m[max(0, int(t) - 2):min(H, int(b) + 3), x] = True
         return m
 
-    # --------------------------------------------------------------- pontuação
+    # --------------------------------------------------------------- scoring
     def score(self, spec):
-        """spec = lista de linhas (cada uma lista de nomes impressos). Retorna (total, partes)."""
+        """spec = list of rows (each a list of printed names). Returns (total, parts)."""
         R = self.R
         parts = dict(ocr=0.0, bnd=0.0, limb=0.0, dup=0.0)
         segs = []
         for r, row in enumerate(spec):
             k = len(row)
             if k == 0:
-                continue      # linha fora da hipótese (moldura, régua): não pontua
+                continue      # row outside the hypothesis (frame, ruler): not scored
             for c, name in enumerate(row):
                 segs.append((r, k, c, name))
-            # fronteiras
+            # boundaries
             want = set(np.round(FRACS.get(k, []), 4))
             for q, e in self.bnd[r].items():
                 if round(q, 4) in want:
@@ -388,18 +387,18 @@ class Ctx:
             if w is None:
                 continue
             d = w["dist"]
-            # teto por segmento: uma leitura errada (sinal de menos perdido, dígito trocado)
-            # custa no máximo 1 unidade; a física (Goldberger, duplicatas) decide o resto
+            # cap per segment: a wrong reading (lost minus sign, swapped digit) costs at most
+            # 1 unit; the physics (Goldberger, duplicates) decides the rest
             top = max(d, key=d.get)
-            # I/II/III só diferem pelo número de barras: uma barra colada ao traço ou ao
-            # pulso some e "II" vira "I". Confusão entre eles custa metade
+            # I/II/III differ only by the number of bars: a bar touching the trace or the
+            # pulse vanishes and "II" becomes "I". Confusion among them costs half
             cap = 0.5 if (top in ("I", "II", "III") and _canon(name) in ("I", "II", "III")) else 1.0
             if w.get("single") and top == "I" and (_canon(name) in ("II", "III") or
                                                    (OCR_SINGLE_NEUTRAL[0] and _canon(name) != "I")):
-                cap = 0.0  # uma barra só não desmente II/III: as outras podem ter colado no traço
+                cap = 0.0  # a single bar does not contradict II/III: the others may have merged into the trace
             parts["ocr"] += max(-cap, (d.get(name, 0.0) - d[top]) / 0.15)
-        # rótulo confiável sem segmento que o explique: a hipótese ignora uma derivação impressa
-        # (p.ex. 6x1 numa página 6x2 com "V1".."V6" no meio da linha)
+        # reliable label with no segment to explain it: the hypothesis ignores a printed lead
+        # (e.g. 6x1 on a 6x2 page with "V1".."V6" in the middle of the row)
         if _UNEXPLAINED[0]:
             starts = {}
             for (r, k, c, name) in segs:
@@ -411,7 +410,7 @@ class Ctx:
                 x0 = w["box"][0] / R
                 if not any(lo <= x0 <= hi for lo, hi in starts.get(w["row"], [])):
                     parts["ocr"] -= 1.0
-        # membros
+        # limb leads
         sig = {}
         has_grid = any(len(row) > 1 for row in spec)
         rhythm = []
@@ -421,9 +420,9 @@ class Ctx:
                 rhythm.append((v, name))
             else:
                 sig.setdefault(_canon(name), []).append((v, name))
-        # tira de ritmo só entra na física se for simultânea à cópia da grade: algumas
-        # páginas (montagens, impressões de outro trecho) trazem um ritmo de outro instante,
-        # e aí nem Goldberger nem a duplicata dizem nada sobre o nome
+        # a rhythm strip only enters the physics if it is simultaneous with the grid copy:
+        # some pages (montages, prints of another stretch) carry a rhythm from another
+        # instant, and then neither Goldberger nor the duplicate say anything about the name
         for v, name in rhythm:
             cps = sig.get(_canon(name), [])
             if cps:
@@ -433,7 +432,7 @@ class Ctx:
                 m = ~np.isnan(a) & ~np.isnan(v)
                 if m.sum() >= 50 and a[m].std() > 0 and v[m].std() > 0:
                     nr = np.linalg.norm(a[m] - v[m]) / max(np.linalg.norm(a[m]), np.linalg.norm(v[m]), 1e-9)
-                    # derivação quase plana (< ~80 µV RMS): o NRMSE é só ruído de quantização
+                    # nearly flat lead (< ~80 µV RMS): the NRMSE is only quantization noise
                     flat = min(np.std(a[m]), np.std(v[m])) < 0.08
                     if nr > 0.85 and not flat:
                         parts["dup"] -= 0.5
@@ -450,8 +449,8 @@ class Ctx:
             T = len(self.t)
             ratio, ntest = _limb_ratio(V[:, ::2], A)
             if STRIPS3[0] and not has_grid and len(spec) <= 3 and np.isfinite(ratio):
-                # tiras inteiras: a física tem de fechar em cada quarto da página. Numa 3x4 lida
-                # como 3 tiras o 1º quarto é mesmo I/II/III e fecha; os outros (aVR, V1, V4...) não
+                # full strips: the physics must close in each quarter of the page. On a 3x4 read
+                # as 3 strips the first quarter really is I/II/III and closes; the others (aVR, V1, V4...) do not
                 Vq = V[:, ::2]; qn = Vq.shape[1] // 4
                 rq = [_limb_ratio(Vq[:, i * qn:(i + 1) * qn], A) for i in range(4)]
                 rq = [x for x, nt in rq if nt > 20 and np.isfinite(x)]
@@ -460,15 +459,15 @@ class Ctx:
             if ntest > 20 and np.isfinite(ratio):
                 ref = 0.45
                 if LIMB_LOG[0]:
-                    # verossimilhança: resíduo de Einthoven/Goldberger pequeno é quase
-                    # impossível por acaso com os nomes errados; a evidência cresce como log
-                    # piso de 0,2: abaixo disso as hipóteses já cumprem a física e a diferença é
-                    # ruído (Cabrera e padrão com as mesmas derivações empatam)
+                    # likelihood: a small Einthoven/Goldberger residual is almost impossible by
+                    # chance with the wrong names; the evidence grows like a log.
+                    # Floor of 0.2: below it the hypotheses already satisfy the physics and the
+                    # difference is noise (Cabrera and standard with the same leads tie)
                     lr = float(np.clip(np.log(ref / max(ratio, 0.2)), -1.0, 1.5))
                     parts["limb"] = lr * min(1.0, ntest / (0.25 * T))
                 else:
                     parts["limb"] = (ref - ratio) * min(1.0, ntest / (0.25 * T))
-        # duplicatas
+        # duplicates
         for nme, lst in sig.items():
             for i in range(len(lst)):
                 for j in range(i + 1, len(lst)):
@@ -477,14 +476,14 @@ class Ctx:
                     if m.sum() < 50 or a[m].std() == 0 or b[m].std() == 0:
                         continue
                     if max(a[m].std(), b[m].std()) < 0.08:
-                        continue  # duas cópias quase planas: o NRMSE é só ruído, não é evidência
-                    # erro RMS normalizado: sensível a forma E amplitude (derivações
-                    # vizinhas têm correlação alta, mas amplitudes diferentes)
+                        continue  # two nearly flat copies: the NRMSE is only noise, not evidence
+                    # normalized RMS error: sensitive to shape AND amplitude (neighbouring
+                    # leads are highly correlated but have different amplitudes)
                     na, nb = np.linalg.norm(a[m]), np.linalg.norm(b[m])
                     nrmse = np.linalg.norm(a[m] - b[m]) / max(na, nb, 1e-9)
                     parts["dup"] += 0.5 - nrmse
-        # tiras de ritmo de um mesmo exame não repetem a mesma derivação (nenhum formato
-        # de fabricante imprime, p.ex., II duas vezes como ritmo)
+        # rhythm strips of one exam do not repeat the same lead (no vendor format prints,
+        # e.g., II twice as rhythm)
         rhythm = [_canon(row[0]) for row in spec if len(row) == 1]
         if any(len(row) > 1 for row in spec) and len(rhythm) > len(set(rhythm)):
             parts["rep"] = -(len(rhythm) - len(set(rhythm)))
@@ -492,32 +491,32 @@ class Ctx:
             + 3.0 * parts.get("rep", 0.0)
         return total, parts
 
-    # ------------------------------------------------------------- hipóteses
+    # ------------------------------------------------------------- hypotheses
     def _best_rhythm_names(self, grid_spec, rest_rows):
-        """Nomeia cada tira de ritmo (linha inteira, 1 derivação) pelo melhor escore conjunto."""
+        """Name each rhythm strip (full row, 1 lead) by the best joint score."""
         spec = [list(r) for r in grid_spec]
         rest_rows = list(rest_rows)
-        # convenção dos fabricantes: 1 tira de ritmo = II (GE, Philips, Mortara, Schiller);
-        # 2 = V1 e II; 3 = V1, II, V5. Prior moderado: rótulo lido ou a física podem vencer.
+        # vendor convention: 1 rhythm strip = II (GE, Philips, Mortara, Schiller);
+        # 2 = V1 and II; 3 = V1, II, V5. Moderate prior: a read label or the physics can win.
         canon = {1: [{"II"}], 2: [{"V1", "II"}, {"V1", "II"}], 3: [{"V1", "II", "V5"}] * 3}.get(
             len(rest_rows), [set()] * len(rest_rows))
         for j, r in enumerate(rest_rows):
             best, best_n = -np.inf, None
             for nm in LEAD_NAMES:
                 sc, parts_ = self.score(spec + [[nm]])
-                # o nome da tira vem do rótulo, da comparação direta com a mesma derivação na
-                # grade e da convenção; Goldberger (página inteira) não entra: com tira não
-                # simultânea ou traço ruim ele puxa para III/aVF/V3 sem motivo
+                # the strip name comes from the label, from direct comparison with the same
+                # lead in the grid and from the convention; Goldberger (whole page) does not
+                # enter: with a non-simultaneous strip or a poor trace it pulls to III/aVF/V3 for no reason
                 sc -= W_LIMB * parts_["limb"]
                 sc += 1.5 if nm in canon[j] else 0.0
-                # o escore inclui a grade; só a diferença entre nomes importa
+                # the score includes the grid; only the difference between names matters
                 if sc > best:
                     best, best_n = sc, nm
             spec.append([best_n])
         return spec
 
     def candidates(self, a=0, b=None):
-        """Hipóteses de layout para as linhas [a, b); as de fora ficam vazias (descartadas)."""
+        """Layout hypotheses for rows [a, b); the others stay empty (dropped)."""
         n_all = self.n
         b = n_all if b is None else b
         pre, pos = [[] for _ in range(a)], [[] for _ in range(n_all - b)]
@@ -533,11 +532,11 @@ class Ctx:
             if fam.startswith("3x1") and not STRIPS3[0]:
                 continue
             if (a or pos) and (fam.startswith("3x1") or fam.startswith("6x1")):
-                continue      # descartar linhas só para fechar uma página de 12 derivações
+                continue      # drop rows only to close a 12-lead page
             if fam in ("3x1-v13", "3x1-v46"):
-                # precordiais não têm física entre si (nada fecha como Einthoven): só com rótulo
-                # V lido no início de alguma linha; sem isso a hipótese vence só por não ter
-                # termo de física a perder
+                # precordial leads have no physics among themselves (nothing closes like
+                # Einthoven): only with a V label read at the start of some row; without it the
+                # hypothesis wins just by having no physics term to lose
                 vs = 0
                 for r in range(a, b):
                     xs = float(self.x_of(r, 0.0)) / self.R
@@ -554,7 +553,7 @@ class Ctx:
             out.append((name, spec + pos))
         if a or pos:
             return out
-        # hipótese livre: k por linha pelas fronteiras, nomes pelo OCR
+        # free hypothesis: k per row from the boundaries, names from OCR
         free = []
         for r in range(self.n):
             bestk, bests = 1, -np.inf
@@ -576,19 +575,19 @@ class Ctx:
     def choose(self):
         cands = [(nm, sp, 0.0) for nm, sp in self.candidates()]
         if ROW_DROP[0] and not getattr(self, "col_hint", None) and self.n >= 3:
-            # linhas das pontas podem não ser traçado (moldura da grade, régua, faixa de texto):
-            # a hipótese sem elas concorre com as outras e paga um custo. Quem decide é a
-            # pontuação de sempre (rótulos, fronteiras, Einthoven/Goldberger, duplicatas)
-            # pulso de calibração confiável = concorda em altura e coluna com pelo menos outro
+            # edge rows may not be trace (grid frame, ruler, text band): the hypothesis
+            # without them competes with the others and pays a cost. The usual score decides
+            # (labels, boundaries, Einthoven/Goldberger, duplicates)
+            # reliable calibration pulse = agrees in height and column with at least one other
             okp = [p for p in self.pulses if p is not None]
             trusted = [False] * self.n
             if len(okp) >= 2:
                 h0 = float(np.median([p["foot"] - p["top"] for p in okp])); x0_ = float(np.median([p["x_start"] for p in okp]))
                 trusted = [p is not None and abs((p["foot"] - p["top"]) - h0) <= 0.15 * h0 and abs(p["x_start"] - x0_) <= 3 * self.R
                            for p in self.pulses]
-            # só sai linha de ponta que está MAIS PERTO da vizinha do que o passo das outras: a
-            # moldura da grade fica colada no bloco de traçados; uma tira de ritmo de verdade
-            # fica a um passo (ou mais) da última linha
+            # only an edge row CLOSER to its neighbour than the step of the others is dropped:
+            # the grid frame sticks to the trace block; a real rhythm strip sits one step (or
+            # more) below the last row
             ys_ = np.asarray(self.rows, float)
             gp = np.diff(ys_)
             near_top = self.n >= 4 and gp[0] < DROP_NEAR[0] * float(np.median(gp[1:]))
@@ -597,38 +596,38 @@ class Ctx:
                 drop = list(range(a)) + list(range(self.n - nb, self.n))
                 if self.n - len(drop) < 3 or (a and not near_top) or (nb and not near_bot):
                     continue
-                # e só quando o pulso de calibração aponta: todas as linhas que ficam têm
-                # pulso e a que sai não tem. (Em páginas reais a tira de ritmo às vezes fica
-                # mais perto que o passo e ainda piora o fechamento da física por não casar
-                # bem com a derivação da grade: sem o pulso como testemunha, ela saía)
+                # and only when the calibration pulse points to it: every remaining row has a
+                # pulse and the dropped one does not. (On real pages the rhythm strip is
+                # sometimes closer than the step and still worsens the physics because it does
+                # not match the grid lead well: without the pulse as witness, it was dropped)
                 if any(self.pulses[r] is not None for r in drop) or \
                         any(self.pulses[r] is None for r in range(self.n) if r not in drop):
                     continue
-                # custo fixo por linha descartada, maior se ela tem pulso de calibração confiável.
-                # Não há medida segura de "parece traçado": a moldura herda os QRS da linha
-                # vizinha e uma derivação plana é quase reta
+                # fixed cost per dropped row, larger if it has a reliable calibration pulse.
+                # There is no safe measure of "looks like trace": the frame inherits the QRS of
+                # the neighbouring row and a flat lead is almost straight
                 cost = sum(DROP_COST[0] + (3.0 if trusted[r] else 0.0) for r in drop)
                 cands += [(nm, sp, cost) for nm, sp in self.candidates(a, self.n - nb)]
         scored = []
         for name, spec, cost in cands:
             sc, parts = self.score(spec)
             sc -= cost
-            # número de colunas já medido na imagem (colunas com alturas próprias): os layouts
-            # com esse número de colunas ganham, os outros perdem
+            # number of columns already measured on the image (columns with their own heights):
+            # layouts with that number of columns gain, the others lose
             kh = getattr(self, "col_hint", None)
             if kh:
                 kmax = max(len(row) for row in spec)
                 sc += 8.0 if kmax == kh else -8.0
             if name != "livre":
-                sc += 3.0  # prior para formatos de fabricante (a hipótese livre depende só do OCR)
+                sc += 3.0  # prior for vendor formats (the free hypothesis depends only on OCR)
                 if "cabrera" in name:
-                    sc -= 1.5  # Cabrera é regional (Escandinávia): precisa de alguma evidência
-                    # sem "-aVR" lido em lugar nenhum da página, a física sozinha não basta:
-                    # Goldberger fecha "quase" igual para várias permutações das derivações
+                    sc -= 1.5  # Cabrera is regional (Scandinavia): needs some evidence
+                    # with no "-aVR" read anywhere on the page, physics alone is not enough:
+                    # Goldberger closes "almost" equally for several lead permutations
                     if not any(w["dist"].get("-aVR", 0.0) >= 0.5 for w in self.words):
                         sc -= CABRERA_NO_EVIDENCE[0]
             else:
-                # numa grade cada derivação aparece uma vez (tiras de ritmo são linhas de 1)
+                # in a grid each lead appears once (rhythm strips are 1-lead rows)
                 grid_names = [nm for row in spec if len(row) > 1 for nm in row]
                 sc -= 3.0 * (len(grid_names) - len(set(map(_canon, grid_names))))
             scored.append((sc, name, spec, parts, cost))
@@ -636,9 +635,9 @@ class Ctx:
         if not scored:
             return None
         if any(z[4] > 0 for z in scored):
-            # descartar linha tira as penalidades dela (rótulo errado, fronteira fora do lugar):
-            # só vale se a física melhorar. Com a moldura lida como derivação, Einthoven/
-            # Goldberger não fecha; sem ela, fecha
+            # dropping a row removes its penalties (wrong label, misplaced boundary): only
+            # worth it if the physics improves. With the frame read as a lead,
+            # Einthoven/Goldberger does not close; without it, it does
             full_ = [z for z in scored if z[4] == 0]
             lim0 = full_[0][3]["limb"] if full_ else -1.0
             scored = [z for z in scored if z[4] == 0 or z[3]["limb"] >= lim0 + DROP_LIMB_GAIN[0]]
@@ -647,21 +646,21 @@ class Ctx:
         conf = float(1 / (1 + np.exp(-margin / 2.0)))
         warn = None
         n_lab = 0
-        for r in range(self.n):  # rótulos legíveis no início de alguma linha
+        for r in range(self.n):  # labels readable at the start of some row
             xs = float(self.x_of(r, 0.0)) / self.R
             w = self.label_near(r, xs - 25, xs + 15)
             if w is not None and max(w["dist"].values()) >= 0.45:
                 n_lab += 1
         if n_lab == 0 and len(scored) > 1:
-            # sem nenhum rótulo legível, só a física decide; páginas de 6 tiras de
-            # precordiais em ordem imitam o leque de Cabrera (fecham Goldberger "quase")
+            # with no readable label, only the physics decides; pages of 6 precordial strips
+            # in order mimic the Cabrera fan (they close Goldberger "almost")
             sets = lambda sp: {_canon(n) for row in sp for n in row}
             shape = lambda sp: [len(row) for row in sp]
             alts = [z for z in scored[1:] if sets(z[2]) != sets(best[2])]
             alts = [z for z in alts if shape(z[2]) == shape(best[2])] or alts
             if alts:
                 conf = min(conf, 0.55)
-                warn = f"nenhum rótulo lido; {best[1]} decidido só pela fisiologia (alternativa: {alts[0][1]})"
+                warn = f"no label read; {best[1]} chosen by physiology only (alternative: {alts[0][1]})"
         return dict(name=best[1], spec=best[2], score=best[0], parts=best[3], confidence=conf,
                     warning=warn, ranking=[(round(float(z[0]), 2), z[1]) for z in scored[:6]],
                     dropped=[r for r, row in enumerate(best[2]) if not row])

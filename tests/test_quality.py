@@ -1,4 +1,4 @@
-"""Nota de qualidade: alta num ECG bem lido, baixa em lixo."""
+"""Quality score: high on a well-read ECG, low on garbage."""
 import numpy as np
 
 from ecgdig.quality import assess
@@ -7,7 +7,7 @@ from ecgdig.layouts import LEADS
 
 
 def _page(sig):
-    """Recorta como um 3x4 + ritmo II: cada derivação só aparece em 2,5 s."""
+    """Crop like a 3x4 + rhythm II: each lead only shows for 2.5 s."""
     out = np.full_like(sig, np.nan)
     n = sig.shape[1] // 4
     for c, grp in enumerate(([0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11])):
@@ -29,7 +29,7 @@ def test_traco_trocado_por_ruido_tem_nota_baixa():
     sig = _page(synth_signals(rng).astype(np.float32))
     bad = LEADS.index("V5")
     m = np.isfinite(sig[bad])
-    sig[bad, m] = np.cumsum(rng.normal(0, 0.05, m.sum())).astype(np.float32)   # passeio aleatório
+    sig[bad, m] = np.cumsum(rng.normal(0, 0.05, m.sum())).astype(np.float32)   # random walk
     q = assess(sig, LEADS, 500)
     assert q["leads"]["V5"]["score"] < 0.5
     assert q["leads"]["V5"]["score"] < min(v["score"] for k, v in q["leads"].items() if k != "V5")

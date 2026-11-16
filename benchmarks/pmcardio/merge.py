@@ -1,6 +1,6 @@
-"""Junta os resultados das frentes do workflow do PM-ECG-ID e resume.
+"""Merge the results of the PM-ECG-ID workflow shards and summarize.
 
-    python benchmarks/pmcardio/merge.py <pasta com os artefatos baixados> <saída>
+    python benchmarks/pmcardio/merge.py <folder with the downloaded artifacts> <output>
 """
 from __future__ import annotations
 

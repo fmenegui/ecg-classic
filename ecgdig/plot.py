@@ -1,4 +1,4 @@
-"""Redesenha um ECG digitalizado em papel milimetrado padrão (25 mm/s, 10 mm/mV)."""
+"""Redraw a digitized ECG on standard grid paper (25 mm/s, 10 mm/mV)."""
 from __future__ import annotations
 
 import numpy as np
@@ -19,13 +19,13 @@ def _grid(ax, w_mm, h_mm):
 
 
 def plot_ecg(ax, signals, leads, fs=500, layout="3x4+1", rhythm=None, title=None, speed=25.0):
-    """Desenha em `ax` no layout pedido (nome da biblioteca ou lista de linhas, como
-    `res["layout_rows"]`). "-aVR" é desenhada invertida. `speed` em mm/s."""
+    """Draw on `ax` in the requested layout (library name or list of rows, like
+    `res["layout_rows"]`). "-aVR" is drawn inverted. `speed` in mm/s."""
     from .digitize import LAYOUTS
     spec = layout if isinstance(layout, (list, tuple)) else LAYOUTS.get(layout, [[l] for l in leads])
     n = signals.shape[1]
     dur = n / fs
-    pre = 10.0  # mm à esquerda (pulso)
+    pre = 10.0  # mm on the left (pulse)
     w_mm = pre + dur * speed + 2
     row_h = 25.0
     h_mm = row_h * len(spec) + 6
@@ -33,7 +33,7 @@ def plot_ecg(ax, signals, leads, fs=500, layout="3x4+1", rhythm=None, title=None
     idx = {l: i for i, l in enumerate(leads)}
     for r, row in enumerate(spec):
         y0 = h_mm - row_h * (r + 0.7)
-        # pulso de 1 mV
+        # 1 mV pulse
         ax.plot([2, 3, 3, 8, 8, 9], [y0, y0, y0 + 10, y0 + 10, y0, y0], color="k", lw=0.9)
         k = len(row)
         for c, lead in enumerate(row):

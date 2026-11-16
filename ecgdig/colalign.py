@@ -1,15 +1,14 @@
-"""Realinhamento por coluna: páginas em que cada coluna de derivações tem as suas próprias
-linhas de base.
+"""Per-column realignment: pages where each column of leads has its own baselines.
 
-Alguns geradores (e aparelhos que desenham cada derivação no seu nível DC) não alinham as
-linhas entre colunas: numa coluna as três derivações ficam juntas, na outra uma onda S funda
-empurra as de baixo. O modelo de "linhas da página" lê isso como linhas extras ou trocadas.
+Some generators (and devices that draw each lead at its own DC level) do not align rows
+across columns: in one column the three leads sit close together, in another a deep S wave
+pushes the lower ones down. The "page rows" model reads that as extra or swapped rows.
 
-Quando o traço se divide em colunas por vãos verticais comuns (sem tinta em toda a altura do
-traçado), em posições que dão colunas da mesma largura, e cada coluna tem o mesmo número de
-linhas, cada faixa (coluna, linha) é deslocada só na vertical até a altura de referência da
-linha (mediana entre colunas). Deslocar não muda amplitude nem tempo: o resto do programa vê
-uma página comum.
+The columns are found by blank vertical gaps, by equal-width column hypotheses, or by
+baseline tracks that start and end at the column changes. Each (column, row) band is then
+shifted vertically only, to a reference height per row (the median across columns, or a
+stacked layout when the columns have different row spacings). Shifting changes neither
+amplitude nor time: the rest of the program sees an ordinary page.
 """
 from __future__ import annotations
 
@@ -19,9 +18,9 @@ from scipy.signal import find_peaks
 
 ENABLED = [True]
 LONG_EXTENT = [True]
-ROW_DIST6 = [True]   # linhas de uma coluna a >= 6 mm (antes 8): aVL/aVF apertadas
-STRUCT = [True]     # estrutura por trilhos quando não há vãos em branco entre as colunas
-STRUCT_FIRST = [False]   # trilhos antes da hipótese de colunas de mesma largura
+ROW_DIST6 = [True]   # rows of one column >= 6 mm apart (was 8): tight aVL/aVF
+STRUCT = [True]     # structure from baseline tracks when there are no blank gaps between columns
+STRUCT_FIRST = [False]   # tracks before the equal-width column hypothesis
 
 
 def _gaps(B, R, ya, yb):
@@ -32,8 +31,8 @@ def _gaps(B, R, ya, yb):
         return None, None
     L, Rr = int(xs[0]), int(xs[-1])
     if LONG_EXTENT[0]:
-        # ilhas estreitas (< 20 mm) nas pontas, separadas do corpo por >= 3 mm quase sem tinta,
-        # são marca de canto, tracinho de grade escura ou texto: não esticam as colunas
+        # narrow islands (< 20 mm) at the ends, separated from the body by >= 3 mm with almost
+        # no ink, are corner marks, dark grid dashes or text: they do not stretch the columns
         for _ in range(4):
             seg = P[L:Rr + 1]
             b0 = np.median(seg[seg > 0]) if (seg > 0).any() else 0
@@ -79,8 +78,8 @@ ROW_FILTER = [True]
 
 
 def _keep_trace_rows(B, R, cols, pks, lr):
-    """Picos que não são traço (QR code, texto do rodapé: tinta em < 50% da largura da
-    coluna dentro da extensão do traçado) saem antes de comparar o número de linhas."""
+    """Peaks that are not trace (QR code, footer text: ink on < 50% of the column width inside
+    the trace extent) are dropped before comparing row counts."""
     if not ROW_FILTER[0] or lr is None:
         return pks
     H = B.shape[0]
@@ -107,15 +106,14 @@ def _col_rows(B, R, xa, xb):
 
 
 EQUAL_SPLIT = [True]
-# colunas com linhas em alturas próprias (cada coluna com o seu espaçamento): as faixas
-# (coluna, linha) vão para linhas novas de passo comum, em vez da mediana entre colunas
+# columns with rows at their own heights (each column with its own spacing): the
+# (column, row) bands move to stacked new rows instead of the median across columns
 RELAYOUT = [True]
 
 
 def _rows_are_traces(B, R, cols, pks, lr):
-    """Toda linha de toda coluna é traço (tinta perto da altura em boa parte da largura da
-    coluna, dentro da extensão do traçado; >= 70%): cabeçalho ou rodapé de texto numa coluna só não
-    passam."""
+    """Every row of every column is trace (ink near the height over most of the column width,
+    inside the trace extent; >= 70%): a header or footer in a single column does not pass."""
     H = B.shape[0]
     for (xa, xb), p in zip(cols, pks):
         a, b = max(xa, lr[0]), min(xb, lr[1] + 1)
@@ -150,9 +148,9 @@ def _equal_split(B, R, ya, yb, lr):
             P_ = np.array(pks, float)
             dl = np.median(P_, 0)[None, :] - P_
             sp = float(np.median(np.diff(np.median(P_, 0)))) if n > 1 else 0.0
-            # sem vão que confirme as colunas, o deslocamento tem de ser de bloco: alguma
-            # coluna inteira fora (mediana >= 3 mm), nenhum casamento ambíguo (> meia linha:
-            # cabeçalho numa coluna e rodapé na outra trocam o índice das linhas) e >= 5 mm
+            # with no gap confirming the columns, the shift has to be a block shift: some
+            # whole column off (median >= 3 mm), no ambiguous matching (> half a row: a header
+            # in one column and a footer in another swap the row indices) and >= 5 mm
             if sp > 0 and np.abs(dl).max() >= 5 * R and np.abs(dl).max() <= 0.5 * sp and \
                     np.median(np.abs(dl), 1).max() >= 3 * R:
                 return cols
@@ -162,7 +160,7 @@ def _equal_split(B, R, ya, yb, lr):
 
 
 def _win_peaks(B, R, xa, xb, ya, yb, dist_mm=3.5, with_height=False):
-    """Linhas de base numa janela estreita: picos da cobertura horizontal (traço dilatado 2 mm)."""
+    """Baselines in a narrow window: peaks of the horizontal coverage (trace dilated 2 mm)."""
     k = int(2 * R) | 1
     Bd = cv2.dilate(B[ya:yb, xa:xb].astype(np.uint8), np.ones((k, 1), np.uint8))
     cov = cv2.GaussianBlur(Bd.mean(1).astype(np.float64).reshape(-1, 1), (0, 0), 0.6 * R).ravel()
@@ -175,17 +173,17 @@ def _win_peaks(B, R, xa, xb, ya, yb, dist_mm=3.5, with_height=False):
 
 
 def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
-    """Estrutura por colunas sem depender de vãos em branco.
+    """Column structure without relying on blank gaps.
 
-    A página é varrida em janelas de 20 mm; em cada uma, os picos da cobertura horizontal são
-    as linhas de base locais. Picos que se repetem na mesma altura de janela em janela formam
-    um trilho (um trecho de derivação: altura, início, fim). Numa página comum os trilhos
-    atravessam a largura toda. Quando cada coluna tem as suas alturas, os trilhos começam e
-    terminam nas trocas de coluna: os pontos em que vários trilhos acabam e outros começam
-    são as fronteiras, e cada coluna fica com as suas linhas.
+    The page is swept in 20 mm windows; in each one, the peaks of the horizontal coverage are
+    the local baselines. Peaks that repeat at the same height from window to window form a
+    track (a lead stretch: height, start, end). On an ordinary page the tracks cross the whole
+    width. When each column has its own heights, tracks start and end at the column changes:
+    the points where several tracks end and others start are the boundaries, and each column
+    keeps its own rows.
 
-    Devolve (cols, P) com cols = [(xa, xb), ...] e P (colunas, linhas) = alturas, ou None
-    quando a página é comum (ou a estrutura não é clara)."""
+    Returns (cols, P) with cols = [(xa, xb), ...] and P (columns, rows) = heights, or None
+    when the page is ordinary (or the structure is not clear)."""
     H, W = B.shape
     prof = B.mean(1)
     ys = np.nonzero(prof > 0.05 * prof.max())[0] if prof.max() > 0 else []
@@ -193,8 +191,8 @@ def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
     xs = np.nonzero(xsum > 0)[0]
     if len(ys) < 10 or len(xs) < 100 * R:
         return None
-    # folga de 5 mm: a primeira/última linha de base não pode cair na borda da faixa (pico
-    # na borda não é pico para o find_peaks)
+    # 5 mm slack: the first/last baseline must not fall on the band edge (a peak on the edge
+    # is not a peak for find_peaks)
     ya, yb = max(0, int(ys[0] - 5 * R)), min(H, int(ys[-1]) + 1 + int(5 * R))
     L, Rr = int(xs[0]), int(xs[-1]) + 1
     win, step, tol = int(win_mm * R), int(step_mm * R), link_mm * R
@@ -202,7 +200,7 @@ def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
     if len(x0s) < 8:
         return None
     peaks = [_win_peaks(B, R, x, x + win, ya, yb) for x in x0s]
-    # trilhos: encadeia picos de janelas consecutivas (tolera 1 janela sem o pico)
+    # tracks: chain peaks of consecutive windows (tolerates 1 window without the peak)
     tracks = []   # dict(ys=[...], j0, j1)
     open_ = []
     for j, pk in enumerate(peaks):
@@ -223,19 +221,19 @@ def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
     nmin = max(3, int(round((min_len_mm - win_mm) / step_mm)) + 1)
     tr = [dict(y=float(np.median(t["ys"])), xa=x0s[t["j0"]], xb=x0s[t["j1"]] + win, n=t["j1"] - t["j0"] + 1)
           for t in tracks if t["j1"] - t["j0"] + 1 >= nmin]
-    # só trilhos de pelo menos 45 mm definem a estrutura (rodapé, QR e platôs de onda S/T
-    # dão trilhos curtos)
+    # only tracks of at least 45 mm define the structure (footer, QR and S/T plateaus give
+    # short tracks)
     tr = [t for t in tr if t["xb"] - t["xa"] >= 45 * R]
     if len(tr) < 4:
         return None
-    # extensão do traçado pelos próprios trilhos (tinta solta nas margens não conta)
+    # trace extent from the tracks themselves (loose ink in the margins does not count)
     L, Rr = min(t["xa"] for t in tr), max(t["xb"] for t in tr)
     span = Rr - L
     full = [t for t in tr if t["xb"] - t["xa"] >= 0.85 * span]
     part = [t for t in tr if t["xb"] - t["xa"] < 0.85 * span]
     if len(part) < 4 or len(part) < len(full):
-        return None        # página comum: as linhas atravessam a largura
-    # fronteiras: pontos do interior em que trilhos parciais acabam/começam, agrupados
+        return None        # ordinary page: the rows cross the whole width
+    # boundaries: interior points where partial tracks end/start, grouped
     ev = sorted([(t["xb"] - win / 2, 0, t["y"]) for t in part if t["xb"] < Rr - 0.08 * span] +
                 [(t["xa"] + win / 2, 1, t["y"]) for t in part if t["xa"] > L + 0.08 * span])
     if not ev:
@@ -246,20 +244,20 @@ def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
             groups[-1].append(e)
         else:
             groups.append([e])
-    # uma fronteira tem trilho acabando E trilho começando
+    # a boundary has a track ending AND a track starting
     def _same(g):
-        """Trilhos que acabam na fronteira e recomeçam na MESMA altura (± 2 mm) do outro lado:
-        a linha só foi interrompida (pulso, rótulo), não mudou de altura."""
+        """Tracks that end at the boundary and restart at the SAME height (± 2 mm) on the other
+        side: the row was only interrupted (pulse, label), it did not change height."""
         e0 = [y for _, k, y in g if k == 0]; e1 = [y for _, k, y in g if k == 1]
         return sum(1 for y in e0 if e1 and min(abs(y - z) for z in e1) <= 2 * R), min(len(e0), len(e1))
     cand = [(float(np.median([e[0] for e in g])), len(g), _same(g)) for g in groups
             if len(g) >= 2 and any(e[1] == 0 for e in g) and any(e[1] == 1 for e in g)]
     if not cand or len(cand) > 5:
         return None
-    # as colunas de um ECG têm a mesma largura: fica o conjunto de fronteiras (1 ou 3: duas ou
-    # quatro colunas) que divide a extensão em partes iguais (±20%) com mais trilhos mudando.
-    # Um trilho que muda de altura no meio de uma derivação (ST, onda T larga) dá uma
-    # "fronteira" fora do lugar, e cortar ali fatia o traço
+    # the columns of an ECG have the same width: keep the boundary set (1 or 3: two or four
+    # columns) that splits the extent into equal parts (±20%) with the most tracks changing.
+    # A track that changes height in the middle of a lead (ST, wide T wave) gives a misplaced
+    # "boundary", and cutting there slices the trace
     from itertools import combinations
     best = None
     for k in (1, 3):
@@ -275,12 +273,12 @@ def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
     if best is None:
         return None
     cuts = best[1]
-    # página comum com a linha interrompida na troca de coluna: metade ou mais das linhas
-    # continua na mesma altura do outro lado -> não há alturas próprias por coluna
+    # ordinary page with the row interrupted at the column change: half or more of the rows
+    # continue at the same height on the other side -> no per-column heights
     if best[3] >= 0.5 * max(best[4], 1):
         return None
-    # linhas que atravessam a página pesam contra: a fronteira mais forte precisa de pelo menos
-    # o dobro de eventos (uma página comum com platôs e rodapé dá trilhos parciais soltos)
+    # rows crossing the page weigh against: the strongest boundary needs at least twice as
+    # many events (an ordinary page with plateaus and a footer gives loose partial tracks)
     if best[2] < max(4, 2 * len(full)):
         return None
     edges = [L] + cuts + [Rr]
@@ -290,28 +288,28 @@ def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
         m = 0.5 * (1.0 - frac) * (cb - ca)
         pk, hh = _win_peaks(B, R, int(ca + m), int(cb - m), y_lo, y_hi, with_height=True)
         if n is not None and len(pk) > n:
-            # platô longo de ST/onda S dá um pico a mais: ficam as n alturas de maior cobertura
+            # a long ST/S-wave plateau gives an extra peak: keep the n heights with most coverage
             pk = np.sort(pk[np.argsort(-hh)[:n]])
         return pk.astype(float)
 
-    # linhas de cada coluna medidas no miolo dela (longe das fronteiras, ainda imprecisas)
+    # rows of each column measured in its core (away from the boundaries, still imprecise)
     rows_c = [rows_of(edges[i], edges[i + 1], 0.5) for i in range(len(edges) - 1)]
     cnt = [len(r_) for r_ in rows_c]
     n = int(np.bincount(cnt).argmax())
     if n < 2 or min(cnt) < n or sum(c == n for c in cnt) < 0.5 * len(cnt):
         return None
-    # só estruturas que existem: 2 colunas de 3 a 9 linhas (6x2 e variantes com ritmo) ou
-    # 4 colunas de 3 a 6 (3x4 e variantes). O resto é traçado confuso, não coluna
+    # only structures that exist: 2 columns of 3 to 9 rows (6x2 and rhythm variants) or
+    # 4 columns of 3 to 6 (3x4 and variants). Anything else is a confusing trace, not columns
     K = len(cnt)
     if not ((K == 2 and 3 <= n <= 9) or (K == 4 and 3 <= n <= 6)):
         return None
     rows_c = [rows_of(edges[i], edges[i + 1], 0.5, n) for i in range(len(edges) - 1)]
     P = np.array(rows_c, float)
     if np.abs(P - np.median(P, 0)[None, :]).max() < 3 * R:
-        return None        # mesmas alturas em todas as colunas: nada a realinhar
+        return None        # same heights in every column: nothing to realign
     cols_c = [(edges[i], edges[i + 1]) for i in range(len(edges) - 1)]
-    # corte fino de cada fronteira: a coluna x em que a tinta troca das alturas de uma coluna
-    # para as da outra (soma, nas linhas que mudam de altura, de tinta na faixa de cá menos a de lá)
+    # fine cut of each boundary: the x where the ink moves from the heights of one column to
+    # those of the other (sum, over the rows that change height, of ink in this band minus that one)
     fine = []
     for c in range(len(cols_c) - 1):
         xc = int(cuts[c]); lo, hi = max(0, int(xc - 1.5 * win)), min(W, int(xc + 1.5 * win))
@@ -326,13 +324,13 @@ def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
             sc += a_ - b_
         if not sc.any():
             fine.append(xc); continue
-        # corte k maximiza soma(sc[:k]) - soma(sc[k:])
+        # cut k maximizes sum(sc[:k]) - sum(sc[k:])
         cs = np.cumsum(sc)
         obj = 2 * np.r_[0.0, cs] - cs[-1]
         fine.append(lo + int(np.argmax(obj)))
     bounds = [0] + fine + [W]
     cols = [(int(bounds[i]), int(bounds[i + 1])) for i in range(len(bounds) - 1)]
-    # alturas finais com as fronteiras finas (miolo de 70%); se a contagem mudar, ficam as de antes
+    # final heights with the fine boundaries (70% core); if the count changes, keep the previous ones
     e2 = [L] + fine + [Rr]
     if np.diff(e2).min() >= 35 * R:
         r2 = [rows_of(e2[i], e2[i + 1], 0.7, n) for i in range(len(e2) - 1)]
@@ -342,8 +340,8 @@ def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
 
 
 def _fits_plain_rows(B, R, P):
-    """As linhas de sempre (projeção da página inteira) já ficam a menos de 40% do passo das
-    linhas de todas as colunas: não é preciso realinhar."""
+    """The usual rows (projection of the whole page) are already within 40% of the row step
+    of every column: no realignment needed."""
     from .extract import find_rows
     pk0 = np.asarray(find_rows(B, R)[0], float)
     if len(pk0) != P.shape[1] or len(pk0) < 2:
@@ -353,12 +351,12 @@ def _fits_plain_rows(B, R, P):
 
 
 def col_align(rect, pap, D, B, R):
-    """Devolve (rect, pap, D, B, info) realinhados, ou as entradas e None.
+    """Return realigned (rect, pap, D, B, info), or the inputs and None.
 
-    Três jeitos de achar as colunas, nesta ordem: vãos em branco em toda a altura ("vaos"),
-    hipótese de 4 ou 2 colunas de mesma largura ("iguais") e trilhos de linha de base que
-    começam e acabam nas trocas de coluna ("trilhos", `col_struct`). STRUCT_FIRST põe os
-    trilhos antes das larguras iguais."""
+    Three ways to find the columns, in this order: blank gaps over the full height ("gaps"),
+    the hypothesis of 4 or 2 equal-width columns ("equal") and baseline tracks that start and
+    end at the column changes ("tracks", `col_struct`). STRUCT_FIRST puts the tracks before
+    the equal widths."""
     if not ENABLED[0]:
         return rect, pap, D, B, None
     H, W = B.shape
@@ -370,8 +368,8 @@ def col_align(rect, pap, D, B, R):
     gaps, lr = _gaps(B, R, ya, yb)
 
     def _plain():
-        """Vãos e larguras iguais: (cols, P, como) ou None."""
-        cols, how = None, "vaos"
+        """Gaps and equal widths: (cols, P, how) or None."""
+        cols, how = None, "gaps"
         if gaps and _equal_columns(gaps, lr[0], lr[1], R):
             cuts = [0] + [int(0.5 * (a + b)) for a, b in gaps] + [W]
             cols = [(cuts[i], cuts[i + 1]) for i in range(len(cuts) - 1)]
@@ -380,46 +378,46 @@ def col_align(rect, pap, D, B, R):
             if n < 2 or any(len(p) != n for p in pks):
                 cols = None
         if cols is None and EQUAL_SPLIT[0] and lr is not None:
-            # sem vão em toda a altura (traço que emenda entre colunas, tira de ritmo embaixo):
-            # hipóteses de colunas de mesma largura (4 e 2), corte no mínimo de tinta perto da
-            # posição nominal; vale se todas as colunas tiverem o mesmo número de linhas
+            # no gap over the full height (trace joining across columns, rhythm strip below):
+            # hypotheses of equal-width columns (4 and 2), cut at the ink minimum near the
+            # nominal position; valid if every column has the same number of rows
             cols = _equal_split(B, R, ya, yb, lr)
-            how = "iguais"
+            how = "equal"
             if cols is None:
                 return None
             pks = _keep_trace_rows(B, R, cols, [_col_rows(B, R, a, b) for a, b in cols], lr)
         if cols is None:
             return None
-        P = np.array(pks, float)              # (colunas, linhas)
+        P = np.array(pks, float)              # (columns, rows)
         ref = np.median(P, 0)
         dl = ref[None, :] - P
         sp = float(np.median(np.diff(ref)))
         if np.abs(dl).max() < 3 * R or sp < 8 * R:
             return None
-        if how == "iguais" and _fits_plain_rows(B, R, P):
+        if how == "equal" and _fits_plain_rows(B, R, P):
             return None
         if RELAYOUT[0] and np.abs(dl).max() > 0.5 * sp and len(ref) >= 2 and _rows_are_traces(B, R, cols, pks, lr):
-            # cada coluna com o seu espaçamento: as faixas vão para alturas novas empilhadas
-            # (como nos trilhos), em vez da mediana entre colunas
-            return cols, P, how + "+empilha"
-        if np.abs(dl).max() > 1.5 * sp:       # deslocamento maior que uma linha: casamento duvidoso
+            # each column with its own spacing: the bands go to new stacked heights
+            # (as with tracks), instead of the median across columns
+            return cols, P, how + "+stacked"
+        if np.abs(dl).max() > 1.5 * sp:       # shift larger than one row: doubtful matching
             return None
         return cols, P, how
 
     def _tracks():
-        """Sem vãos em branco (grade escura, rótulo ou QRS no vão): estrutura pelos trilhos."""
+        """No blank gaps (dark grid, label or QRS in the gap): structure from the tracks."""
         if not STRUCT[0]:
             return None
         st = col_struct(B, R)
         if st is None:
             return None
         cols, P = st
-        # diferença pequena entre as colunas (< 40% do passo) e as linhas de sempre já saem
-        # certas: a extração dá conta sozinha (faixa larga + linha de base por trecho), e
-        # realinhar só arriscaria fatiar um QRS grande na emenda das faixas
+        # small difference between columns (< 40% of the step) and the usual rows already come
+        # out right: extraction copes alone (wide band + per-stretch baseline), and realigning
+        # would only risk slicing a large QRS at the band seams
         if _fits_plain_rows(B, R, P):
             return None
-        return cols, P, "trilhos"
+        return cols, P, "tracks"
 
     got = None
     for f in ((_tracks, _plain) if STRUCT_FIRST[0] else (_plain, _tracks)):
@@ -430,13 +428,13 @@ def col_align(rect, pap, D, B, R):
         return rect, pap, D, B, None
     cols, P, how = got
     n = P.shape[1]
-    if how == "vaos" or how == "iguais":
+    if how == "gaps" or how == "equal":
         ref = np.median(P, 0)
         H2 = H
     else:
-        # alturas de referência: a primeira linha fica onde está (mediana) e cada intervalo é
-        # o MAIOR entre as colunas, para que nenhuma faixa se sobreponha à vizinha depois de
-        # deslocada (numa coluna "apertada" as linhas ficam a 4-10 mm; na outra, a 25-35 mm)
+        # reference heights: the first row stays where it is (median) and each interval is the
+        # LARGEST across columns, so no band overlaps its neighbour after the shift (in a
+        # "tight" column rows sit 4-10 mm apart; in the other, 25-35 mm)
         gaps_ = np.max(np.diff(P, axis=1), axis=0)
         ref = np.concatenate([[float(np.median(P[:, 0]))], float(np.median(P[:, 0])) + np.cumsum(gaps_)])
         H2 = int(max(H, ref[-1] + np.max(H - P[:, -1]) + 1))
@@ -450,7 +448,7 @@ def col_align(rect, pap, D, B, R):
             s0, s1 = bounds[i], bounds[i + 1]
             d = int(round(dl[c, i]))
             t0, t1 = s0 + d, s1 + d
-            # recorta ao quadro
+            # clip to the frame
             o0, o1 = max(0, t0), min(H2, t1)
             if o1 <= o0:
                 continue

@@ -1,9 +1,9 @@
 """
-Pipeline completo: imagem -> 12 derivações (mV, fs Hz).
+Full pipeline: image -> 12 leads (mV, fs Hz).
 
     from ecgdig import digitize
-    res = digitize("ecg.jpg")            # layout automático
-    res["signals"]  # (12, N) float32, NaN onde a derivação não aparece
+    res = digitize("ecg.jpg")            # automatic layout
+    res["signals"]  # (12, N) float32, NaN where the lead is not shown
 """
 from __future__ import annotations
 
@@ -25,65 +25,65 @@ from .layout_engine import Ctx as _LayoutCtx
 
 @dataclass
 class Config:
-    R: float = 10.0            # px/mm do quadro retificado
+    R: float = 10.0            # px/mm of the rectified frame
     fs: int = 500
-    duration: float | None = None  # s exibidos por linha; None = mede (pontas do traço)
-    speed: float | None = None     # mm/s; None = lê "NN mm/s" na página, senão QRS/RR
-    gain: float | None = None      # mm/mV para todas as derivações; None = mede nos pulsos
-    layout: str | list = "auto"    # "auto", nome da biblioteca ou lista de linhas de nomes
-    einthoven: bool = True     # fusão por restrições de Einthoven/Goldberger
-    fill_limb: bool = False    # reconstrói derivações dos membros onde possível
-    ppmm: float | None = None  # px/mm da imagem original, se conhecido (DPI/25.4)
-    pen: str = "measure"       # largura horizontal da pena: measure | calibrate | isotropic
-    # registro por batimentos só corrige cisalhamento acima disto (mm a 25 mm/s): o instante
-    # do QRS difere entre derivações por razões fisiológicas (p90 ~12 ms), o que imita
-    # um cisalhamento de até ~0.5 mm; abaixo disso o registro mais atrapalha que ajuda
+    duration: float | None = None  # seconds shown per row; None = measured (trace ends)
+    speed: float | None = None     # mm/s; None = read "NN mm/s" on the page, else QRS/RR
+    gain: float | None = None      # mm/mV for every lead; None = measured on the pulses
+    layout: str | list = "auto"    # "auto", a library name or a list of rows of names
+    einthoven: bool = True     # fusion with Einthoven/Goldberger constraints
+    fill_limb: bool = False    # rebuild limb leads where possible
+    ppmm: float | None = None  # px/mm of the original image, if known (DPI/25.4)
+    pen: str = "measure"       # horizontal pen width: measure | calibrate | isotropic
+    # beat registration only corrects shear above this (mm at 25 mm/s): the QRS instant
+    # differs between leads for physiological reasons (p90 ~12 ms), which mimics a shear of
+    # up to ~0.5 mm; below that the registration hurts more than it helps
     reg_min_shift_mm: float = 0.65
-    # papel não plano: "poly" (polinômio cúbico global), "cell" (+ campo local em células de
-    # 5 mm, acompanha vincos e dobras) ou "none"
+    # non-flat paper: "poly" (global cubic polynomial), "cell" (+ local field on 5 mm cells,
+    # follows creases and folds) or "none"
     nonrigid: str = "cell"
-    major_snap: bool = True   # ajuste pelas linhas grossas (5 mm)
-    fine_snap: bool = True    # ajuste pelas linhas finas (1 mm)
-    steep_subpx: bool = False  # instante sub-pixel nos trechos íngremes (teste)
-    synth: bool = True         # ajuste por síntese: pena + borrão gaussianos (traço fino)
-    bridge: bool = True        # Viterbi: salto vertical ligado por tinta fraca custa pouco
+    major_snap: bool = True   # fit on the major lines (5 mm)
+    fine_snap: bool = True    # fit on the minor lines (1 mm)
+    steep_subpx: bool = False  # sub-pixel instant on steep stretches (experimental)
+    synth: bool = True         # analysis-by-synthesis fit: Gaussian pen + blur (thin trace)
+    bridge: bool = True        # Viterbi: a vertical jump linked by weak ink costs little
     synth_max_shift: float = 1.5
     synth_order: str = "sort"
     fit_kw: dict = None
-    rigid_edges: bool = True     # Viterbi: traço íngreme que translada inteiro não paga a continuidade das bordas
-    pulse_retry: bool = True     # pulso procurado também a partir da margem comum das linhas
-    row_beats: bool = True       # linhas nas pontas sem QRS simultâneos aos das outras saem
-    ink_model: str = ""         # caminho do ONNX do segmentador de traço (modo híbrido)
-    ink_mix: float = 1.0        # 1 = só a rede; <1 mistura com o mapa clássico
-    prewarp: bool = False          # perspectiva grosseira pelo contorno da área quadriculada
-    adaptive_threshold: bool = True  # traço claro: refaz a binarização com limiar menor
-    pulse_rows: bool = True       # linhas de base pelos pulsos de calibração quando há >= 3
-    row_chain: bool = True        # extensão da linha atravessa o vão entre colunas
-    paper_crop: bool = True       # recorta à folha quando ela ocupa < 30% do quadro
-    max_side: int = 5000          # reduz imagens maiores que isso (memória)
-    band_sp: float = 1.6        # faixa de busca do traço: +-band_sp espaçamentos de linha
-    right_anchor: bool = True   # duração fora do padrão com fins concordantes: ancora no fim
-    extrap_cap: bool = True     # rampa de extrapolação na troca de derivação limitada a 2 mm
-    pulse_col: bool = True      # coluna de pulsos solta do traço: apaga e usa para o ganho
-    col_gap: bool = True        # vão comum entre colunas iguais: sai da imagem
-    col_align: bool = True      # colunas com linhas de base próprias: realinha cada faixa
-    limb_log: bool = True       # física no layout como log-verossimilhança do resíduo
-    fit: str = "none"          # "lsf": renderização inversa com o perfil de pena medido
-    refuse_below: float | None = None  # derivações com nota de qualidade abaixo disto saem como NaN
-    orient_check: bool = True     # 0 x 180 graus decidido pelo layout quando pulsos e rótulos não desempatam
+    rigid_edges: bool = True     # Viterbi: a steep stroke translating as a whole does not pay edge continuity
+    pulse_retry: bool = True     # pulse also searched from the common left margin of the rows
+    row_beats: bool = True       # edge rows without QRS simultaneous with the others are dropped
+    ink_model: str = ""         # path of the trace-segmenter ONNX (hybrid mode)
+    ink_mix: float = 1.0        # 1 = network only; <1 mixes with the classical map
+    prewarp: bool = False          # coarse perspective from the outline of the gridded area
+    adaptive_threshold: bool = True  # light trace: redo the binarization with a lower threshold
+    pulse_rows: bool = True       # baselines from the calibration pulses when there are >= 3
+    row_chain: bool = True        # row extent crosses the gap between columns
+    paper_crop: bool = True       # crop to the sheet when it fills < 30% of the frame
+    max_side: int = 5000          # downscale images larger than this (memory)
+    band_sp: float = 1.6        # trace search band: +-band_sp row spacings
+    right_anchor: bool = True   # non-standard duration with agreeing ends: anchor at the end
+    extrap_cap: bool = True     # extrapolation ramp at lead switches limited to 2 mm
+    pulse_col: bool = True      # pulse column detached from the trace: erase it and use it for gain
+    col_gap: bool = True        # common gap between equal columns: removed from the image
+    col_align: bool = True      # columns with their own baselines: realign each band
+    limb_log: bool = True       # physics in the layout as a log-likelihood of the residual
+    fit: str = "none"          # "lsf": inverse rendering with the measured pen profile
+    refuse_below: float | None = None  # leads with a quality score below this come out as NaN
+    orient_check: bool = True     # 0 vs 180 degrees decided by the layout when pulses and labels do not break the tie
 
 
 def _pick_rows(peaks, cov, n_expected):
     if len(peaks) <= n_expected:
         return list(peaks)
-    # mantém o subconjunto de n linhas com maior cobertura, depois ordena
+    # keep the subset of n rows with the highest coverage, then sort
     best = sorted(peaks, key=lambda p: -cov[p])[:n_expected]
     return sorted(best)
 
 
 def _row_quick_trace(B, D, rows, R, x0, span_px, full=False):
-    """Traço grosseiro (centróide do segmento escolhido pelo Viterbi) de cada linha inteira.
-    full=True devolve dicts com cen/top/bot absolutos e x0 da janela."""
+    """Coarse trace (centroid of the segment chosen by Viterbi) of each full row.
+    full=True returns dicts with absolute cen/top/bot and the window's x0."""
     H, W = B.shape
     out = []
     xa, xb = max(0, int(x0)), min(W, int(x0 + span_px) + 1)
@@ -105,7 +105,7 @@ def _row_quick_trace(B, D, rows, R, x0, span_px, full=False):
 
 
 def _corr(a, b, win=151):
-    """Correlação após remover a linha de base (mediana móvel ~0.6 s) e preencher falhas."""
+    """Correlation after removing the baseline (~0.6 s moving median) and filling gaps."""
     from scipy.ndimage import median_filter
     m = ~np.isnan(a) & ~np.isnan(b)
     if m.sum() < 50:
@@ -124,15 +124,15 @@ def _corr(a, b, win=151):
 
 
 def _runs_bool(m):
-    """Trechos True de um vetor booleano: (inícios, fins exclusivos)."""
+    """True runs of a boolean vector: (starts, exclusive ends)."""
     d = np.diff(np.r_[0, np.asarray(m, np.int8), 0])
     return np.nonzero(d == 1)[0], np.nonzero(d == -1)[0]
 
 
 def _tick_span(xs, top, bot, xb, R):
-    """A marca separadora na fronteira xb: colunas "altas" (topo-base > 1,2 mm) a ±0,4 mm de
-    xb, estendidas enquanto topo E base ficam onde estavam (±0,3 mm). A marca é um retângulo;
-    um QRS colado tem topo/base andando e não entra. Devolve (x_ini, x_fim) ou None."""
+    """The separator mark at boundary xb: "tall" columns (top-bottom > 1.2 mm) within ±0.4 mm
+    of xb, extended while top AND bottom stay where they were (±0.3 mm). The mark is a
+    rectangle; a QRS touching it has a moving top/bottom and is not included. Returns (x_start, x_end) or None."""
     if not len(xs):
         return None
     hh = bot - top
@@ -160,9 +160,9 @@ def _tick_span(xs, top, bot, xb, R):
 
 
 def _cut_leading_pulse(v, fs):
-    """Pulso de calibração que o detector não achou e entrou no traço: no começo da linha,
-    platô plano de ~1 mV (0,5-2,5 mV) por >= 40 ms seguido de queda brusca. Tudo até a
-    queda (+ 10 ms) vira desconhecido."""
+    """Calibration pulse the detector missed that entered the trace: at the start of the
+    row, a flat plateau of ~1 mV (0.5-2.5 mV) for >= 40 ms followed by a sharp drop.
+    Everything up to the drop (+ 10 ms) becomes unknown."""
     n = min(len(v), int(0.4 * fs))
     if n < int(0.06 * fs):
         return v
@@ -177,7 +177,7 @@ def _cut_leading_pulse(v, fs):
             continue
         m = float(np.median(seg))
         if 0.5 <= abs(m) <= 2.5 and np.std(seg) < 0.04:
-            # fim do platô: primeira amostra que sai dele por mais de metade da altura
+            # end of the plateau: first sample that leaves it by more than half the height
             j = i + k
             while j < n and np.isfinite(w[j]) and abs(w[j] - m) < 0.5 * abs(m):
                 j += 1
@@ -193,7 +193,7 @@ def _cut_leading_pulse(v, fs):
     return out
 
 def _box_cols(xa, n, boxes, pad=2):
-    """Para cada caixa de rótulo que cruza [xa, xa+n): (i0, i1, y0, y1) em índices locais."""
+    """For each label box crossing [xa, xa+n): (i0, i1, y0, y1) in local indices."""
     out = []
     for (bx0, by0, bx1, by1) in boxes:
         i0, i1 = max(0, bx0 - pad - xa), min(n, bx1 + pad + 1 - xa)
@@ -203,15 +203,15 @@ def _box_cols(xa, n, boxes, pad=2):
 
 
 def _drop_label_runs(runs, xa, boxes):
-    """Segmentos de tinta inteiramente dentro de um rótulo são letras, não traçado."""
+    """Ink segments entirely inside a label are letters, not trace."""
     for i0, i1, y0, y1 in _box_cols(xa, len(runs), boxes):
         for i in range(i0, i1):
             runs[i] = [c for c in runs[i] if not (c[0] >= y0 and c[1] <= y1)]
 
 
 def _mask_label_edges(job, boxes):
-    """Borda do envelope que cai dentro de um rótulo é desconhecida (letra colada ao
-    traço); a borda do lado de fora continua valendo (ex.: topo de um R acima do rótulo)."""
+    """An envelope edge falling inside a label is unknown (letter touching the trace); the
+    edge on the outside still counts (e.g. the top of an R above the label)."""
     top, bot = job["top"], job["bot"]
     for i0, i1, y0, y1 in _box_cols(job["xa"], len(top), boxes):
         sl = slice(i0, i1)
@@ -221,8 +221,8 @@ def _mask_label_edges(job, boxes):
             b[(b >= y0) & (b <= y1)] = np.nan
 
 def _beat_xs(B, y, half, R, ext=None):
-    """Posições x dos complexos (QRS) de uma linha: colunas em que a tinta da faixa se estende
-    na vertical bem além do traço típico (subida/descida rápida)."""
+    """x positions of the complexes (QRS) of a row: columns where the band ink extends
+    vertically well beyond the typical trace (fast upstroke/downstroke)."""
     H, W = B.shape
     a, b = max(0, int(y - half)), min(H, int(y + half))
     band = B[a:b]
@@ -245,7 +245,7 @@ def _beat_xs(B, y, half, R, ext=None):
     st, en = np.nonzero(runs == 1)[0], np.nonzero(runs == -1)[0]
     xs, last = [], -10 ** 9
     for s_, e_ in zip(st, en):
-        if e_ - s_ > 6 * R:      # largo demais para um QRS (bloco de texto, borda)
+        if e_ - s_ > 6 * R:      # too wide for a QRS (text block, border)
             continue
         c = 0.5 * (s_ + e_)
         if c - last > 5 * R:
@@ -255,11 +255,11 @@ def _beat_xs(B, y, half, R, ext=None):
 
 
 def _beat_coherence_drop(B, peaks, ext, half, R):
-    """Linhas nas pontas do bloco cujos complexos não coincidem no tempo com os das outras
-    linhas: no ECG multicanal as linhas são simultâneas, então os QRS caem nas mesmas colunas.
-    Cabeçalho, barra de menu de tela, moldura e régua de texto não seguem esse ritmo.
-    Concordância entre duas linhas = F1 dos complexos casados (+-2,5 mm): uma linha de ritmo
-    com ruído (moiré) tem complexos a mais, mas contém os da outra (revocação alta)."""
+    """Rows at the edges of the block whose complexes do not coincide in time with those of
+    the other rows: in a multichannel ECG the rows are simultaneous, so the QRS fall in the
+    same columns. Header, on-screen menu bar, frame and text ruler do not follow that rhythm.
+    Agreement between two rows = F1 of the matched complexes (+-2.5 mm): a noisy rhythm row
+    (moiré) has extra complexes but contains the other's (high recall)."""
     n = len(peaks)
     keep = np.ones(n, bool)
     if n < 4:
@@ -277,7 +277,7 @@ def _beat_coherence_drop(B, peaks, ext, half, R):
     cand = [i for i in range(n) if len(bx[i]) >= 3]
     if len(cand) < 3:
         return keep
-    # consenso: linhas que concordam (F1 >= 0,5) com a maioria das outras candidatas
+    # consensus: rows that agree (F1 >= 0.5) with most of the other candidates
     cons = [i for i in cand if np.nanmedian([F[i, j] for j in cand if j != i]) >= 0.5]
     if len(cons) < 3:
         return keep
@@ -289,13 +289,13 @@ def _beat_coherence_drop(B, peaks, ext, half, R):
             sc = np.nanmedian([F[i, j] for j in cons])
             if _ROW_BEAT_DEBUG:
                 print("beat-row", int(peaks[i]), round(float(sc), 2), len(bx[i]))
-            # só sai se, além de fora do ritmo, estiver fora do espaçamento do bloco (uma
-            # derivação legítima de QRS pequeno fica no passo normal das linhas)
+            # only dropped if, besides being off rhythm, it is off the block spacing (a
+            # legitimate lead with small QRS sits at the normal row step)
             kp = [j for j in range(n) if keep[j] and j != i]
             gap = float(np.min(np.abs(peaks[kp] - peaks[i]))) if kp else np.inf
             odd = gap < 0.75 * sp_c or gap > 1.5 * sp_c
-            # nenhum complexo numa ponta, com todas as linhas do consenso cheias de QRS:
-            # faixa de grade/mancha/moldura (uma linha de ECG real quase sempre tem algum)
+            # no complex at an edge, with every consensus row full of QRS: grid band, stain or
+            # frame (a real ECG row almost always has some)
             odd = odd or (len(bx[i]) == 0 and min(len(bx[j]) for j in cons) >= 5)
             if sc < _ROW_BEAT_THR[0] and odd and keep.sum() > 3:
                 keep[i] = False
@@ -305,7 +305,7 @@ def _beat_coherence_drop(B, peaks, ext, half, R):
 
 
 def _excursions(B, y, half, R, dev_mm=3.0):
-    """Quantos trechos da linha têm tinta a >= dev_mm do eixo (dentro da faixa da linha)."""
+    """How many stretches of the row have ink >= dev_mm from the axis (inside the row band)."""
     H, W = B.shape
     a, b = max(0, int(y - half)), min(H, int(y + half))
     d = int(dev_mm * R)
@@ -316,7 +316,7 @@ def _excursions(B, y, half, R, dev_mm=3.0):
     far &= cv2.dilate(near.astype(np.uint8).reshape(1, -1), np.ones((1, int(2 * R) | 1), np.uint8)).ravel() > 0
     runs = np.diff(np.r_[0, far.astype(np.int8), 0])
     st, en = np.nonzero(runs == 1)[0], np.nonzero(runs == -1)[0]
-    # trechos separados por menos de 2 mm contam como um
+    # stretches less than 2 mm apart count as one
     n, last = 0, -10 ** 9
     for s_, e_ in zip(st, en):
         if s_ - last > 2 * R:
@@ -326,7 +326,7 @@ def _excursions(B, y, half, R, dev_mm=3.0):
 
 
 def _shift_pulse(p, keep_x):
-    """Coordenadas x de um pulso depois de tirar colunas de pixel da imagem."""
+    """x coordinates of a pulse after removing pixel columns from the image."""
     cum = np.cumsum(keep_x) - 1
     q = dict(p)
     for k in ("x_start", "x_end", "x_fall"):
@@ -336,8 +336,8 @@ def _shift_pulse(p, keep_x):
 
 
 def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
-    """Vãos comuns a todas as linhas (nenhuma tinta na faixa de nenhuma linha), de 2 a 15 mm,
-    que dividem o traço em k colunas de mesma largura (±3%). Devolve [(x0, x1)] ou None."""
+    """Gaps common to all rows (no ink in any row band), 2 to 15 mm wide, that split the
+    trace into k equal-width columns (±3%). Returns [(x0, x1)] or None."""
     ex = [e for e in ext if e]
     if len(ex) < len(rows) or len(rows) < 2:
         return None
@@ -347,8 +347,8 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
     occ = np.zeros(Rr - L, bool)
     Bo = B
     if GAP_IGNORE_TEXT[0]:
-        # rótulos ("V1".."V6") impressos dentro do vão: letras são componentes pequenas e
-        # soltas; o traço é uma componente longa. Só o traço ocupa o vão
+        # labels ("V1".."V6") printed inside the gap: letters are small loose components;
+        # the trace is one long component. Only the trace occupies the gap
         n_, lab_, st_, _ = cv2.connectedComponentsWithStats(B.astype(np.uint8), connectivity=8)
         small = (st_[:, cv2.CC_STAT_WIDTH] < 5 * R) & (st_[:, cv2.CC_STAT_HEIGHT] < 5 * R)
         small[0] = False
@@ -362,8 +362,8 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
     d = np.diff(np.concatenate([[1], occ.astype(np.int8), [1]]))
     s_, e_ = np.nonzero(d == -1)[0], np.nonzero(d == 1)[0]
     def _text_only(a, b):
-        # tinta crua do vão = letras: em cada linha <= 6 componentes pequenas, de 1,2 a 5 mm de
-        # altura; fiapos de traço partido são muitos, baixos e espalhados
+        # raw ink in the gap = letters: in each row <= 6 small components, 1.2 to 5 mm tall;
+        # slivers of a broken trace are many, short and scattered
         if not (GAP_LABELS[0] and GAP_IGNORE_TEXT[0]):
             return False
         for y in rows:
@@ -377,16 +377,16 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
                 return False
         return True
     gaps = [(L + a, L + b) for a, b in zip(s_, e_) if min_mm * R <= b - a <= max_mm * R and a > 0 and b < len(occ)
-            # um rótulo ocupa uma parte do vão; traço partido em pedaços (contraste baixo) ocupa quase todo
+            # a label fills part of the gap; a trace broken into pieces (low contrast) fills almost all of it
             and (occ_raw[a:b].mean() <= 0.5 or _text_only(a, b))]
     if not gaps or len(gaps) > 5:
         return None
-    # colunas entre os vãos de mesma largura
+    # columns between the gaps of the same width
     edges = [L] + [x for g in gaps for x in g] + [Rr]
     widths = [edges[2 * i + 1] - edges[2 * i] for i in range(len(gaps) + 1)]
     if len(gaps) >= 2:
-        # as colunas do meio decidem a largura; a primeira e a última podem ter sobra de
-        # pulso, borda ou marca de fim (até 30 mm), nunca falta
+        # the middle columns decide the width; the first and last may have extra from a
+        # pulse, border or end mark (up to 30 mm), never less
         inner = widths[1:-1]
         w = float(np.median(inner))
         if (max(inner) - min(inner)) > 0.03 * w:
@@ -394,7 +394,7 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
         if any(not (0.97 * w <= x <= w + 30 * R) for x in (widths[0], widths[-1])):
             return None
     elif (max(widths) - min(widths)) > 0.03 * np.median(widths):
-        # 2 colunas: a primeira pode ter a sobra do pulso de calibração (como no caso de 3+)
+        # 2 columns: the first may have the calibration pulse extra (as in the 3+ case)
         if not (GAP_PULSE_SLACK[0] and 0 <= widths[0] - widths[1] <= 15 * R
                 and widths[0] - widths[1] - 0.03 * widths[1] <= 15 * R):
             return None
@@ -404,8 +404,8 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
 
 
 def _rows_from_hint(B, R, rows, cov):
-    """Linhas já conhecidas (estrutura por colunas realinhada): só extensões e pulsos, sem as
-    regras que descartam linhas."""
+    """Rows already known (column structure realigned): only extents and pulses, without the
+    rules that drop rows."""
     peaks = np.asarray(rows, dtype=int)
     spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else 40 * R
     half = 0.45 * float(np.min(np.diff(peaks))) if len(peaks) > 1 else 0.45 * spacing
@@ -419,7 +419,7 @@ def _rows_from_hint(B, R, rows, cov):
             p_ = None
         pulses.append(p_)
     ok = [p for p in pulses if p is not None]
-    if len(ok) >= 2:   # pulsos valem se concordarem em altura e coluna
+    if len(ok) >= 2:   # pulses count if they agree in height and column
         h0 = float(np.median([p["foot"] - p["top"] for p in ok])); x0_ = float(np.median([p["x_start"] for p in ok]))
         pulses = [p if (p is not None and abs((p["foot"] - p["top"]) - h0) <= 0.2 * h0 and abs(p["x_start"] - x0_) <= 3 * R)
                   else None for p in pulses]
@@ -429,12 +429,12 @@ def _rows_from_hint(B, R, rows, cov):
 
 
 def _rows_pulses(B, pap, R, rows_hint=None):
-    """Linhas de traçado candidatas (sem texto/bordas), extensões e pulsos."""
+    """Candidate trace rows (no text/borders), extents and pulses."""
     H, W = B.shape
     _prow_set = [None]
     from .extract import GRID_SEGS, clean_grid_segments
-    # grade monocromática partida no binário: fora para achar linhas (horizontais) e para
-    # contar batimentos (verticais também); pulsos e extensões usam B
+    # monochrome grid broken in the binary map: removed to find rows (horizontal) and to count
+    # beats (vertical too); pulses and extents use B
     Br = clean_grid_segments(B, R, axes=(1,)) if GRID_SEGS[0] else B
     Bb = clean_grid_segments(Br, R, axes=(0,)) if GRID_SEGS[0] else B
     peaks, cov = find_rows(Br, R)
@@ -444,12 +444,12 @@ def _rows_pulses(B, pap, R, rows_hint=None):
         return peaks, cov, [], [], 40 * R
     tl, raw = trace_likeness(Br, peaks, R, return_raw=True)
     if len(tl) and tl.max() > 0:
-        # traçado: longo depois de juntar quebras (tl) OU com pedaços longos/altos sem juntar
-        # (raw; traço fraco de scan pode ter tl baixo mas raw alto)
+        # trace: long after joining breaks (tl) OR with long/tall pieces without joining
+        # (raw; a weak scan trace may have low tl but high raw)
         ok = tl >= 0.4 * tl.max()
         weak = ~ok & (raw >= 0.3 * max(raw.max(), 1e-9))
-        # linhas só "fracas" entram se continuarem o espaçamento regular das fortes
-        # (cabeçalho com tabela de texto também tem pedaços altos, mas fora do passo)
+        # "weak" rows only enter if they continue the regular spacing of the strong ones
+        # (a header with a text table also has tall pieces, but off the step)
         if ok.sum() >= 2 and weak.any():
             sp0 = float(np.median(np.diff(peaks[ok])))
             changed = True
@@ -460,8 +460,8 @@ def _rows_pulses(B, pap, R, rows_hint=None):
                     dmin = np.min(np.abs(acc - peaks[i]))
                     if 0.8 * sp0 <= dmin <= 1.25 * sp0:
                         ok[i] = True; changed = True
-        # linha de traço claro/partido (tl baixo) no passo regular do bloco e com os QRS nas
-        # mesmas colunas das linhas aceitas: é ECG (as linhas são simultâneas)
+        # light/broken trace row (low tl) at the regular block step and with QRS in the same
+        # columns as the accepted rows: it is ECG (the rows are simultaneous)
         if ok.sum() >= 3 and (~ok).any():
             sp0 = float(np.median(np.diff(peaks[ok])))
             hb = 0.45 * sp0
@@ -482,9 +482,9 @@ def _rows_pulses(B, pap, R, rows_hint=None):
                     f1s.append(2 * p_ * r_ / max(p_ + r_, 1e-9))
                 if f1s and np.median(f1s) >= 0.5:
                     ok[i] = True
-        # rodapé/cabeçalho de texto: só é "longo" depois de dilatado (raw << tl), fica na
-        # ponta do bloco e mais perto do vizinho que o espaçamento normal das linhas.
-        # (traço quebrado de scan também tem raw baixo, mas fica no meio ou bem espaçado)
+        # text footer/header: only "long" after dilation (raw << tl), sits at the end of the
+        # block and closer to its neighbour than the normal row spacing.
+        # (a broken scan trace also has low raw, but sits in the middle or well spaced)
         idx = np.nonzero(ok)[0]
         if len(idx) >= 3:
             sp = float(np.median(np.diff(peaks[idx])))
@@ -493,15 +493,15 @@ def _rows_pulses(B, pap, R, rows_hint=None):
                     ok[e] = False
         peaks = peaks[ok]
     if _PULSE_ROWS[0]:
-        # linhas pelos pulsos de calibração: robusto a QRS gigantes que cruzam as linhas e a
-        # traço claro (a projeção horizontal se confunde); as linhas de projeção que não
-        # coincidem com nenhum pulso e estão longe de todos ficam (linha sem pulso)
+        # rows from the calibration pulses: robust to giant QRS crossing the rows and to a
+        # light trace (the horizontal projection gets confused); projection rows that match no
+        # pulse and are far from all of them stay (row without a pulse)
         prow, _pp = pulse_rows(B, R)
         if prow is not None and PULSE_ROWS_GUARD[0] and len(peaks) >= 4:
-            # a projeção achou um bloco regular de linhas (passo constante a 12%) e os "pés"
-            # dos pulsos não caem nelas (pulso comido pela grade escura dá pés em qualquer
-            # altura) ou são poucos: vale a projeção. Sem isto, 4 pés errados trocavam 12
-            # linhas certas por 3
+            # the projection found a regular block of rows (constant step within 12%) and the
+            # pulse "feet" do not fall on them (a pulse eaten by a dark grid gives feet at any
+            # height) or they are few: the projection wins. Without this, 4 wrong feet replaced
+            # 12 correct rows by 3
             d_ = np.diff(np.sort(np.asarray(peaks, float)))
             sp_ = float(np.median(d_))
             if sp_ > 0 and np.all(np.abs(d_ - sp_) <= 0.12 * sp_):
@@ -510,11 +510,11 @@ def _rows_pulses(B, pap, R, rows_hint=None):
                     prow = None
         _prow_set[0] = prow
         if prow is not None and PULSE_HALF[0] and len(prow) >= 2:
-            # pulsos achados só em linhas alternadas (pulso apagado/fraco nas outras): linhas
-            # da projeção no meio do passo dos pulsos, entre eles, são linhas de verdade; o
-            # passo real é a metade. Pontas dos pulsos fora do novo passo saem.
+            # pulses found only on alternate rows (pulse erased/weak on the others): projection
+            # rows midway between the pulse rows are real rows; the real step is half. Pulse
+            # ends off the new step are removed.
             spp = float(np.median(np.diff(prow)))
-            # (só com passo de pulsos largo: metade dele ainda é um passo de linhas plausível)
+            # (only with a wide pulse step: half of it is still a plausible row step)
             mids = [p for p in peaks if prow.min() < p < prow.max()
                     and 0.35 * spp <= np.min(np.abs(prow - p)) <= 0.65 * spp] if spp >= 40 * R else []
             if mids:
@@ -533,21 +533,21 @@ def _rows_pulses(B, pap, R, rows_hint=None):
             for p in peaks:
                 if np.min(np.abs(prow - p)) <= 0.6 * spp:
                     continue
-                # linha sem pulso só conta se começar na margem das outras: um trecho que
-                # começa no meio da página é uma coluna deslocada de uma linha existente
+                # a row without a pulse only counts if it starts at the others' margin: a
+                # stretch starting mid-page is a shifted column of an existing row
                 e_ = row_extent(B, p, 0.3 * spp, R)
                 dn = float(np.min(np.abs(prow - p)))
                 regular = (0.85 * spp <= dn <= 1.15 * spp) and (p < prow.min() or p > prow.max())
                 if e_ is not None and (e_[0] <= xp_ + 30 * R or (regular and e_[1] - e_[0] > 60 * R)):
-                    # (ou continua o passo regular do bloco numa ponta: pulso dessa linha perdido)
+                    # (or it continues the regular block step at an edge: that row's pulse was lost)
                     extra.append(p)
             peaks = np.sort(np.concatenate([prow, np.array(extra, float)])).astype(int)
     ys = np.nonzero(pap.any(1))[0]
-    if len(ys):  # bordas da folha / moldura não são linhas de traçado
+    if len(ys):  # sheet borders / frame are not trace rows
         near = ~((peaks > ys[0] + 5 * R) & (peaks < ys[-1] - 5 * R))
         if near.any():
-            # ...mas a primeira linha de ECG pode ficar colada na borda da grade: fica se tiver
-            # complexos (a borda é reta, sem QRS)
+            # ...but the first ECG row may sit right against the grid border: it stays if it has
+            # complexes (the border is straight, without QRS)
             sp_ = float(np.median(np.diff(peaks))) if len(peaks) > 2 else 40 * R
             for i in np.nonzero(near)[0]:
                 if peaks[i] > ys[0] + 1.5 * R and peaks[i] < ys[-1] - 1.5 * R and \
@@ -563,24 +563,24 @@ def _rows_pulses(B, pap, R, rows_hint=None):
     for i, (y, e) in enumerate(zip(peaks, ext)):
         up_sp = (y - peaks[i - 1]) if i > 0 else spacing
         p_ = detect_pulse(B, y, half, e[0], R, up=max(half, min(0.95 * up_sp, 25 * R))) if e else None
-        # traço fraco/partido no começo da linha (foto, tela): a extensão começa depois do
-        # pulso. As linhas começam na mesma margem: tenta de novo a partir da margem comum
+        # weak/broken trace at the start of the row (photo, screen): the extent starts after
+        # the pulse. Rows start at the same margin: try again from the common margin
         if p_ is None and e and xs_med is not None and _PULSE_RETRY[0] and 10 * R < e[0] - xs_med < 60 * R:
             p_ = detect_pulse(B, y, half, xs_med, R, up=max(half, min(0.95 * up_sp, 25 * R)))
         if p_ is None and e and _PULSE_RETRY[0]:
-            # bordas verticais do pulso claras e partidas (foto de tela, traço fino): fecha
-            # quebras maiores na vertical
+            # light, broken vertical pulse edges (screen photo, thin trace): close larger
+            # vertical breaks
             p_ = detect_pulse(B, y, half, min(e[0], xs_med) if xs_med is not None else e[0], R,
                               up=max(half, min(0.95 * up_sp, 25 * R)), close_mm=2.5)
-            # na segunda tentativa só o retângulo simples: o fechamento largo pode emendar o
-            # pulso ao começo do traço e fabricar um "degrau" (ganho dividido falso)
+            # on the second attempt only the simple rectangle: the wide closing may join the
+            # pulse to the start of the trace and create a "step" (false split gain)
             if p_ is not None and (p_.get("step") or p_.get("half")):
                 p_ = None
             if p_ is not None:
                 p_ = dict(p_, retry=True)
         pulses.append(p_)
-    # pulso achado só na segunda tentativa vale se concordar com os achados na primeira
-    # (altura e coluna); sem nenhum da primeira, vale sozinho
+    # a pulse found only on the second attempt counts if it agrees with those found on the
+    # first (height and column); with none from the first, it counts alone
     first = [p for p in pulses if p is not None and not p.get("retry")]
     if first:
         h0 = float(np.median([p["foot"] - p["top"] for p in first]))
@@ -590,20 +590,20 @@ def _rows_pulses(B, pap, R, rows_hint=None):
                   else p for p in pulses]
     else:
         rt = [p for p in pulses if p is not None]
-        # só da segunda tentativa: precisa de pelo menos dois, de mesma altura e coluna
+        # second attempt only: at least two are needed, with the same height and column
         ok_ = False
-        # e em pelo menos metade das linhas: o pulso é impresso em todas; dois "pulsos" em seis
-        # linhas são QRS emendados pelo fechamento largo
+        # and on at least half the rows: the pulse is printed on all of them; two "pulses" in
+        # six rows are QRS joined by the wide closing
         if len(rt) >= max(2, int(np.ceil(0.5 * len(pulses)))):
             hs = np.array([p["foot"] - p["top"] for p in rt]); xs_ = np.array([p["x_start"] for p in rt])
             ok_ = np.ptp(hs) <= 0.2 * np.median(hs) and np.ptp(xs_) <= 3 * R
         if not ok_:
             pulses = [None] * len(pulses)
-    # linha nas pontas do bloco sem pulso, quando outras têm: cabeçalho isolado, régua de
-    # texto colada ao bloco, borda da área impressa/sombra da folha numa foto (quase plana)
+    # row at the block edges without a pulse, when others have one: isolated header, text
+    # ruler stuck to the block, edge of the printed area/sheet shadow in a photo (almost flat)
     has = [p is not None for p in pulses]
     if sum(has) >= 2:
-        # "pulso" longe da coluna dos outros (QR code, caixa do cabeçalho) não conta
+        # a "pulse" far from the others' column (QR code, header box) does not count
         xs_p = np.array([p["x_start"] for p in pulses if p is not None], float)
         med_x = float(np.median(xs_p))
         has = [p is not None and abs(p["x_start"] - med_x) < 3 * R for p in pulses]
@@ -632,13 +632,13 @@ def _rows_pulses(B, pap, R, rows_hint=None):
             spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else spacing
     if _ROW_BEAT_RULE[0] and len(peaks) >= 4:
         keep = _beat_coherence_drop(Bb, peaks, ext, half, R)
-        # linha com pulso de calibração é linha de ECG, tenha ou não QRS visíveis
+        # a row with a calibration pulse is an ECG row, with or without visible QRS
         if _prow_set[0] is not None:
             for i, y in enumerate(peaks):
                 if np.min(np.abs(_prow_set[0] - y)) < 3 * R:
                     keep[i] = True
-        # pulso que destoa do consenso dos outros (altura +-15%, largura +-1,5 mm) não protege
-        # a linha: num QR code ou carimbo um retângulo qualquer passa por pulso
+        # a pulse that disagrees with the others' consensus (height +-15%, width +-1.5 mm) does
+        # not protect the row: in a QR code or stamp any rectangle passes for a pulse
         prot = [p is not None for p in pulses]
         okp = [p for p in pulses if p is not None]
         if PULSE_CONSENSUS[0] and len(okp) >= 3:
@@ -667,7 +667,7 @@ PULSE_COL = [True]
 ADAPT_MORE = [True]
 GLEV_RETRY = [True]
 PULSE_HALF = [True]
-PULSE_MID = [False]   # apagar os pulsos do meio piorou (rotation_35 img_41: 7,6 -> -0,2 dB)
+PULSE_MID = [False]   # erasing the middle pulses hurt (rotation_35 img_41: 7.6 -> -0.2 dB)
 COL_GAP = [True]
 _PULSE_ROWS = [True]
 _ROW_BEAT_THR = [0.3]
@@ -675,9 +675,9 @@ _ROW_BEAT_DEBUG = False
 
 
 def _t_after_qrs(Bc, pk, ext, R):
-    # fisiologia: a onda T vem DEPOIS do QRS (e é maior que a P, que vem antes). Numa
-    # página de cabeça para baixo o tempo corre ao contrário. Mede, em cada batimento, o
-    # desvio da linha de base 6-10 mm depois e 6-10 mm antes do QRS
+    # physiology: the T wave comes AFTER the QRS (and is larger than the P, which comes
+    # before). On an upside-down page time runs backwards. Measure, in each beat, the
+    # deviation from the baseline 6-10 mm after and 6-10 mm before the QRS
     if len(pk) < 2:
         return 0.0
     half_ = 0.45 * float(np.median(np.diff(pk)))
@@ -709,11 +709,11 @@ def _t_after_qrs(Bc, pk, ext, R):
 
 
 def _orient(arrs, R):
-    """Escolhe a rotação (0/90/180/270) em que os traçados ficam horizontais e os
-    pulsos de calibração à esquerda."""
+    """Pick the rotation (0/90/180/270) in which the traces are horizontal and the
+    calibration pulses on the left."""
     rect, pap, D, B = arrs
-    # traçados = estruturas longas (> 50 mm) numa direção; QRS altos não passam de ~40 mm.
-    # Fecha pequenas quebras (traço fino/fraco) antes de medir.
+    # traces = long structures (> 50 mm) in one direction; tall QRS do not exceed ~40 mm.
+    # Close small breaks (thin/weak trace) before measuring.
     k = int(1.5 * R) | 1
     Bc = cv2.dilate(B.astype(np.uint8), np.ones((k, k), np.uint8))
     n, lab, st, _ = cv2.connectedComponentsWithStats(Bc, connectivity=8)
@@ -732,7 +732,7 @@ def _orient(arrs, R):
     from .ocr import find_words, read_label
 
     def upright_labels(Bc):
-        # rótulos assimétricos legíveis (aVR, V1...): I/II/III são iguais de cabeça para baixo
+        # readable asymmetric labels (aVR, V1...): I/II/III look the same upside down
         n_ = 0
         tm = text_like_mask(Bc, R)
         for (x0, y0, x1, y1) in find_words(tm, R):
@@ -748,22 +748,22 @@ def _orient(arrs, R):
     for c in cands:
         Bc, pc = rot(B, c), rot(pap, c)
         pk, _, ext_c, pulses, _ = _rows_pulses(Bc, pc, R)
-        # pulsos à esquerda + rótulos legíveis (página impressa de cabeça para baixo tem
-        # pulsos dos dois lados em alguns aparelhos; o texto desempata)
+        # pulses on the left + readable labels (a page printed upside down has pulses on both
+        # sides on some devices; the text breaks the tie)
         score = sum(p is not None for p in pulses) + upright_labels(Bc)
         hard.append(float(score))
         if ORIENT_T[0]:
-            # só desempata (vale menos que um pulso ou um rótulo) e só com concordância forte:
-            # em ~1 de cada 10 páginas em pé a T fica menor que o que vem antes (FC alta, P grande)
+            # only breaks ties (worth less than a pulse or a label) and only with strong
+            # agreement: in ~1 of 10 upright pages the T is smaller than what comes before (high HR, large P)
             tq = _t_after_qrs(Bc, pk, ext_c, R)
             score += 0.9 * float(np.sign(tq)) if abs(tq) > 0.3 else 0.0
         scores.append(float(score))
         if score > best_score:
             best, best_score = c, score
-    # margem da decisão (para quem chama saber se ela foi fraca) e escolha forçada
+    # decision margin (so the caller knows whether it was weak) and forced choice
     _orient.margin = abs(scores[0] - scores[1]) if len(scores) == 2 else float("inf")
-    # decisão "fraca": pulsos e rótulos diferem em no máximo 2 entre as duas orientações (um
-    # pulso ou rótulo falso acontece; e a onda T, o desempate, erra em ~1 de cada 10 páginas)
+    # "weak" decision: pulses and labels differ by at most 2 between the two orientations (a
+    # false pulse or label happens; and the T wave, the tie-breaker, is wrong on ~1 of 10 pages)
     _orient.weak = bool(cands[0] is None and len(hard) == 2 and abs(hard[0] - hard[1]) <= 2.0)
     if ORIENT_FORCE[0] is not None and cands[0] is None:
         best = None if ORIENT_FORCE[0] == "keep" else cv2.ROTATE_180
@@ -771,24 +771,24 @@ def _orient(arrs, R):
 
 
 PULSE_ROWS_GUARD = [True]
-ORIENT_FORCE = [None]   # "keep" / "flip": fixa a escolha entre 0 e 180 graus (uso interno)
+ORIENT_FORCE = [None]   # "keep" / "flip": fixes the 0 vs 180 degree choice (internal use)
 
 
 def _edge_cands(D, B, rows, ext, pulses, half, lev, R, rad=0.0):
-    """Bordas sub-pixel esquerda (início do traço) e direita (fim): listas sem NaN."""
+    """Sub-pixel left (trace start) and right (end) edges: lists without NaN."""
     xl, xe = _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad)
     return [v for v in xl if not np.isnan(v)], [v for v in xe if not np.isnan(v)]
 
 
 def _origin_cands(D, B, rows, ext, pulses, half, lev, R, rad):
-    """Candidatos à origem do tempo: inícios de traço (fortes), finais de linha e, nas linhas
-    sem início destacado, o fim da descida do pulso (fraca: escolhe o grupo, não dá o valor).
-    Sem as fracas, só os finais de linha ou uma borda espúria decidiriam, e a grade escura,
-    o ruído ou a borda da folha numa foto podem estar a dezenas de mm do traço."""
+    """Time-origin candidates: trace starts (strong), row ends and, on rows without a clear
+    start, the end of the pulse's falling edge (weak: it picks the group, it does not give the
+    value). Without the weak ones, only the row ends or a spurious edge would decide, and the
+    dark grid, noise or the sheet border in a photo may be tens of mm away from the trace."""
     xl, xe, wk = _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad, return_weak=True)
     xl = [float(v) for v in xl if not np.isnan(v)]
-    # o traço não começa antes do pulso de calibração: "início" à esquerda dos pulsos das
-    # outras linhas é a borda da folha/grade numa foto
+    # the trace does not start before the calibration pulse: a "start" left of the other
+    # rows' pulses is the sheet/grid border in a photo
     xs_p = [p["x_start"] for p in pulses if p is not None]
     if xs_p:
         xl = [v for v in xl if v > float(np.median(xs_p))]
@@ -797,8 +797,8 @@ def _origin_cands(D, B, rows, ext, pulses, half, lev, R, rad):
 
 
 def text_like_mask(B, R):
-    """Componentes pequenas e isoladas (rótulos, números, marcas): não pertencem ao traço,
-    que é uma componente longa. Usado para que bordas não sejam medidas em texto."""
+    """Small isolated components (labels, numbers, marks): they do not belong to the trace,
+    which is one long component. Used so that edges are not measured on text."""
     n, lab, st, _ = cv2.connectedComponentsWithStats(B.astype(np.uint8), connectivity=8)
     small = (st[:, cv2.CC_STAT_WIDTH] < 25 * R) & (st[:, cv2.CC_STAT_HEIGHT] < 9 * R)
     small[0] = False
@@ -806,13 +806,13 @@ def text_like_mask(B, R):
 
 
 def _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad=0.0, return_weak=False):
-    """Bordas sub-pixel esquerda (início do traço) e direita (fim), uma por linha (NaN se falta)."""
+    """Sub-pixel left (trace start) and right (end) edges, one per row (NaN if missing)."""
     tm = getattr(_edge_rows, "text_mask", None)
     if tm is not None and tm.shape == D.shape:
         D = np.where(tm, 0.0, D).astype(np.float32)
     if getattr(_edge_rows, "speckle", False):
-        # grade escura (scan P&B): o pontilhado passa do nível no perfil máximo e "estende" o
-        # traço até a borda; vale só a tinta que sobreviveu à binarização (e o entorno)
+        # dark grid (B&W scan): the dotted pattern passes the level on the max profile and
+        # "extends" the trace to the border; only the ink that survived binarization (and its surroundings) counts
         Bd = cv2.dilate(B.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
         D = np.where(Bd, D, 0.0).astype(np.float32)
     H, W = D.shape
@@ -824,7 +824,7 @@ def _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad=0.0, return_weak=False
         if not e:
             continue
         a_, b_ = max(0, int(y - half)), min(H, int(y + half))
-        # direita
+        # right
         x1 = max(0, e[1] - 12)
         blk = D[a_:b_, x1:min(W, e[1] + 4)]
         if blk.size:
@@ -833,16 +833,16 @@ def _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad=0.0, return_weak=False
             if len(idx) and idx[-1] + 1 < len(prof):
                 k_ = idx[-1]
                 xe[-1] = x1 + k_ + (prof[k_] - lev) / max(prof[k_] - prof[k_ + 1], 1e-6)
-        # esquerda: depois da lacuna após o pulso; sem pulso, a primeira tinta da linha
+        # left: after the gap following the pulse; without a pulse, the first ink of the row
         if p is not None:
             x_s = p["x_end"]
             prof = D[a_:b_, x_s:min(W, x_s + int(6 * R))].max(0)
             below = np.nonzero((prof < lev) & (np.r_[prof[1:], 0] < lev))[0]
             after = np.nonzero(prof[below[0]:] >= lev)[0] if len(below) and below[0] <= 4 * R else []
             if not len(after):
-                # traço colado ao pulso (sem lacuna): t = 0 provavelmente na descida do
-                # pulso — âncora FRACA (em outros formatos o pulso tem uma cauda plana antes
-                # do traço e a lacuna pode sumir com borrão)
+                # trace stuck to the pulse (no gap): t = 0 probably on the pulse's falling edge,
+                # a WEAK anchor (in other formats the pulse has a flat tail before the trace and
+                # the gap may vanish with blur)
                 weak[-1] = p.get("x_fall", p["x_end"]) - lev_rad_hint[0]
                 continue
             k_ = below[0] + after[0]
@@ -860,7 +860,7 @@ def _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad=0.0, return_weak=False
 
 
 def _beats(trace, x_off, R):
-    """Posições (x, px) dos complexos QRS: picos da derivada absoluta suavizada (~80 ms)."""
+    """Positions (x, px) of the QRS complexes: peaks of the smoothed absolute derivative (~80 ms)."""
     from scipy.ndimage import uniform_filter1d
     from scipy.signal import find_peaks
     t = np.asarray(trace, float)
@@ -871,7 +871,7 @@ def _beats(trace, x_off, R):
     t = np.interp(x, x[ok], t[ok])
     a = uniform_filter1d(np.abs(np.gradient(t)), max(3, int(2 * R)))
     pk, _ = find_peaks(a, height=0.35 * a.max(), distance=int(12 * R))  # >= 480 ms
-    # centróide da energia do QRS (+-60 ms): menos dependente da derivação que o pico
+    # centroid of the QRS energy (+-60 ms): less lead-dependent than the peak
     g = np.abs(np.gradient(t))
     h = int(1.5 * R)
     out = []
@@ -883,11 +883,11 @@ def _beats(trace, x_off, R):
 
 
 def _register_rows(beats, R, width_px, tol_mm=2.5, min_shift_px=4.0, rows=None):
-    """Registro afim por linha contra a referência comum (mediana entre linhas) dos QRS.
-    Todas as derivações são simultâneas: o mesmo batimento tem o mesmo instante em
-    todas as linhas. Retorna (a_r, b_r) com x_linha = a_r + b_r * x_ref.
-    Só corrige quando o deslocamento previsto passa de min_shift_px (senão identidade:
-    o viés de fase do QRS entre derivações seria maior que a correção)."""
+    """Per-row affine registration against the common QRS reference (median across rows).
+    All leads are simultaneous: the same beat has the same instant in every row.
+    Returns (a_r, b_r) with x_row = a_r + b_r * x_ref.
+    Only corrects when the predicted shift exceeds min_shift_px (otherwise identity: the QRS
+    phase bias between leads would be larger than the correction)."""
     n = len(beats)
     a = np.zeros(n); b = np.ones(n)
     nonempty = [bb for bb in beats if len(bb)]
@@ -929,11 +929,11 @@ def _register_rows(beats, R, width_px, tol_mm=2.5, min_shift_px=4.0, rows=None):
                 ar, br = float(c[0]), float(c[1])
         a[r], b[r] = ar, br
         valid[r] = True
-    # distorção de página varia suavemente: deslocamento e escala lineares na altura da
-    # linha (média o ruído do instante do QRS entre derivações, ~2-3 px)
+    # page distortion varies smoothly: shift and scale linear in the row height (averages the
+    # noise of the QRS instant between leads, ~2-3 px)
     if rows is None or valid.sum() < 4:
-        # com <= 3 linhas (ex.: 3x4 sem tira de ritmo) cada linha tem derivações diferentes e
-        # o ruído do instante do QRS entre derivações não se distingue de cisalhamento
+        # with <= 3 rows (e.g. 3x4 without a rhythm strip) each row has different leads and
+        # the noise of the QRS instant between leads cannot be told apart from shear
         return np.zeros(n), np.ones(n)
     if True:
         y = np.asarray(rows, float)
@@ -948,18 +948,18 @@ def _register_rows(beats, R, width_px, tol_mm=2.5, min_shift_px=4.0, rows=None):
 
 
 def _row_time_maps(rows, xl, rad, x0g, R, reg, tol_mm=4.0, weak=None, both_sided=True):
-    """Eixo do tempo por linha: x(t) = x0_r + sc_r * t * v * R.
-    reg = (a_r, b_r) do registro por batimentos (geometria relativa entre linhas).
-    A origem absoluta vem das âncoras esquerdas (fim do pulso / início do traço),
-    levadas ao referencial comum; se discordam da votação global por > 0.8 mm, valem elas."""
+    """Time axis per row: x(t) = x0_r + sc_r * t * v * R.
+    reg = (a_r, b_r) from the beat registration (relative geometry between rows).
+    The absolute origin comes from the left anchors (end of pulse / start of trace), taken
+    to the common frame; if they disagree with the global vote by > 0.8 mm, they win."""
     a_r, b_r = reg
     if weak is not None and not both_sided:
         xl = np.where(np.isnan(xl), weak, xl)
     Lref = (xl + rad - a_r) / b_r
     ok = ~np.isnan(Lref) & (np.abs(Lref - x0g) < tol_mm * R)
     x0_ref = x0g
-    # votação com bordas dos dois lados é a evidência mais forte: mantém. Só sem ela
-    # as âncoras esquerdas (inclusive as fracas) podem corrigir a origem.
+    # a vote with edges on both sides is the strongest evidence: keep it. Only without it
+    # can the left anchors (weak ones included) correct the origin.
     if not both_sided and ok.sum() >= 1:
         med = float(np.median(Lref[ok]))
         if abs(med - x0g) > 0.8 * R:
@@ -968,8 +968,8 @@ def _row_time_maps(rows, xl, rad, x0g, R, reg, tol_mm=4.0, weak=None, both_sided
 
 
 def _estimate_speed(B, D, rows, R, x_left, width_px, return_scores=False):
-    """25 ou 50 mm/s pela largura do QRS em mm (25 mm/s: ~1.5-4 mm; 50 mm/s: ~3-8 mm)
-    combinada com o intervalo RR (40-150 bpm)."""
+    """25 or 50 mm/s from the QRS width in mm (25 mm/s: ~1.5-4 mm; 50 mm/s: ~3-8 mm)
+    combined with the RR interval (40-150 bpm)."""
     q = _row_quick_trace(B, D, rows, R, max(0, int(x_left)), width_px)
     widths, rrs = [], []
     from scipy.ndimage import uniform_filter1d
@@ -1001,29 +1001,29 @@ def _estimate_speed(B, D, rows, R, x_left, width_px, return_scores=False):
             hr = 60.0 / (rr / v)
             s_ += -((np.log(hr / 75.0)) / 0.4) ** 2
         sc[v] = s_
-    # 25 mm/s é o padrão esmagador: 50 só com evidência clara
+    # 25 mm/s is the overwhelming default: 50 only with clear evidence
     v = 50.0 if sc[50.0] - sc[25.0] > 1.0 else 25.0
     return (v, sc) if return_scores else v
 
 
 def _vote_x0(xl, xe, rad, span_px, R, weak=()):
-    """Votação: cada borda propõe um x0; vence o grupo com mais apoio (+-0.8 mm).
-    Com bordas dos dois lados, a média cancela o viés da ponta do traço.
-    weak: âncoras fracas (fim da descida do pulso) — votam na escolha do grupo, mas só dão
-    o valor quando o grupo não tem nenhuma borda de verdade (elas têm viés de ~0,1 mm)."""
+    """Vote: each edge proposes an x0; the group with most support wins (+-0.8 mm).
+    With edges on both sides, the mean cancels the bias of the trace end.
+    weak: weak anchors (end of the pulse's falling edge) vote on the group choice, but only
+    give the value when the group has no real edge (they have a ~0.1 mm bias)."""
     c = [(v + rad, "L") for v in xl] + [(v - rad - span_px, "R") for v in xe] + \
         [(v + rad, "W") for v in weak]
     if weak:
-        # com pulsos, o traço começa no fim do pulso ou poucos mm depois: um final de linha
-        # que põe a origem 8 mm além (ou antes do pulso) emendou em outra coisa
+        # with pulses, the trace starts at the end of the pulse or a few mm after: a row end
+        # that puts the origin 8 mm beyond (or before the pulse) joined something else
         wm = float(np.median(weak)) + rad
         c = [(v, t) for v, t in c if t != "R" or -1.0 * R <= v - wm <= 8.0 * R]
     _vote_x0.both_sided = False
     if not c:
         return None
     vals = np.array([v for v, _ in c])
-    # empate: vale o início (borda esquerda ou fim do pulso); o fim da linha pode ter marca
-    # de fim de traço ou sobra de coluna
+    # tie: the start wins (left edge or end of pulse); the row end may have an end-of-trace
+    # mark or a leftover column
     sup = [(np.abs(vals - v) < 0.8 * R).sum() + 0.1 * len({t for (u, t) in c if abs(u - v) < 0.8 * R})
            + (0.05 if t0 != "R" else 0.0) for v, (_, t0) in zip(vals, c)]
     v0 = vals[int(np.argmax(sup))]
@@ -1044,21 +1044,21 @@ GAP_IGNORE_TEXT = [True]
 SPAN_SANITY = [True]
 GRID_SEGS_ALL = [False]
 GAP_PULSE_SLACK = [True]
-# vão de coluna tomado por rótulo ("aVR" impresso no vão, encostado nos dois lados): aceito se a
-# tinta do vão em cada linha for só texto (poucas componentes pequenas, altura de letra)
+# column gap taken by a label ("aVR" printed in the gap, touching both sides): accepted if the
+# gap ink in each row is only text (few small components, letter height)
 GAP_LABELS = [True]
 RPULSE_RARE = [True]
-# degrau solto no fim da linha (só uma aresta, sem volta à base) é marca de fim de traço em
-# vários geradores, não calibração: só fica se der o ganho de quase todo aparelho (10 mm/mV)
+# a loose step at the end of the row (one edge only, no return to baseline) is an end-of-trace
+# mark in several generators, not a calibration: it only stays if it gives the near-universal gain (10 mm/mV)
 RPULSE_HALF = [True]
 
 
 def _baseline_guard(sig, fs, win_s=0.6, thr_mv=1.5):
-    """Linha de base que anda > 1,5 mV dentro de um trecho contínuo: o rastreio trocou de
-    linha ou seguiu uma borda/vinco por um tempo (foto amassada, folha curva). Um ECG não tem
-    esse desvio lento; tira a mediana móvel de 0,6 s (mais longa que QRS e T) só nesses
-    trechos. A deriva é medida longe das bordas, onde a janela é truncada e a mediana segue o
-    QRS ou um salto inicial, o que disparava a guarda em ECGs limpos (PhysioNet). Trechos normais ficam intactos."""
+    """A baseline that wanders > 1.5 mV within a continuous stretch: the tracker switched
+    rows or followed a border/crease for a while (crumpled photo, curved sheet). An ECG has
+    no such slow drift; remove the 0.6 s moving median (longer than QRS and T) only on those
+    stretches. The drift is measured away from the edges, where the window is truncated and
+    the median follows the QRS or an initial jump, which fired the guard on clean ECGs (PhysioNet). Normal stretches are untouched."""
     from scipy.ndimage import median_filter
     out = sig.copy()
     k = max(3, int(win_s * fs) | 1)
@@ -1072,17 +1072,17 @@ def _baseline_guard(sig, fs, win_s=0.6, thr_mv=1.5):
                 continue
             x = s_[seg]
             b = median_filter(x, size=k, mode="nearest")
-            bi = b[k // 2:len(b) - k // 2]   # só o miolo: nas bordas a mediana pega QRS/saltos de início
+            bi = b[k // 2:len(b) - k // 2]   # core only: at the edges the median picks up QRS/initial jumps
             if len(bi) and np.ptp(bi) > thr_mv:
                 s_[seg] = x - b + np.median(b)
         out[i] = s_.astype(out.dtype)
     return out
 
 def digitize(image, cfg: Config | None = None, return_debug: bool = False):
-    """Imagem -> sinais. Quando a escolha entre 0 e 180 graus foi fraca (sem pulso nem rótulo
-    que desempate), a página é lida também na outra orientação e fica a de melhor layout: de
-    cabeça para baixo, as derivações de membros não fecham Einthoven/Goldberger e as
-    fronteiras e rótulos caem fora do lugar. Sem evidência clara, vale a página como veio."""
+    """Image -> signals. When the 0 vs 180 degree choice was weak (no pulse or label to break
+    the tie), the page is also read in the other orientation and the better layout wins:
+    upside down, the limb leads do not close Einthoven/Goldberger and boundaries and labels
+    fall out of place. Without clear evidence, the page stays as it came."""
     cfg = cfg or Config()
     _orient.weak = False
     res = _digitize_once(image, cfg, return_debug)
@@ -1091,8 +1091,8 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             _PRE[0] = None
         return res
     flipped = res.get("rotation") not in ("None", None)
-    # a outra orientação só até o layout, reaproveitando a retificação e a binarização (que não
-    # dependem da orientação): custa uma fração da página
+    # the other orientation only up to the layout, reusing the rectification and the
+    # binarization (which do not depend on orientation): it costs a fraction of a page
     ORIENT_FORCE[0] = "keep" if flipped else "flip"
     _PRE_USE[0], _LAYOUT_ONLY[0] = True, True
     try:
@@ -1112,10 +1112,10 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         li = r.get("layout_info") or {}
         return float((li.get("parts") or {}).get("limb", 0.0))
     keep, flip = (alt, res) if flipped else (res, alt)
-    # a primeira decisão só é trocada quando a outra orientação é claramente melhor no layout.
-    # Para girar exige-se ainda a física: 12 derivações lidas certas fecham Einthoven/
-    # Goldberger em ~0,8, e três precordiais vizinhas de cabeça para baixo imitam I, II, III
-    # com ~0,35 (piso 0,5); a leitura em pé tem de não fechar
+    # the first decision is only changed when the other orientation is clearly better in the
+    # layout. Flipping also requires the physics: 12 correctly read leads close Einthoven/
+    # Goldberger at ~0.8, and three neighbouring precordial leads upside down mimic I, II, III
+    # at ~0.35 (floor 0.5); the upright reading must not close
     if flipped:
         out = keep if (np.isfinite(sc(keep)) and sc(keep) > sc(flip) + ORIENT_MARGIN[0]) else flip
     else:
@@ -1124,7 +1124,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     chk = dict(keep=sc(keep), flip=sc(flip))
     try:
         if out is not res:
-            out = _digitize_once(image, cfg, return_debug)   # a outra venceu: agora por inteiro
+            out = _digitize_once(image, cfg, return_debug)   # the other one won: now in full
     except Exception:  # noqa: BLE001
         out = res
     finally:
@@ -1136,9 +1136,9 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
 ORIENT_MARGIN = [5.0]
 
 
-_PRE = [None]            # (cfg, rect, pap, D, B, glev, ginfo) da última página, antes de orientar
-_PRE_USE = [False]       # reaproveita _PRE em vez de retificar e binarizar de novo
-_LAYOUT_ONLY = [False]   # para logo depois de escolher o layout (sem extrair os sinais)
+_PRE = [None]            # (cfg, rect, pap, D, B, glev, ginfo) of the last page, before orientation
+_PRE_USE = [False]       # reuse _PRE instead of rectifying and binarizing again
+_LAYOUT_ONLY = [False]   # stop right after choosing the layout (no signal extraction)
 
 
 def _digitize_once(image, cfg: Config | None = None, return_debug: bool = False):
@@ -1149,13 +1149,13 @@ def _digitize_once(image, cfg: Config | None = None, return_debug: bool = False)
     if img is None:
         raise FileNotFoundError(image)
     if cfg.paper_crop:
-        # folha pequena num fundo largo (foto de longe): recorta antes de reduzir, para não
-        # gastar a resolução com o fundo
+        # small sheet on a wide background (photo from far): crop before downscaling, so the
+        # resolution is not spent on the background
         from .geometry import paper_crop
         img, _ = paper_crop(img)
     if cfg.max_side and max(img.shape[:2]) > cfg.max_side:
-        # imagem enorme (render de 600 dpi): reduz antes de tudo; a retificação trabalha a R
-        # px/mm e uma folha A4 a 4000 px ainda tem ~13 px/mm. Evita estourar a memória.
+        # huge image (600 dpi render): downscale first; rectification works at R px/mm and an
+        # A4 sheet at 4000 px still has ~13 px/mm. Avoids running out of memory.
         f = cfg.max_side / max(img.shape[:2])
         img = cv2.resize(img, None, fx=f, fy=f, interpolation=cv2.INTER_AREA)
         if cfg.ppmm:
@@ -1179,7 +1179,7 @@ def _digitize_once(image, cfg: Config | None = None, return_debug: bool = False)
                                fine_snap=cfg.fine_snap)
     D, glev = ink_map(rect, pap, R, return_grid_level=True)
     if cfg.ink_model:
-        # modo híbrido: a rede diz onde está a tinta do traço; o resto segue clássico
+        # hybrid mode: the network says where the trace ink is; everything else stays classical
         from .inkmodel import predict
         Pn = predict(rect, cfg.ink_model)
         Pn[pap == 0] = 0.0
@@ -1194,22 +1194,23 @@ def _digitize_once(image, cfg: Config | None = None, return_debug: bool = False)
 
 
 def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
-    """Da imagem retificada e binarizada em diante (tudo o que depende da orientação)."""
+    """From the rectified and binarized image on (everything that depends on orientation)."""
     R = cfg.R
-    rect, pap, D, B = rect.copy(), pap.copy(), D.copy(), B.copy()   # _PRE fica intacto
+    rect, pap, D, B = rect.copy(), pap.copy(), D.copy(), B.copy()   # _PRE stays intact
     (rect, pap, D, B), rot = _orient([rect, pap, D, B], R)
     from .colalign import col_align, ENABLED as _CA
     _CA[0] = cfg.col_align
     rect, pap, D, B, col_info = col_align(rect, pap, D, B, R)
-    # estrutura por colunas achada pelos trilhos: as linhas (já realinhadas) e o número de
-    # colunas são conhecidos; não se procura de novo
-    rows_hint = col_info["ref"] if (col_info and (col_info.get("how") == "trilhos" or col_info.get("how", "").endswith("+empilha"))) else None
+    # column structure found by col_align with stacked rows: the (realigned) rows and the
+    # number of columns are known; they are not searched again
+    stacked = col_info and (col_info.get("how") == "tracks" or col_info.get("how", "").endswith("+stacked"))
+    rows_hint = col_info["ref"] if stacked else None
     col_hint = len(col_info["cols"]) if rows_hint is not None else None
 
     rows_all, cov, ext_all, pulses_all, spacing = _rows_pulses(B, pap, R, rows_hint)
 
     def _weak(rows_, ext_):
-        # quase nada de traço: < 2 linhas ou linhas curtas (< 40 mm)
+        # almost no trace: < 2 rows or short rows (< 40 mm)
         lens = [e[1] - e[0] for e in ext_ if e]
         return len(rows_) < 2 or not lens or np.median(lens) < 40 * R
 
@@ -1225,9 +1226,9 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                 rows_all, cov, ext_all, pulses_all, spacing = r2
                 break
         if GLEV_RETRY[0] and _weak(rows_all, ext_all):
-            # traço borrado/claro (0,2-0,4): o halo dele entrou como "vazamento da grade" e o
-            # piso do limiar ficou acima do próprio traço. Refaz o nível da grade excluindo a
-            # tinta relativa ao contraste do traço, e tenta de novo
+            # blurred/light trace (0.2-0.4): its halo entered as "grid leakage" and the threshold
+            # floor ended up above the trace itself. Redo the grid level excluding ink relative to
+            # the trace contrast, and try again
             from . import extract as _ex2
             old_ = _ex2.GLEV_RELATIVE[0]
             _ex2.GLEV_RELATIVE[0] = True
@@ -1244,8 +1245,8 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                         rows_all, cov, ext_all, pulses_all, spacing = r2
                         break
     elif cfg.adaptive_threshold and ADAPT_MORE[0] and _nlong(ext_all) <= 3:
-        # poucas linhas longas (traço claro: só as derivações de amplitude grande passaram do
-        # limiar): um limiar menor que revele >= 2 linhas longas a mais, em passo regular, vence
+        # few long rows (light trace: only the large-amplitude leads passed the threshold): a
+        # lower threshold that reveals >= 2 more long rows, at a regular step, wins
         B2 = binarize(D, R, glev, scale=0.5)
         r2 = _rows_pulses(B2, pap, R)
         n1, n2 = _nlong(ext_all), _nlong(r2[2])
@@ -1256,7 +1257,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                 rows_all, cov, ext_all, pulses_all, spacing = r2
     H, W = B.shape
     if len(rows_all) == 0:
-        raise RuntimeError("nenhuma linha de traçado encontrada")
+        raise RuntimeError("no trace row found")
 
     forced = None
     if cfg.layout != "auto":
@@ -1269,15 +1270,15 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     pulses = [pulses_all[i] for i in idx]
     spacing = float(np.median(np.diff(rows))) if len(rows) > 1 else spacing
     half = 0.45 * spacing
-    # pulsos impressos à parte (na linha nominal, com o traço deslocado pelo nível DC): não
-    # emendam no traço, nenhuma linha os achou. Não são traço: saem de B e D (senão o início
-    # da linha cai no pulso e o eixo do tempo estica); a altura deles dá o ganho padrão
+    # pulses printed apart (on the nominal row, with the trace offset by the DC level): they do
+    # not join the trace and no row found them. They are not trace: removed from B and D
+    # (otherwise the row start falls on the pulse and the time axis stretches); their height gives the default gain
     pcol = None
     if PULSE_COL[0] and all(p is None for p in pulses_all):
         from .extract import pulse_column
         pcol = pulse_column(B, R)
-        # só a coluna à esquerda do traço (é ela que estraga a origem do tempo); pulsos no fim
-        # da linha (GE) ficam para o ganho pela busca espelhada
+        # only the column left of the trace (it is the one that spoils the time origin); pulses
+        # at the end of the row (GE) stay for the gain through the mirrored search
         ex_ = [e for e in ext if e]
         if pcol is not None and ex_ and pcol["x_start"] > float(np.median([e[0] for e in ex_])) + 30 * R:
             pcol = None
@@ -1286,7 +1287,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             xa_, xb_ = max(0, int(pcol["x_start"] - 1 * R)), int(pcol["x_end"] + 1 * R)
             h_ = pcol["height"]
             for f_ in pcol["feet"]:
-                # o retângulo do pulso e, no pé, a perninha/quadrado que sai à direita dele
+                # the pulse rectangle and, at the foot, the little leg/square coming out to its right
                 ya_, yb_ = max(0, int(f_ - h_ - 1 * R)), int(f_ + 1 * R)
                 B[ya_:yb_, xa_:xb_] = False
                 D[ya_:yb_, xa_:xb_] = 0
@@ -1294,15 +1295,15 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                 B[ya_:yb_, xa_:int(xb_ + 3 * R)] = False
                 D[ya_:yb_, xa_:int(xb_ + 3 * R)] = 0
             ext = [row_extent(B, y, half, R) for y in rows]
-    # coluna de pulsos NO MEIO do traço (cada coluna de derivações começa com o seu pulso):
-    # marca o começo de uma coluna, não é sinal. Sai de B e D; o vão que fica entre o fim da
-    # coluna anterior e o começo da seguinte é tratado como vão entre colunas, logo abaixo.
+    # pulse column IN THE MIDDLE of the trace (each column of leads starts with its pulse):
+    # it marks the start of a column, it is not signal. Removed from B and D; the gap left
+    # between the end of the previous column and the start of the next is handled as a column gap, below.
     if PULSE_MID[0] and len(rows) >= 3:
         from .extract import pulse_column
         ex_ = [e for e in ext if e]
         if ex_:
             s0 = float(np.median([e[0] for e in ex_]))
-            # fim pela tinta da faixa (a extensão da linha para no vão antes do pulso do meio)
+            # end from the band ink (the row extent stops at the gap before the middle pulse)
             ends = []
             for y in rows:
                 a_, b_ = max(0, int(y - half)), min(B.shape[0], int(y + half))
@@ -1323,9 +1324,9 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                         B[ya_:yb_, xa_:xb_] = False
                         D[ya_:yb_, xa_:xb_] = 0
                 ext = [row_extent(B, y, half, R) for y in rows]
-    # vão comum entre colunas: todas as linhas sem tinta na mesma faixa de x, em posições
-    # que dividem o traço em colunas iguais. O tempo é contínuo de uma coluna à outra, então
-    # o vão sai da imagem (B, D e a retificada) e o resto do programa vê um traço contínuo
+    # common gap between columns: every row without ink in the same x range, at positions that
+    # split the trace into equal columns. Time is continuous from one column to the next, so
+    # the gap is removed from the image (B, D and the rectified one) and the rest sees a continuous trace
     col_cut = None
     if COL_GAP[0] and len(rows) >= 2:
         cg = _column_gaps(B, rows, ext, half, R)
@@ -1336,11 +1337,11 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             B, D, rect = B[:, keep_x], D[:, keep_x], rect[:, keep_x]
             H, W = B.shape
             cum_ = np.cumsum(keep_x)
-            col_cut = [float(cum_[max(0, a_ - 1)]) for a_, _ in cg]  # x do corte na imagem nova
+            col_cut = [float(cum_[max(0, a_ - 1)]) for a_, _ in cg]  # cut x in the new image
             ext = [row_extent(B, y, half, R) for y in rows]
             pulses = [None if p is None else _shift_pulse(p, keep_x) for p in pulses]
-    # pulso no FIM da linha (vários aparelhos imprimem a calibração à direita, ou dos dois
-    # lados): procurado na imagem espelhada; serve só para ganho, não para o eixo do tempo
+    # pulse at the END of the row (several devices print the calibration on the right, or on
+    # both sides): searched in the mirrored image; used only for gain, not for the time axis
     rpulses = [None] * len(rows)
     Bf = B[:, ::-1]
     for i_, (y, e) in enumerate(zip(rows, ext)):
@@ -1352,7 +1353,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             except Exception:
                 rpulses[i_] = None
 
-    # espessura provisória (alturas de segmentos em colunas)
+    # provisional thickness (segment heights in columns)
     lw_guess = []
     for y, e in zip(rows, ext):
         if not e:
@@ -1369,11 +1370,11 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     _edge_rows.text_mask = text_like_mask(B, R)
     _edge_rows.speckle = bool(getattr(ink_map, "dark_grid", False))
 
-    # ---------------------------------------------------- velocidade e duração
+    # ---------------------------------------------------- speed and duration
     xlr0, xer0, wkr0 = _edge_rows(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2, return_weak=True)
-    # início por linha: borda do traço, ou o fim do pulso quando o traço sai colado nele
+    # start per row: trace edge, or the end of the pulse when the trace leaves stuck to it
     xs_p0 = [p["x_start"] for p in pulses if p is not None]
-    if xs_p0:  # início à esquerda do pulso não é traço (borda da folha)
+    if xs_p0:  # a start left of the pulse is not trace (sheet border)
         xlr0 = np.where(xlr0 <= float(np.median(xs_p0)), np.nan, xlr0)
     xlr0 = np.where(np.isnan(xlr0), wkr0 + lw0 / 2, xlr0)
     xl_ok = xlr0[~np.isnan(xlr0)]
@@ -1387,12 +1388,12 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         from .ocr import read_speed
         sp_ocr, sp_sc = read_speed(_edge_rows.text_mask, R)
         v_phys, sc_phys = _estimate_speed(B, D, rows, R, left, right - left, return_scores=True)
-        # o texto vence, a menos que a fisiologia o contradiga com força (leitura fraca de
-        # "25mm/s" degradado vira "12.5" ou "50": QRS de 50 ms / FC de 30 bpm denunciam)
+        # the text wins, unless the physiology strongly contradicts it (a weak reading of a
+        # degraded "25mm/s" becomes "12.5" or "50": a 50 ms QRS / 30 bpm HR give it away)
         ok_txt = sp_ocr is not None and (
             sp_sc >= 0.7 or not sc_phys or sc_phys.get(sp_ocr, -np.inf) >= max(sc_phys.values()) - 2.0)
-        # 25 mm/s é o padrão esmagador; "50" lido numa foto (o "25" borrado) só vale se a
-        # fisiologia (QRS/RR) não preferir 25
+        # 25 mm/s is the overwhelming default; "50" read on a photo (a blurred "25") only counts
+        # if the physiology (QRS/RR) does not prefer 25
         if ok_txt and sp_ocr != 25.0 and sc_phys and sc_phys.get(25.0, -np.inf) > sc_phys.get(sp_ocr, -np.inf) + 0.5:
             ok_txt = False
         if ok_txt:
@@ -1410,24 +1411,24 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                 duration = d_
                 break
         else:
-            # a mediana dos finais de linha pode cair num artefato (borda, sombra) em metade
-            # das linhas: procura a duração padrão que o maior número de finais confirma
+            # the median of the row ends may fall on an artefact (border, shadow) on half the
+            # rows: look for the standard duration that the most ends confirm
             sup = {}
             for d_ in (2.5, 5.0, 10.0):
                 exp_ = left + lw0 + d_ * speed * R
                 sup[d_] = int((np.abs(xr_ok - exp_) < 1.5 * R).sum())
             d_best = max(sup, key=sup.get) if sup else None
             n_pulses = sum(p is not None for p in pulses)
-            # nenhum fim confirma uma duração padrão a partir do início medido, mas os fins
-            # das linhas concordam: o início pegou um pulso deformado, uma barra ou a moldura.
-            # Ancora no fim: a maior duração padrão que começa de 2 a 30 mm depois do início
+            # no end confirms a standard duration from the measured start, but the row ends
+            # agree: the start caught a deformed pulse, a bar or the frame. Anchor at the end:
+            # the longest standard duration that starts 2 to 30 mm after the start
             anch = None
             ends_ = [e[1] for e in ext if e]
             n_end = sum(abs(e_ - right) < 3 * R for e_ in ends_)
             sup_ok = d_best is not None and sup[d_best] >= max(1, int(np.ceil(0.25 * len(xr_ok))))
             if RIGHT_ANCHOR[0] and not sup_ok and n_end >= max(2, int(np.ceil(0.5 * len(rows)))):
-                # só a página padrão de 10 s: com durações curtas, um vão de escala errada
-                # (grade lida em outro passo) caía por acaso na janela
+                # only the standard 10 s page: with short durations, a wrong-scale gap (grid read
+                # at another step) fell into the window by chance
                 l_ = right - lw0 - 10.0 * speed * R
                 if left + 2 * R <= l_ <= left + 30 * R:
                     anch = 10.0
@@ -1437,23 +1438,23 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             elif d_best is not None and sup[d_best] >= max(1, int(np.ceil(0.25 * len(xr_ok)))):
                 duration = d_best
             elif n_pulses >= 2 and 10.0 < duration <= 12.5 and len(rows) >= 3:
-                # início ancorado nos pulsos e linhas "longas demais": os finais emendaram na
-                # borda da folha/grade (foto). A grade dá o mm; vale a página padrão de 10 s
+                # start anchored on the pulses and rows "too long": the ends joined the sheet/grid
+                # border (photo). The grid gives the mm; the standard 10 s page wins
                 duration = 10.0
             elif len(rows) >= 3:
-                # página de várias linhas fora de qualquer duração padrão: quase sempre a
-                # escala horizontal está errada (imagem da web redimensionada sem manter a
-                # proporção, grade só com linhas grossas). A página padrão tem 10 s; o eixo
-                # do tempo se ajusta à largura medida (a escala vertical não muda)
+                # multi-row page outside any standard duration: almost always the horizontal
+                # scale is wrong (web image resized without keeping the aspect ratio, grid with
+                # major lines only). The standard page has 10 s; the time axis adapts to the
+                # measured width (the vertical scale does not change)
                 duration = 10.0
                 duration_assumed = True
                 speed = span_mm / duration
             else:
                 duration = round(duration, 1)
     if SPAN_SANITY[0] and not cfg.duration and duration > 12.5 and span_mm > 320 and len(rows) >= 2:
-        # linha com mais de 32 cm: não cabe em A4/Carta. A escala da grade está errada (passo
-        # de 2 mm tomado por 1 mm, grade pontilhada); o pulso mede o dobro também, então a
-        # amplitude fica certa, e o tempo volta à página padrão de 10 s
+        # row longer than 32 cm: does not fit on A4/Letter. The grid scale is wrong (2 mm step
+        # taken for 1 mm, dotted grid); the pulse also measures double, so the amplitude stays
+        # right, and time goes back to the standard 10 s page
         duration = 10.0
         duration_assumed = True
         speed = span_mm / duration
@@ -1463,12 +1464,12 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         print("SPEED", dict(left=left, right=right, R=R, span_mm=span_mm, speed=speed, src=speed_src,
                             dur=duration, xl=list(np.round(xlr0)), xr=list(np.round(xer0))))
 
-    # ------------------------------------------------------- origem temporal
+    # ------------------------------------------------------- time origin
     xl, xe, wk_ = _origin_cands(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2)
     x0 = _vote_x0(xl, xe, lw0 / 2, span_px, R, weak=wk_)
     if x0 is None:
         x0 = float(np.median([e[0] for e in ext if e])) if any(ext) else 0.0
-    # registro por batimentos: traço rápido de cada linha inteira -> QRS -> afim por linha
+    # beat registration: quick trace of each full row -> QRS -> affine per row
     xq0 = max(0, int(x0 - 2 * R))
     qfull = _row_quick_trace(B, D, rows, R, xq0, span_px + 4 * R, full=True)
     qtr = [float(y) - q["cen"] for y, q in zip(rows, qfull)]
@@ -1478,9 +1479,9 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     x0_r, sc_r = _row_time_maps(rows, xlr, lw0 / 2, x0, R, reg, weak=wkr,
                                 both_sided=getattr(_vote_x0, "both_sided", True))
 
-    # ------------------------------------- ganhos por linha (1 ou 2 níveis) e linha de base
+    # ------------------------------------- gains per row (1 or 2 levels) and baseline
     def _snap(g):
-        # ganhos são sempre padronizados; foto em perspectiva encurta o pulso em até ~20%
+        # gains are always standardized; a photo in perspective shortens the pulse by up to ~20%
         gg = min((2.5, 5.0, 10.0, 20.0, 40.0), key=lambda v: abs(np.log(g / v)))
         return gg if abs(g - gg) / gg < 0.22 else float(g)
     std_g = (2.5, 5.0, 10.0, 20.0, 40.0)
@@ -1500,16 +1501,16 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         b1, b2 = _lv(rp)
         if RPULSE_HALF[0] and rp is not None and rp.get("half") and _std_ok(b1) and _snap(b1) != 10.0:
             b1, b2 = None, None
-        # pulso da esquerda vale se der um ganho padrão; senão tenta o da direita
+        # the left pulse counts if it gives a standard gain; otherwise try the right one
         if _std_ok(a1) or not _std_ok(b1):
             lv1.append(a1); lv2.append(a2); src.append("L" if a1 is not None else None)
         else:
-            lv1.append(b1); lv2.append(None); src.append("R")  # ganho dividido só pelo pulso da esquerda
-    # Consenso da página: ganhos são padronizados (2,5/5/10/20/40 mm/mV). Pulso deformado,
-    # cortado na borda ou colado ao traço dá 3,7 ou 7 mm/mV; esse nível não vale e a linha
-    # herda o ganho padrão mais votado entre as linhas confiáveis (ou 10, se nenhuma for).
-    # 2,5 e 40 mm/mV são raros; só o pulso da esquerda (impresso como calibração) os sustenta.
-    # O "pulso" da direita é o fim do traço achatado por blur e dá 2,5 sem nenhum pulso real
+            lv1.append(b1); lv2.append(None); src.append("R")  # split gain only from the left pulse
+    # Page consensus: gains are standardized (2.5/5/10/20/40 mm/mV). A deformed pulse, cut at
+    # the border or stuck to the trace gives 3.7 or 7 mm/mV; that level does not count and the
+    # row inherits the most voted standard gain among the reliable rows (or 10, if none is).
+    # 2.5 and 40 mm/mV are rare; only the left pulse (printed as calibration) supports them.
+    # The right "pulse" is the end of a blur-flattened trace and gives 2.5 without any real pulse
     if RPULSE_RARE[0]:
         for r_, g in enumerate(lv1):
             if g is not None and src[r_] == "R" and _std_ok(g) and _snap(g) in (2.5, 40.0):
@@ -1519,16 +1520,16 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         vals, cnts = np.unique(reliable, return_counts=True)
         g1def = float(vals[np.argmax(cnts)])
     else:
-        g1def = 10.0  # nenhum pulso confiável: 10 mm/mV é o padrão de quase todo aparelho
-        # só quando os pés dos pulsos seguem o passo das linhas (é a coluna de calibração)
+        g1def = 10.0  # no reliable pulse: 10 mm/mV is the default of almost every device
+        # only when the pulse feet follow the row step (it is the calibration column)
         pc_ok = pcol is not None and len(rows) > 1 and \
             abs(float(np.median(np.diff(pcol["feet"]))) - spacing) <= 0.15 * spacing
         if pc_ok and _std_ok((pcol["height"] + 1 - lw0) / R, 0.1):
             g1def = _snap((pcol["height"] + 1 - lw0) / R)
     gain_flags = []
     for r_, g in enumerate(lv1):
-        # pulso da direita (menos confiável: costuma encostar no fim do traço) que discorda
-        # do consenso da página também cede
+        # a right pulse (less reliable: it tends to touch the end of the trace) that disagrees
+        # with the page consensus also yields
         if g is not None and src[r_] == "R" and len(reliable) >= 2 and _snap(g) != g1def:
             lv1[r_] = None
             gain_flags.append(r_)
@@ -1547,7 +1548,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         if cfg.gain:
             g1, g2 = float(cfg.gain), None
         levels.append((g1, g2))
-    # o 0 mV vem do platô do pulso da esquerda só se ele for confiável
+    # 0 mV comes from the left pulse plateau only if it is reliable
     pulses_base = [p if (p is not None and src[r_] == "L" and lv1[r_] is not None) else None
                    for r_, p in enumerate(pulses)]
     base_q = []
@@ -1573,7 +1574,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         ctx = _LayoutCtx(B, D, rows, pulses, R, x0_r, sc_r, speed, duration, qfull, base_q, levels)
         ctx.col_hint = col_hint
         if col_cut:
-            # o vão tirado da imagem era a fronteira de coluna mais forte que existe
+            # the gap removed from the image was the strongest column boundary there is
             for r_ in range(len(rows)):
                 for xc in col_cut:
                     q_ = (xc - x0_r[r_]) / (sc_r[r_] * speed * R * duration)
@@ -1581,8 +1582,8 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                         if abs(qq - q_) < 0.015:
                             ctx.bnd[r_][qq] = 1.0
         layout_info = ctx.choose()
-        # caixas de rótulos lidos com confiança: o traço que atravessa um rótulo (ex.: R
-        # passando por cima de "V4") não pode ser confundido com as letras
+        # boxes of labels read with confidence: a trace crossing a label (e.g. an R passing over
+        # "V4") must not be confused with the letters
         label_boxes = [w["box"] for w in ctx.words if w["best"] >= 0.5 and not w["single"]
                        and (w["box"][2] - w["box"][0]) < 15 * R and (w["box"][3] - w["box"][1]) < 8 * R]
         if layout_info is None:
@@ -1600,10 +1601,10 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     names = LEADS if all((nm in LEADS or nm == "-aVR") for row in rows_spec for nm in row) else \
         [nm for row in rows_spec for nm in row]
 
-    # ------------------------------------------------------- extração por segmento
-    meas = {l: [] for l in names}  # lista de arrays (N) com NaN
-    wts = {l: [] for l in names}   # pesos de confiança correspondentes
-    # nível de referência da tinta do traço (para a ponte entre segmentos no Viterbi)
+    # ------------------------------------------------------- per-segment extraction
+    meas = {l: [] for l in names}  # list of arrays (N) with NaN
+    wts = {l: [] for l in names}   # matching confidence weights
+    # reference ink level of the trace (for the bridge between segments in the Viterbi)
     _bref = None
     if cfg.bridge:
         vb = D[B]
@@ -1621,9 +1622,9 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         base0 = base_q[r]
         up = (y - rows[r - 1]) if r > 0 else spacing
         dn = (rows[r + 1] - y) if r + 1 < len(rows) else spacing
-        # faixa de busca generosa: ondas grandes (R de 3-5 mV) invadem a linha vizinha;
-        # a primeira/última linha pode ir até a borda. O Viterbi + prior de linha de base
-        # mantém o traço certo mesmo com os vizinhos dentro da faixa.
+        # generous search band: large waves (R of 3-5 mV) invade the neighbouring row; the
+        # first/last row may reach the border. Viterbi + baseline prior keep the right trace
+        # even with the neighbours inside the band.
         ya = 0 if r == 0 else max(0, int(y - cfg.band_sp * up))
         yb = H if r == len(rows) - 1 else min(H, int(y + cfg.band_sp * dn))
         k = len(spec)
@@ -1637,21 +1638,21 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             runs = column_runs(B, D, ya, yb, xa, xb)
             _drop_label_runs(runs, xa, label_boxes)
             others = [float(v) for i2, v in enumerate(rows) if i2 != r]
-            # na extração final, continuidade das bordas (letras de rótulo coladas ao traço);
-            # os traços rápidos usados no layout ficam como antes
+            # in the final extraction, edge continuity (label letters stuck to the trace); the
+            # quick traces used for the layout stay as before
             sel = viterbi_track(runs, base0, R, others=others, lw=lw0, w_edge=0.3, **br_kw(xa))
-            # restrição fisiológica: o ECG volta à linha de base a cada batimento. Um caminho
-            # que passa > 0,8 s inteiro a mais de 4 mm dela seguiu outra coisa (borda da folha,
-            # régua de texto, traço vizinho): esses segmentos saem e o rastreio é refeito
+            # physiological constraint: the ECG returns to the baseline every beat. A path that
+            # spends > 0.8 s entirely more than 4 mm from it followed something else (sheet
+            # border, text ruler, neighbouring trace): those segments go and tracking is redone
             far_len = int(0.8 * speed * R)
             cen = np.array([runs[i][k][2] if k is not None else np.nan for i, k in enumerate(sel)])
             far = np.abs(cen - base0) > 4 * R
             st_, en_ = _runs_bool(far)
-            # ... e é PLANO (sem QRS): uma derivação com desnível real de linha de base
-            # continua tendo complexos; borda de folha e régua não
+            # ... and is FLAT (no QRS): a lead with a real baseline offset still has complexes;
+            # a sheet border or ruler does not
             win_ = max(10, int(1.0 * speed * R))
 
-            def _flat(a_, b_):  # em >= 75% das janelas de 1 s a excursão local fica < 2,5 mm
+            def _flat(a_, b_):  # in >= 75% of the 1 s windows the local excursion stays < 2.5 mm
                 fl = []
                 for w0 in range(a_, b_, win_):
                     seg = cen[w0:min(b_, w0 + win_)]
@@ -1667,7 +1668,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                 sel = viterbi_track(runs, base0, R, others=others, lw=lw0, w_edge=0.3, **br_kw(xa))
             seg_jobs.append(dict(lead=lead, row=r, n0=n0, n1=n1, xa=xa, runs=runs, sel=sel))
 
-    # nível de "tinta cheia" e raio do traço (meia espessura) em trechos planos
+    # "full ink" level and trace radius (half thickness) on flat stretches
     pks = []
     for j in seg_jobs:
         tb, pk = selected_envelopes(D, j["runs"], j["sel"], j["xa"])
@@ -1683,7 +1684,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         dt = np.abs(np.gradient(top)) + np.abs(np.gradient(bot))
         th.append((bot - top)[dt < 0.3])
     if not seg_jobs:
-        raise RuntimeError("nenhum segmento de derivação para rastrear")
+        raise RuntimeError("no lead segment to track")
     th = np.concatenate(th)
     for j in seg_jobs:
         _mask_label_edges(j, label_boxes)
@@ -1693,8 +1694,8 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     rad_h = horizontal_halfwidth(D, seg_jobs, 0.5 * dfull, rad) if cfg.pen == "measure" else (
         calibrate_pen([(j["top"], j["bot"]) for j in seg_jobs], rad) if cfg.pen == "calibrate" else rad)
 
-    # confiança por coluna: o segmento escolhido é compartilhado com o traço de OUTRA linha
-    # (ondas grandes que se cruzam / se fundem) -> a forma ali é ambígua
+    # confidence per column: the chosen segment is shared with the trace of ANOTHER row
+    # (large waves that cross / merge) -> the shape there is ambiguous
     for j in seg_jobs:
         n_ = len(j["sel"])
         tb = np.full((n_, 2), np.nan)
@@ -1714,11 +1715,11 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             with np.errstate(invalid="ignore"):
                 ov = (a_[:, 0] <= b_[:, 1]) & (b_[:, 0] <= a_[:, 1])
             j["shared"][lo - j["xa"]:hi - j["xa"]] |= ov
-    for j in seg_jobs:  # dilata ~1 mm: o entorno de uma fusão também é suspeito
+    for j in seg_jobs:  # dilate ~1 mm: the surroundings of a merge are suspicious too
         k_ = int(R) | 1
         j["shared"] = cv2.dilate(j["shared"].astype(np.uint8).reshape(1, -1), np.ones((1, k_), np.uint8)).ravel() > 0
 
-    # origem temporal final com o nível de 50% e o raio medidos
+    # final time origin with the measured 50% level and radius
     lev = 0.5 * dfull
     xl, xe, wk_ = _origin_cands(D, B, rows, ext, pulses, half, lev, R, rad)
     x0f = _vote_x0(xl, xe, rad, span_px, R, weak=wk_)
@@ -1728,27 +1729,27 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     x0_r, sc_r = _row_time_maps(rows, xlr, rad, x0, R, reg, weak=wkr,
                                 both_sided=getattr(_vote_x0, "both_sided", True))
 
-    # linha de base final com o raio medido: 0 mV = centro do platô 1 + ganho do nível 1
+    # final baseline with the measured radius: 0 mV = centre of plateau 1 + level-1 gain
     for r_, p in enumerate(pulses_base):
         if p is not None:
             base_q[r_] = p["top"] - 0.5 + rad + levels[r_][0] * R
 
-    # extensão típica da marca separadora (à esquerda/direita da fronteira) nesta página
+    # typical extent of the separator mark (left/right of the boundary) on this page
     ext_l, ext_r = [], []
     for j in seg_jobs:
         rr = j["row"]
         xs_ = np.arange(j["xa"], j["xa"] + len(j["top"]), dtype=np.float64)
-        if j["n0"] > 0:   # começo de derivação: quanto a marca avança depois da fronteira
+        if j["n0"] > 0:   # start of a lead: how far the mark reaches after the boundary
             xb = x0_r[rr] + sc_r[rr] * j["n0"] / cfg.fs * speed * R
             sp_ = _tick_span(xs_, j["top"], j["bot"], xb, R)
             if sp_ is not None:
                 ext_r.append(sp_[1] - xb)
-        if j["n1"] < N:   # fim de derivação: quanto a marca começa antes da fronteira
+        if j["n1"] < N:   # end of a lead: how early the mark starts before the boundary
             xb = x0_r[rr] + sc_r[rr] * (j["n1"] - 1) / cfg.fs * speed * R
             sp_ = _tick_span(xs_, j["top"], j["bot"], xb, R)
             if sp_ is not None:
                 ext_l.append(xb - sp_[0])
-    # percentil 25: um QRS colado à fronteira só alarga a medida, nunca a estreita
+    # 25th percentile: a QRS touching the boundary only widens the measure, never narrows it
     tick_l = float(np.percentile(ext_l, 25)) + 1.0 if len(ext_l) >= 3 else 0.0
     tick_r = float(np.percentile(ext_r, 25)) + 1.0 if len(ext_r) >= 3 else 0.0
     for j in seg_jobs:
@@ -1759,7 +1760,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         gain = seg_gain(j["row"], j["lead"])
         if p is not None:
             base = base_q[j["row"]]
-        else:  # sem pulso: moda (isoelétrica) da linha
+        else:  # no pulse: mode (isoelectric) of the row
             vv = yc[valid]
             vv = vv[np.isfinite(vv)]
             if len(vv) < 5:
@@ -1769,25 +1770,25 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             base = float(edges[int(np.argmax(hist))] + 0.5)
             j["base_from_mode"] = True
         xs = np.arange(j["xa"], j["xa"] + len(yc), dtype=np.float64)
-        # bordas do segmento: pontas do traço / marcas separadoras / fim do traço vizinho
-        # -> descarta ~raio+1 px e extrapola linearmente a partir do interior
+        # segment edges: trace ends / separator marks / end of the neighbouring trace
+        # -> drop ~radius+1 px and extrapolate linearly from the interior
         tr = np.ceil(rad_h + 1.0)
         rr = j["row"]
         xs_s = x0_r[rr] + sc_r[rr] * j["n0"] / cfg.fs * speed * R
         xs_e = x0_r[rr] + sc_r[rr] * (j["n1"] - 1) / cfg.fs * speed * R
-        lo_cut = xs_s + tr if j["n0"] > 0 else -np.inf          # fronteira interna à esquerda
-        hi_cut = xs_e - tr if j["n1"] < N else np.inf           # fronteira interna à direita
+        lo_cut = xs_s + tr if j["n0"] > 0 else -np.inf          # internal boundary on the left
+        hi_cut = xs_e - tr if j["n1"] < N else np.inf           # internal boundary on the right
         if j["n0"] == 0 and pulses[rr] is not None:
-            # começo da linha: nada antes do fim do pulso de calibração (a descida do pulso e
-            # o platô não são sinal)
+            # start of the row: nothing before the end of the calibration pulse (the pulse's
+            # falling edge and plateau are not signal)
             pe = pulses[rr].get("x_fall", pulses[rr].get("x_end"))
             if pe is not None:
                 lo_cut = max(lo_cut, float(pe) + tr)
-        # marca separadora na troca de derivação: barra vertical mais larga que a pena em
-        # scans e fotos (borrão). As colunas da marca têm o traço "alto" (topo-base de vários
-        # mm) colado na fronteira; corta até o fim dela, para não virar um degrau de 0,3 mV
-        # marca separadora: corta até a extensão típica da marca nesta página (mediana entre
-        # todas as fronteiras), para um QRS colado na fronteira não ser cortado junto
+        # separator mark at the lead switch: vertical bar wider than the pen in scans and
+        # photos (blur). The mark columns have a "tall" trace (top-bottom of several mm)
+        # against the boundary; cut to its end, so it does not become a 0.3 mV step.
+        # Separator mark: cut to the typical extent of the mark on this page (median over all
+        # boundaries), so that a QRS touching the boundary is not cut with it
         if j["n0"] > 0:
             sp_ = _tick_span(xs, j["top"], j["bot"], xs_s, R)
             if sp_ is not None:
@@ -1811,22 +1812,22 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         tn = np.arange(j["n0"], j["n1"]) / cfg.fs
         xn = x0_r[rr] + sc_r[rr] * tn * speed * R
         yn = np.interp(xn, xg, yg)
-        # extrapolação linear limitada (inclinação amortecida), senão mantém o valor
+        # limited linear extrapolation (damped slope), otherwise keep the value
         K = min(6, len(xg))
         a0 = np.polyfit(xg[:K], yg[:K], 1); a1 = np.polyfit(xg[-K:], yg[-K:], 1)
         yn = np.where(xn < xg[0], yg[0] + 0.5 * a0[0] * (xn - xg[0]), yn)
         yn = np.where(xn > xg[-1], yg[-1] + 0.5 * a1[0] * (xn - xg[-1]), yn)
-        # extrapolar só o que a marca separadora esconde (~1 raio de pena); além disso a
-        # amostra é desconhecida: uma rampa inventada estraga o 1º batimento e Einthoven
+        # extrapolate only what the separator mark hides (~1 pen radius); beyond that the
+        # sample is unknown: an invented ramp spoils the first beat and Einthoven
         ext_max = 2.0 * tr
         yn = np.where((xn < xg[0] - ext_max) | (xn > xg[-1] + ext_max), np.nan, yn)
-        # na troca de derivação o trecho escondido pela marca é curto (poucos ms): vale o
-        # primeiro/último valor limpo, constante (melhor que vazio, que a métrica lê como zero)
-        # extrapolação com metade da inclinação das primeiras amostras limpas (um QRS colado
-        # à fronteira continua por baixo da marca, mas a curva costuma fazer a volta ali)
+        # at a lead switch the stretch hidden by the mark is short (a few ms): the first/last
+        # clean value, constant, is used (better than empty, which the metric reads as zero)
+        # extrapolation with half the slope of the first clean samples (a QRS touching the
+        # boundary continues under the mark, but the curve usually turns there)
         K4 = min(4, len(xg))
-        # a rampa só vale perto da última amostra limpa (2 mm); traço perdido longe da
-        # fronteira fica no último valor (uma rampa de 0,5 s ia a vários mV)
+        # the ramp only counts near the last clean sample (2 mm); a trace lost far from the
+        # boundary keeps the last value (a 0.5 s ramp would reach several mV)
         ramp = 2.0 * R if EXTRAP_CAP[0] else np.inf
         if j["n0"] > 0 and K4 >= 2:
             sl = np.polyfit(xg[:K4], yg[:K4], 1)[0]
@@ -1840,7 +1841,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         if j["n0"] == 0:
             v = _cut_leading_pulse(v, cfg.fs)
         lead = j["lead"]
-        if lead == "-aVR":  # Cabrera: derivação invertida
+        if lead == "-aVR":  # Cabrera: inverted lead
             lead, v = "aVR", -v
         arr = np.full(N, np.nan, np.float32)
         arr[j["n0"]:j["n1"]] = v
@@ -1863,13 +1864,13 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             wt = np.where(np.isnan(st), 0.0, np.nan_to_num(np.stack(wts[l]), nan=0.0))
             sw = wt.sum(0)
             sig[li] = np.where(sw > 0, np.nansum(st * wt, 0) / np.maximum(sw, 1e-9), np.nan)
-            nmeas[li] = sw  # "número efetivo de medidas" (peso total) -> variância na fusão
-    sig_pre = sig.copy()   # antes da fusão: o resíduo de Einthoven só existe aqui
+            nmeas[li] = sw  # "effective number of measurements" (total weight) -> variance in the fusion
+    sig_pre = sig.copy()   # before fusion: the Einthoven residual only exists here
     if cfg.einthoven and names is LEADS:
         sig = einthoven_fuse(sig, nmeas, fill=cfg.fill_limb)
     if BASELINE_GUARD[0]:
         sig = _baseline_guard(sig, cfg.fs)
-    # nota de qualidade por derivação (não altera o sinal, a menos que refuse_below peça)
+    # quality score per lead (does not change the signal unless refuse_below asks for it)
     quality = None
     try:
         from .quality import assess
@@ -1878,7 +1879,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         page = dict(layout_confidence=(layout_info or {}).get("confidence"),
                     layout_warning=(layout_info or {}).get("warning"),
                     pulses_ratio=sum(p is not None for p in pulses) / n_rows)
-        # a confiança do layout é a parte que melhor separa página boa de ruim (ver quality.py)
+        # layout confidence is the part that best separates good from bad pages (see quality.py)
         ps = 1.0
         if page["layout_confidence"] is not None:
             ps = float(np.clip(page["layout_confidence"], 0.05, 1.0))
@@ -1892,11 +1893,11 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                 if quality["leads"][l]["score"] < cfg.refuse_below:
                     sig[li] = np.nan
                     quality["leads"][l]["flags"].append("recusada")
-    except Exception as e:  # a nota nunca derruba a digitalização
+    except Exception as e:  # the score never brings the digitization down
         quality = dict(error=f"{type(e).__name__}: {e}")
 
     gains_seg = {f"{r_}:{nm}": seg_gain(r_, nm) for r_, row in enumerate(rows_spec[:len(levels)]) for nm in row}
-    # linhas que a hipótese de layout deixou de fora (moldura, régua) não aparecem no resultado
+    # rows the layout hypothesis left out (frame, ruler) do not appear in the result
     res = dict(signals=sig, fs=cfg.fs, leads=list(names), layout=layout, layout_rows=[r_ for r_ in rows_spec if r_],
                layout_info=layout_info, rotation=str(rot),
                gain_mm_per_mv=levels[0][0] if levels else None, gains=gains_seg, duration_s=duration,
@@ -1930,11 +1931,11 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
 
 
 def einthoven_fuse(sig, nmeas, fill=False):
-    """Projeção de mínimos quadrados nas restrições lineares exatas:
-       I - II + III = 0   e   aVR + aVL + aVF = 0   (e, com fill, as relações de Goldberger)."""
+    """Least-squares projection onto the exact linear constraints:
+       I - II + III = 0   and   aVR + aVL + aVF = 0   (and, with fill, the Goldberger relations)."""
     s = sig.copy()
     I, II, III, aVR, aVL, aVF = range(6)
-    var = 1.0 / np.maximum(nmeas, 0.02)  # amostras ocluídas (peso baixo) absorvem a correção
+    var = 1.0 / np.maximum(nmeas, 0.02)  # occluded samples (low weight) absorb the correction
 
     def project(idx, coef):
         idx = list(idx)
@@ -1952,7 +1953,7 @@ def einthoven_fuse(sig, nmeas, fill=False):
     project([I, II, III], [1, -1, 1])
     project([aVR, aVL, aVF], [1, 1, 1])
     if fill:
-        # completa usando as definições de Goldberger quando I e II existem, etc.
+        # complete using the Goldberger definitions when I and II exist, etc.
         has = ~np.isnan(s)
         m = has[I] & has[II]
         for k, f in ((III, lambda: s[II] - s[I]), (aVR, lambda: -(s[I] + s[II]) / 2),

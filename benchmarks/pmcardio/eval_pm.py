@@ -1,14 +1,14 @@
-"""Avaliação do ecgdig no PMcardio ECG Image Database (PM-ECG-ID, Zenodo 13617673).
+"""Evaluation of ecgdig on the PMcardio ECG Image Database (PM-ECG-ID, Zenodo 13617673).
 
-Métricas no estilo do artigo da PMcardio (Demolder et al., medRxiv 2024.08.31.24312876):
-por derivação, alinhamento de até ±0,5 s, desvio vertical removido pela mediana da
-diferença; PCC, RMSE (mV) e SNR (dB). Falha (derivação ausente ou < 50% coberta): PCC = 0,
-SNR = 0 e RMSE do sinal todo zero, como no artigo para as métricas da base inteira.
+Metrics in the style of the PMcardio paper (Demolder et al., medRxiv 2024.08.31.24312876):
+per lead, alignment of up to ±0.5 s, vertical offset removed by the median of the
+difference; PCC, RMSE (mV) and SNR (dB). Failure (lead missing or < 50% covered): PCC = 0,
+SNR = 0 and the RMSE of an all-zero signal, as in the paper for whole-database metrics.
 
-    python benchmarks/pmcardio/eval_pm.py --root <pasta com visual_data/ e data/> \
+    python benchmarks/pmcardio/eval_pm.py --root <folder with visual_data/ and data/> \
         --meta metadata.csv --list sel.csv --out results/pm --jobs 2 [--config k=v ...]
 
-As imagens de várias páginas do mesmo ECG são juntadas por derivação antes da comparação.
+Multi-page images of the same ECG are merged per lead before the comparison.
 """
 from __future__ import annotations
 
@@ -32,8 +32,8 @@ MAXS = int(0.5 * FS)
 
 
 def _apply_flags(spec: str):
-    """Chaves de ablação "modulo.FLAG=valor;..." (listas de 1 elemento em ecgdig.*), para
-    comparar variantes na base inteira sem mudar o código."""
+    """Ablation switches "module.FLAG=value;..." (1-element lists in ecgdig.*), to compare
+    variants on the whole database without changing the code."""
     import importlib
     for it in [x.strip() for x in spec.split(";") if x.strip()]:
         mod, rest = it.split(".", 1)
@@ -50,7 +50,7 @@ def _digitize(job):
     _apply_flags(os.environ.get("ECGDIG_FLAGS", ""))
 
     def _alarm(*_):
-        raise TimeoutError("tempo esgotado")
+        raise TimeoutError("timed out")
     signal.signal(signal.SIGALRM, _alarm)
     signal.alarm(int(os.environ.get("PM_TIMEOUT", "300")))
     t0 = time.time()
@@ -68,7 +68,7 @@ def _digitize(job):
 
 
 def _run_all(jobs, n, cache: Path, root: Path):
-    """Roda com cache por imagem (retoma) e sobrevive a um processo morto (memória)."""
+    """Run with a per-image cache (resumable) and survive a killed process (memory)."""
     import pickle
     from concurrent.futures.process import BrokenProcessPool
     cache.mkdir(parents=True, exist_ok=True)
@@ -83,9 +83,9 @@ def _run_all(jobs, n, cache: Path, root: Path):
             res[os.path.relpath(j[0], root)] = pickle.loads(k.read_bytes())
         else:
             todo.append(j)
-    # Lotes de n*4 imagens, um executor novo por lote (recicla a memória dos processos sem
-    # max_tasks_per_child, que trava o executor no Python 3.11 depois de n*4 tarefas). Cada
-    # imagem tem prazo; o que estourar vira falha e os processos do lote são mortos.
+    # Batches of n*4 images, a new executor per batch (recycles process memory without
+    # max_tasks_per_child, which hangs the executor on Python 3.11 after n*4 tasks). Each image
+    # has a deadline; whatever exceeds it becomes a failure and the batch processes are killed.
     from concurrent.futures import wait, FIRST_COMPLETED
     per_img = float(os.environ.get("ECGDIG_IMG_TIMEOUT", "900"))
     while todo:
@@ -111,7 +111,7 @@ def _run_all(jobs, n, cache: Path, root: Path):
             if pending and time.time() - t0 > per_img * 4:
                 for f in pending:
                     j = futs[f]
-                    o = dict(ok=False, err="tempo esgotado", sec=time.time() - t0)
+                    o = dict(ok=False, err="timed out", sec=time.time() - t0)
                     res[os.path.relpath(j[0], root)] = o
                     key(j[0]).write_bytes(pickle.dumps(o))
                 for pr in list(getattr(ex, "_processes", {}).values()):
@@ -119,12 +119,12 @@ def _run_all(jobs, n, cache: Path, root: Path):
                 pending = set()
         ex.shutdown(wait=False, cancel_futures=True)
         for j in broken:
-            # processo morto (memória?): roda sozinha; se morrer de novo, vira falha
+            # killed process (memory?): run it alone; if it dies again, it becomes a failure
             e1 = ProcessPoolExecutor(1)
             try:
                 path, o = e1.submit(_digitize, j).result(timeout=per_img)
             except Exception as e:  # noqa: BLE001
-                path, o = j[0], dict(ok=False, err=f"processo morto/tempo: {type(e).__name__}", sec=0.0)
+                path, o = j[0], dict(ok=False, err=f"killed process/timeout: {type(e).__name__}", sec=0.0)
                 for pr in list(getattr(e1, "_processes", {}).values()):
                     pr.kill()
             e1.shutdown(wait=False, cancel_futures=True)
@@ -146,9 +146,9 @@ def _metrics(g, p):
 
 
 def _best_shift(g, F, a, span=0):
-    """g: corte do gabarito; F: sinal previsto (página inteira); a: início do corte na previsão;
-    span: quanto a tira prevista é mais longa que o corte (tira de 10 s com corte de 2,5 s:
-    o corte pode estar em qualquer ponto dela)."""
+    """g: ground-truth cut; F: predicted signal (whole page); a: start of the cut in the
+    prediction; span: how much longer the predicted strip is than the cut (10 s strip with a
+    2.5 s cut: the cut may be anywhere in it)."""
     n = len(g); best = None
     for s in range(-MAXS, MAXS + max(0, span) + 1, 2):
         i0 = a + s
@@ -168,7 +168,7 @@ def _best_shift(g, F, a, span=0):
             best = (c, s, p)
     if best is None:
         return None
-    # refina com passo 1
+    # refine with step 1
     c0, s0, _ = best
     for s in (s0 - 1, s0 + 1):
         i0 = a + s; p = np.full(n, np.nan); lo, hi = max(0, i0), min(len(F), i0 + n)
@@ -184,7 +184,7 @@ def _best_shift(g, F, a, span=0):
 
 
 def evaluate_ecg(gt, rh, pages):
-    """gt: (n, 12) cortes; rh: (5000, k) ritmos; pages: saídas do digitize das páginas."""
+    """gt: (n, 12) cuts; rh: (5000, k) rhythms; pages: digitize outputs of the pages."""
     out = {}
     n = gt.shape[0]
     for j, name in enumerate(LEADS):
@@ -231,14 +231,14 @@ def evaluate_ecg(gt, rh, pages):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", type=Path, required=True, help="pasta com as subpastas dos cenários")
-    ap.add_argument("--gt", type=Path, required=True, help="pasta com leads.npz e rhythms.npz")
+    ap.add_argument("--root", type=Path, required=True, help="folder with the scenario subfolders")
+    ap.add_argument("--gt", type=Path, required=True, help="folder with leads.npz and rhythms.npz")
     ap.add_argument("--meta", type=Path, required=True)
-    ap.add_argument("--list", type=Path, default=None, help="csv com os caminhos relativos a avaliar")
+    ap.add_argument("--list", type=Path, default=None, help="csv with the relative paths to evaluate")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--config", action="append", default=[])
-    ap.add_argument("--rescore", action="store_true", help="só recalcula as métricas com o cache")
+    ap.add_argument("--rescore", action="store_true", help="only recompute the metrics from the cache")
     a = ap.parse_args()
     import pandas as pd
     cfg = {}
@@ -273,7 +273,7 @@ def main():
 
 
 def summarize(rows, out: Path | None = None):
-    """Médias por cenário e gerais (falha = 0 dB / PCC 0)."""
+    """Means per scenario and overall (failure = 0 dB / PCC 0)."""
     agg = defaultdict(lambda: defaultdict(list))
     for r in rows:
         for name in LEADS:
@@ -284,7 +284,7 @@ def summarize(rows, out: Path | None = None):
                 agg[key]["fail"].append(mt is None)
                 if mt:
                     agg[key]["snr_ok"].append(mt["snr"]); agg[key]["rmse_ok"].append(mt["rmse"])
-    lines = ["| cenário | ECGs | SNR (dB) | PCC | falha | SNR sem falhas | RMSE sem falhas (mV) |", "|---|---|---|---|---|---|---|"]
+    lines = ["| scenario | ECGs | SNR (dB) | PCC | failure | SNR without failures | RMSE without failures (mV) |", "|---|---|---|---|---|---|---|"]
     keys = ["ALL"] + sorted(k for k in agg if k != "ALL")
     summ = {}
     for k in keys:

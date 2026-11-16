@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Relatório HTML autocontido da avaliação no PhysioNet (Kaggle).
+"""Self-contained HTML report of the PhysioNet (Kaggle) evaluation.
 
-  python report_html.py <artefato> [--before <artefato_anterior>] [-o saida.html]
+  python report_html.py <artifact> [--before <previous_artifact>] [-o out.html]
 
-Lê results.json, decomposition.json (de diagnose.py), sig/*.npz e img/*.jpg do artefato.
-Com --before, mostra a comparação antes/depois por tipo de captura.
+Reads results.json, decomposition.json (from diagnose.py), sig/*.npz and img/*.jpg from the
+artifact. With --before, shows the before/after comparison per capture type.
 """
 from __future__ import annotations
 
@@ -19,22 +19,22 @@ import numpy as np
 
 LEADS = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
 TYPE_NAMES = {
-    "0001": "render digital", "0003": "scan colorido", "0004": "scan P&B", "0011": "scan com sujeira",
-    "0012": "scan escurecido", "0005": "foto de celular", "0006": "foto de tela", "0009": "foto amassada",
-    "0010": "foto com sombra",
+    "0001": "digital render", "0003": "colour scan", "0004": "B&W scan", "0011": "dirty scan",
+    "0012": "darkened scan", "0005": "phone photo", "0006": "screen photo", "0009": "crumpled photo",
+    "0010": "photo with shadow",
 }
 TYPE_ORDER = ["0001", "0003", "0004", "0011", "0012", "0005", "0006", "0009", "0010"]
-STEPS = ["rótulos", "cobertura", "origem", "deriva", "deriva local", "ganho", "linha de base"]
+STEPS = ["labels", "coverage", "origin", "drift", "local drift", "gain", "baseline"]
 STEP_LABEL = {
-    "rótulos": "layout / derivação trocada", "cobertura": "trechos vazios", "origem": "origem do tempo", "deriva": "escala horizontal",
-    "deriva local": "distorção horizontal local", "ganho": "ganho (mV/mm)", "linha de base": "linha de base",
+    "labels": "layout / swapped lead", "coverage": "empty stretches", "origin": "time origin", "drift": "horizontal scale",
+    "local drift": "local horizontal distortion", "gain": "gain (mV/mm)", "baseline": "baseline",
 }
-STEP_VAR = {"rótulos": "--s0", "cobertura": "--s1", "origem": "--s2", "deriva": "--s3", "deriva local": "--s4",
-            "ganho": "--s5", "linha de base": "--s6"}
+STEP_VAR = {"labels": "--s0", "coverage": "--s1", "origin": "--s2", "drift": "--s3", "local drift": "--s4",
+            "gain": "--s5", "baseline": "--s6"}
 
 CSS = """
 :root{
-  /* papel milimetrado de ECG: grade vermelha clara, tinta grafite, verdade em azul */
+  /* ECG grid paper: light red grid, graphite ink, ground truth in blue */
   --bg:#f6f7f8; --panel:#ffffff; --fg:#1d2429; --muted:#5d6871; --line:#d9dee2;
   --grid1:#f3d6d6; --grid5:#e7a9a9; --gt:#1f5fbf; --pred:#c2272d; --accent:#b0262c;
   --good:#1e7a46; --bad:#b0262c;
@@ -92,8 +92,8 @@ ol.fix{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:8px;ma
 
 
 def _npz_snr(art: Path):
-    """SNR de cada imagem recalculado dos sinais salvos (250 Hz), com a mesma métrica para as
-    duas rodadas de uma comparação (o results.json antigo usava passo de alinhamento grosso)."""
+    """SNR of each image recomputed from the saved signals (250 Hz), with the same metric for
+    both runs of a comparison (the old results.json used a coarse alignment step)."""
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from eval_snr import _snr_record
@@ -119,15 +119,15 @@ def _f(x, d=2):
 
 
 def _decomp_chart(dec_by_type):
-    """Barras empilhadas horizontais: SNR atual + ganho de cada correção oráculo."""
+    """Horizontal stacked bars: current SNR + gain of each oracle correction."""
     types = [t for t in TYPE_ORDER if t in dec_by_type]
     W, lh, left, right = 900, 30, 170, 20
     H = 30 + lh * len(types) + 26
-    lo = float(np.floor(min(0.0, min(dec_by_type[t]["métrica"] for t in types)) / 5) * 5)
-    hi = max(dec_by_type[t]["linha de base"] for t in types)
+    lo = float(np.floor(min(0.0, min(dec_by_type[t]["metric"] for t in types)) / 5) * 5)
+    hi = max(dec_by_type[t]["baseline"] for t in types)
     hi = float(np.ceil(max(hi, 20) / 5) * 5)
     sx = lambda v: left + (v - lo) / (hi - lo) * (W - left - right)  # noqa: E731
-    out = [f'<svg viewBox="0 0 {W} {H}" width="100%" style="min-width:640px" role="img" aria-label="Decomposição do erro por tipo">']
+    out = [f'<svg viewBox="0 0 {W} {H}" width="100%" style="min-width:640px" role="img" aria-label="Error decomposition by type">']
     for v in range(int(lo), int(hi) + 1, 5):
         x = sx(v)
         out.append(f'<line x1="{x:.1f}" y1="18" x2="{x:.1f}" y2="{H-22}" stroke="var(--line)"/>'
@@ -137,16 +137,16 @@ def _decomp_chart(dec_by_type):
         y = 24 + k * lh
         out.append(f'<text x="{left-8}" y="{y+15}" text-anchor="end" style="fill:var(--fg)">{t} {TYPE_NAMES.get(t, "")}</text>')
         x0 = sx(lo)
-        x1 = sx(d["métrica"])
+        x1 = sx(d["metric"])
         out.append(f'<rect x="{x0:.1f}" y="{y+3}" width="{max(0.5, x1-x0):.1f}" height="{lh-10}" fill="var(--fg)" opacity=".85"/>')
-        prev = d["métrica"]
+        prev = d["metric"]
         for s in STEPS:
             cur = max(prev, d[s])
             if cur - prev > 0.02:
                 out.append(f'<rect x="{sx(prev):.1f}" y="{y+3}" width="{sx(cur)-sx(prev):.1f}" height="{lh-10}" fill="var({STEP_VAR[s]})">'
                            f'<title>{t} · {STEP_LABEL[s]}: +{cur-prev:.2f} dB</title></rect>')
             prev = cur
-        out.append(f'<text x="{sx(prev)+6:.1f}" y="{y+15}">{d["métrica"]:.1f} → {prev:.1f}</text>')
+        out.append(f'<text x="{sx(prev)+6:.1f}" y="{y+15}">{d["metric"]:.1f} → {prev:.1f}</text>')
     out.append("</svg>")
     leg = ['<span><i style="background:var(--fg);opacity:.85"></i>SNR atual</span>'] + [
         f'<span><i style="background:var({STEP_VAR[s]})"></i>{STEP_LABEL[s]}</span>' for s in STEPS]
@@ -154,7 +154,7 @@ def _decomp_chart(dec_by_type):
 
 
 def _ecg_strip(g, p, fs, lead, win=None):
-    """Uma derivação sobre papel milimetrado (25 mm/s, 10 mm/mV): verdade × ecgdig."""
+    """One lead on grid paper (25 mm/s, 10 mm/mV): ground truth vs ecgdig."""
     m = np.isfinite(g)
     if m.sum() < 10:
         return ""
@@ -170,13 +170,13 @@ def _ecg_strip(g, p, fs, lead, win=None):
     both = np.concatenate([gg[np.isfinite(gg)], pp[np.isfinite(pp)]])
     lo = min(-0.5, np.percentile(both, 1) - 0.15)
     hi = max(0.5, np.percentile(both, 99) + 0.15)
-    if hi - lo > 3.5:  # mantém a faixa legível; o que sai fica cortado na borda
+    if hi - lo > 3.5:  # keep the band readable; whatever exceeds it is clipped at the edge
         c = float(np.median(gg[np.isfinite(gg)]))
         lo, hi = max(lo, c - 1.75), min(hi, c + 1.75)
     mm_h = (hi - lo) * 10
-    sc = 6.0  # px por mm
+    sc = 6.0  # px per mm
     W, H = mm_w * sc, mm_h * sc
-    out = [f'<svg class="strip" viewBox="0 0 {W:.0f} {H:.0f}" role="img" aria-label="Derivação {lead}">',
+    out = [f'<svg class="strip" viewBox="0 0 {W:.0f} {H:.0f}" role="img" aria-label="Lead {lead}">',
            f'<rect width="{W:.0f}" height="{H:.0f}" fill="var(--panel)"/>']
     for k in range(int(mm_w) + 1):
         out.append(f'<line x1="{k*sc}" y1="0" x2="{k*sc}" y2="{H:.0f}" stroke="var(--grid5)" stroke-width="{0.8 if k % 5 == 0 else 0}"/>'
@@ -207,7 +207,7 @@ def _ecg_strip(g, p, fs, lead, win=None):
 
 
 def _pick_examples(res, dec, k_per_type=2):
-    """Por tipo: a imagem mediana e a pior (com sinal salvo)."""
+    """Per type: the median image and the worst (with a saved signal)."""
     by = defaultdict(list)
     for r in res:
         if r.get("ok") and np.isfinite(r.get("snr", np.nan)):
@@ -235,10 +235,10 @@ def build(art: Path, before: Path | None, out: Path, findings_md: Path | None = 
     res = R["results"]
     dec = json.loads((art / "decomposition.json").read_text()) if (art / "decomposition.json").exists() else []
     B = json.loads((before / "results.json").read_text())["results"] if before else None
-    if B:  # rodada parcial (limite de tempo): compara só as mesmas imagens
+    if B:  # partial run (time limit): compare the same images only
         keys = {(r["id"], r["type"]) for r in res}
         B = [r for r in B if (r["id"], r["type"]) in keys]
-    if B:  # mesma métrica nas duas rodadas
+    if B:  # same metric in both runs
         na, nb = _npz_snr(art), _npz_snr(before)
         for r in res:
             if (r["id"], r["type"]) in na:
@@ -258,22 +258,22 @@ def build(art: Path, before: Path | None, out: Path, findings_md: Path | None = 
     lay_ok = np.mean([r.get("layout") == "3x4+1" for r in ok]) if ok else np.nan
     with_exc = (sum(allv) + 0.0 * n_exc) / max(1, len(allv) + n_exc)
 
-    H = [f"<title>ecgdig no PhysioNet</title>",
+    H = [f"<title>ecgdig on PhysioNet</title>",
          '<meta name="claude:viewport-fit-sides" content="cover">',
          '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
          '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">',
          f"<style>{CSS}</style><main>"]
-    H.append(f'<header style="display:flex;flex-direction:column;gap:10px"><div class="eyebrow">PhysioNet · Digitization of ECG Images · treino</div>'
-             f'<h1>ecgdig no PhysioNet</h1><p class="muted">{len({r["id"] for r in res})} registros × 9 capturas = {len(res)} imagens. '
-             f'SNR por imagem somando as 12 derivações (reimplementação da métrica: até ±0,2 s e média removida por derivação). '
-             f'Configuração: {html.escape(str(R.get("config") or "padrão"))}.</p></header>')
+    H.append(f'<header style="display:flex;flex-direction:column;gap:10px"><div class="eyebrow">PhysioNet · Digitization of ECG Images · training set</div>'
+             f'<h1>ecgdig on PhysioNet</h1><p class="muted">{len({r["id"] for r in res})} records × 9 captures = {len(res)} images. '
+             f'SNR per image summed over the 12 leads (metric reimplementation: up to ±0.2 s and mean removed per lead). '
+             f'Configuration: {html.escape(str(R.get("config") or "default"))}.</p></header>')
     H.append('<div class="kpis">'
-             f'<div class="kpi"><b>{_f(np.mean(allv))} dB</b><span>média geral ({_f(with_exc)} com as {n_exc} exceções como 0 dB)</span></div>'
-             f'<div class="kpi"><b>{_f(_mean(rend))} dB</b><span>render digital (0001)</span></div>'
-             f'<div class="kpi"><b>{_f(_mean(caps))} dB</b><span>scans e fotos (8 tipos)</span></div>'
-             f'<div class="kpi"><b>{100*lay_ok:.0f}%</b><span>layout 3x4+1 reconhecido</span></div></div>')
+             f'<div class="kpi"><b>{_f(np.mean(allv))} dB</b><span>overall mean ({_f(with_exc)} with the {n_exc} exceptions as 0 dB)</span></div>'
+             f'<div class="kpi"><b>{_f(_mean(rend))} dB</b><span>digital render (0001)</span></div>'
+             f'<div class="kpi"><b>{_f(_mean(caps))} dB</b><span>scans and photos (8 types)</span></div>'
+             f'<div class="kpi"><b>{100*lay_ok:.0f}%</b><span>3x4+1 layout recognized</span></div></div>')
 
-    # tabela por tipo
+    # table per type
     rows = []
     bby = defaultdict(list)
     if B:
@@ -299,55 +299,55 @@ def build(art: Path, before: Path | None, out: Path, findings_md: Path | None = 
             dlt = np.mean(s) - b
             cells.insert(3, f"<td class='n'>{_f(b)}</td><td class='n {'up' if dlt > 0.05 else 'down' if dlt < -0.05 else ''}'>{dlt:+.2f}</td>")
         if dby.get(t):
-            ub = _mean([d["linha de base"] for d in dby[t]])
+            ub = _mean([d["baseline"] for d in dby[t]])
             cells.append(f"<td class='n'>{_f(ub)}</td>")
         rows.append("<tr>" + "".join(cells) + "</tr>")
-    hdr = ["Tipo", "n", "SNR médio", "mediana", "SNR bruto", "layout certo", "duração suposta"]
+    hdr = ["Type", "n", "mean SNR", "median", "raw SNR", "right layout", "assumed duration"]
     hcls = ["", "n", "n", "n", "n", "n", "n"]
     if B:
-        hdr[3:3] = ["antes", "Δ"]
+        hdr[3:3] = ["before", "Δ"]
         hcls[3:3] = ["n", "n"]
     if dec:
-        hdr.append("teto (oráculo)")
+        hdr.append("ceiling (oracle)")
         hcls.append("n")
-    H.append('<section><div class="eyebrow">Resultado</div><h2>SNR por tipo de captura</h2>'
+    H.append('<section><div class="eyebrow">Result</div><h2>SNR per capture type</h2>'
              '<div class="tw"><table><thead><tr>' + "".join(f"<th class='{c}'>{h}</th>" for h, c in zip(hdr, hcls)) +
              "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
-             '<p class="muted">“Teto (oráculo)” é o SNR depois de corrigir com o gabarito todas as fontes de erro medidas abaixo; '
-             "o que sobra é erro de forma (traçado, picos cortados, derivações trocadas).</p></section>")
+             '<p class="muted">“Ceiling (oracle)” is the SNR after correcting, with the ground truth, every error source measured below; '
+             "what remains is shape error (tracing, clipped peaks, swapped leads).</p></section>")
 
     def decomp_block(dec_, eyebrow, title, lead):
         by_ = defaultdict(list)
         for d in dec_:
             by_[d["type"]].append(d)
-        agg = {t: {k: _mean([d[k] for d in v]) for k in ["métrica"] + STEPS} for t, v in by_.items()}
+        agg = {t: {k: _mean([d[k] for d in v]) for k in ["metric"] + STEPS} for t, v in by_.items()}
         tot = defaultdict(list)
         for d in dec_:
-            prev = d["métrica"]
+            prev = d["metric"]
             for s_ in STEPS:
                 cur = max(prev, d[s_])
                 tot[s_].append(cur - prev)
                 prev = cur
         return (f'<section><div class="eyebrow">{eyebrow}</div><h2>{title}</h2><p>{lead}</p>' + _decomp_chart(agg) +
-                '<div class="tw"><table><thead><tr><th>Fonte de erro</th><th class="n">perda média</th>'
-                '<th class="n">imagens com perda &gt; 1 dB</th></tr></thead><tbody>' +
+                '<div class="tw"><table><thead><tr><th>Error source</th><th class="n">mean loss</th>'
+                '<th class="n">images with loss &gt; 1 dB</th></tr></thead><tbody>' +
                 "".join(f"<tr><td><i style='display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:8px;background:var({STEP_VAR[s_]})'></i>{STEP_LABEL[s_]}</td>"
                         f"<td class='n'>{np.mean(tot[s_]):.2f} dB</td><td class='n'>{100*np.mean(np.array(tot[s_]) > 1):.0f}%</td></tr>"
                         for s_ in sorted(STEPS, key=lambda s_: -np.mean(tot[s_]))) + "</tbody></table></div></section>")
 
-    how = ("Cada correção usa o gabarito só para o seu tipo de erro, cumulativamente e nesta ordem; "
-           "o segmento colorido é quanto SNR aquele erro custa. A barra escura é o SNR medido.")
+    how = ("Each correction uses the ground truth only for its own kind of error, cumulatively and in this order; "
+           "the coloured segment is how much SNR that error costs. The dark bar is the measured SNR.")
     dec_b = json.loads((before / "decomposition.json").read_text()) if before and (before / "decomposition.json").exists() else None
     if dec_b:
-        H.append(decomp_block(dec_b, "Diagnóstico · antes", "Para onde ia o SNR", how))
+        H.append(decomp_block(dec_b, "Diagnosis · before", "Where the SNR went", how))
     for fm in (findings_md if isinstance(findings_md, (list, tuple)) else [findings_md]):
         if fm and Path(fm).exists():
             H.append(Path(fm).read_text())
     if dec:
-        H.append(decomp_block(dec, "Diagnóstico · agora" if dec_b else "Diagnóstico",
-                              "O que ainda custa SNR" if dec_b else "Para onde vai o SNR", how))
+        H.append(decomp_block(dec, "Diagnosis · now" if dec_b else "Diagnosis",
+                              "What still costs SNR" if dec_b else "Where the SNR goes", how))
 
-    # por derivação
+    # per lead
     perl = defaultdict(list)
     for r in ok:
         for l, v in (r.get("per_lead") or {}).items():
@@ -365,11 +365,11 @@ def build(art: Path, before: Path | None, out: Path, findings_md: Path | None = 
             bars.append(f'<text x="50" y="{20+k*22}" text-anchor="end" style="fill:var(--fg)">{l}</text>'
                         f'<rect x="{min(x0, x0+w):.1f}" y="{8+k*22}" width="{abs(w):.1f}" height="15" fill="var(--s3)"/>'
                         f'<text x="{x0+w+(6 if w >= 0 else -6):.1f}" y="{20+k*22}" text-anchor="{"start" if w >= 0 else "end"}">{v:.2f} dB</text>')
-        H.append('<section><div class="eyebrow">Por derivação</div><h2>SNR médio de cada derivação</h2>'
-                 f'<div class="chart"><svg viewBox="0 0 {W} {12*22+14}" width="100%" style="min-width:560px" role="img" aria-label="SNR por derivação">'
+        H.append('<section><div class="eyebrow">Per lead</div><h2>Mean SNR of each lead</h2>'
+                 f'<div class="chart"><svg viewBox="0 0 {W} {12*22+14}" width="100%" style="min-width:560px" role="img" aria-label="SNR per lead">'
                  f'<line x1="440" y1="4" x2="440" y2="{12*22+6}" stroke="var(--line)"/>' + "".join(bars) + "</svg></div></section>")
 
-    # galeria
+    # gallery
     picks = _pick_examples(res, dec)
     cards = []
     dmap = {(d["id"], d["type"]): d for d in dec}
@@ -385,46 +385,46 @@ def build(art: Path, before: Path | None, out: Path, findings_md: Path | None = 
         gi = G[LEADS.index(wl)]
         ix = np.nonzero(np.isfinite(gi))[0]
         win = (ix[0], ix[-1] + 1) if len(ix) else None
-        strips = _ecg_strip(G[LEADS.index("II")], P[LEADS.index("II")], fs, "II (ritmo)", win) + \
+        strips = _ecg_strip(G[LEADS.index("II")], P[LEADS.index("II")], fs, "II (rhythm)", win) + \
             _ecg_strip(gi, P[LEADS.index(wl)], fs, wl, win)
         d = dmap.get((rid, t))
         dd = ""
         if d:
-            prev, parts = d["métrica"], []
+            prev, parts = d["metric"], []
             for s in STEPS:
                 cur = max(prev, d[s])
                 if cur - prev > 0.5:
                     parts.append(f"{STEP_LABEL[s]} +{cur-prev:.1f}")
                 prev = cur
-            dd = "<span class='muted'>perdas: " + (", ".join(parts) or "nenhuma acima de 0,5 dB") + "</span>"
-        cards.append(f'<article class="card" data-type="{t}"><img loading="lazy" src="{_b64(imgp)}" alt="Sobreposição {rid}-{t}">'
+            dd = "<span class='muted'>losses: " + (", ".join(parts) or "none above 0.5 dB") + "</span>"
+        cards.append(f'<article class="card" data-type="{t}"><img loading="lazy" src="{_b64(imgp)}" alt="Overlay {rid}-{t}">'
                      f'<div class="meta"><div><b>{rid}-{t}</b> · {TYPE_NAMES.get(t, "")} · <b>{r["snr"]:.1f} dB</b></div>'
-                     f'<div class="muted">layout {html.escape(str(r.get("layout")))} · {r.get("speed")} mm/s · ganhos {r.get("gains")}'
-                     f'{" · duração suposta" if r.get("duration_assumed") else ""}</div>{dd}</div>{strips}</article>')
-    tabs = '<button type="button" aria-pressed="true" data-f="">todos</button>' + "".join(
+                     f'<div class="muted">layout {html.escape(str(r.get("layout")))} · {r.get("speed")} mm/s · gains {r.get("gains")}'
+                     f'{" · assumed duration" if r.get("duration_assumed") else ""}</div>{dd}</div>{strips}</article>')
+    tabs = '<button type="button" aria-pressed="true" data-f="">all</button>' + "".join(
         f'<button type="button" aria-pressed="false" data-f="{t}">{t} {TYPE_NAMES[t]}</button>' for t in TYPE_ORDER if t in by)
-    H.append('<section><div class="eyebrow">Exemplos</div><h2>Imagem mediana e pior imagem de cada tipo</h2>'
-             '<p class="muted">Sobreposição do ecgdig e, embaixo, a derivação II e a pior derivação da imagem em papel '
-             '25 mm/s · 10 mm/mV: <span style="color:var(--gt)">azul = sinal verdadeiro</span>, '
-             '<span style="color:var(--pred)">vermelho = ecgdig</span>.</p>'
-             f'<div class="tabs" role="group" aria-label="Filtrar por tipo">{tabs}</div><div class="gal" id="gal">{"".join(cards)}</div></section>')
+    H.append('<section><div class="eyebrow">Examples</div><h2>Median and worst image of each type</h2>'
+             '<p class="muted">ecgdig overlay and, below, lead II and the worst lead of the image on grid paper '
+             '25 mm/s · 10 mm/mV: <span style="color:var(--gt)">blue = true signal</span>, '
+             '<span style="color:var(--pred)">red = ecgdig</span>.</p>'
+             f'<div class="tabs" role="group" aria-label="Filter by type">{tabs}</div><div class="gal" id="gal">{"".join(cards)}</div></section>')
     exc = [r for r in res if not r.get("ok")]
     if exc:
-        H.append('<section><div class="eyebrow">Falhas</div><h2>Exceções</h2><div class="tw"><table><tbody>' +
+        H.append('<section><div class="eyebrow">Failures</div><h2>Exceptions</h2><div class="tw"><table><tbody>' +
                  "".join(f"<tr><td class='mono'>{r['id']}-{r['type']}</td><td class='mono'>{html.escape(str(r.get('error'))[:140])}</td></tr>" for r in exc) +
                  "</tbody></table></div></section>")
     H.append("</main><script>document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{"
              "document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-pressed',x===b));"
              "const f=b.dataset.f;document.querySelectorAll('#gal .card').forEach(c=>c.hidden=!!f&&c.dataset.type!==f);}));</script>")
     out.write_text("\n".join(H))
-    print("escrito", out, f"{out.stat().st_size/1e6:.1f} MB")
+    print("written", out, f"{out.stat().st_size/1e6:.1f} MB")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("art", type=Path)
     ap.add_argument("--before", type=Path)
-    ap.add_argument("--findings", type=Path, nargs="*", default=[], help="trechos HTML com o diagnóstico escrito")
+    ap.add_argument("--findings", type=Path, nargs="*", default=[], help="HTML snippets with the written diagnosis")
     ap.add_argument("-o", "--out", type=Path, default=None)
     a = ap.parse_args()
     build(a.art, a.before, a.out or a.art / "report.html", a.findings)

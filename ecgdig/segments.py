@@ -1,18 +1,18 @@
-"""Modo por segmento: cada derivação é localizada pelo próprio rótulo impresso.
+"""Per-segment mode: each lead is located by its own printed label.
 
-O modelo principal do ecgdig supõe "linhas da página": cada linha tem uma base e se divide
-em colunas no tempo. Vários geradores e aparelhos não seguem isso: cada coluna de
-derivações tem as suas próprias linhas de base (uma derivação de amplitude grande empurra a
-coluna para baixo), e as linhas de colunas diferentes não se alinham.
+The main ecgdig model assumes "page rows": each row has a baseline and is split into
+columns in time. Several generators and devices do not follow this: each column of leads
+has its own baselines (a large-amplitude lead pushes the column down), and the rows of
+different columns do not line up.
 
-Aqui a página é lida como um conjunto de segmentos: para cada rótulo legível (I..V6), a base
-é o traço logo à direita dele; o segmento vai até o próximo rótulo na mesma faixa (ou até o
-fim do traço). O tempo vem da posição x a partir da margem esquerda dos rótulos da primeira
-coluna. Cada segmento é rastreado com o mesmo Viterbi do modo principal, numa faixa limitada
-pelos segmentos vizinhos que se sobrepõem em x.
+Here the page is read as a set of segments: for each readable label (I..V6), the baseline
+is the trace just to its right; the segment runs until the next label in the same band (or
+to the end of the trace). Time comes from the x position relative to the left margin of the
+first-column labels. Each segment is tracked with the same Viterbi as the main mode, in a
+band limited by the neighbouring segments that overlap in x.
 
-A escolha entre este modo e o principal é física (Einthoven/Goldberger nos trechos
-simultâneos), não depende de gabarito.
+The choice between this mode and the main one is physical (Einthoven/Goldberger on the
+simultaneous stretches); it needs no ground truth.
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ NAMES = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V
 
 
 def page_words(B, D, R, min_score=0.5):
-    """Rótulos de derivação legíveis na página toda (componentes pequenas e isoladas)."""
+    """Readable lead labels on the whole page (small, isolated components)."""
     n, lab, st, _ = cv2.connectedComponentsWithStats(B.astype(np.uint8), connectivity=8)
     small = (st[:, cv2.CC_STAT_WIDTH] < 12 * R) & (st[:, cv2.CC_STAT_HEIGHT] < 7 * R)
     small[0] = False
@@ -46,7 +46,7 @@ def page_words(B, D, R, min_score=0.5):
 
 
 def _baseline_near(B, w, R):
-    """Base do traço logo à direita do rótulo: mediana da altura da tinta em 25 mm."""
+    """Trace baseline just right of the label: median ink height over 25 mm."""
     H, W = B.shape
     xa, xb = int(w["x1"] + 1 * R), min(W, int(w["x1"] + 25 * R))
     yc = 0.5 * (w["y0"] + w["y1"])
@@ -58,7 +58,7 @@ def _baseline_near(B, w, R):
     for j in range(sub.shape[1]):
         col = np.nonzero(sub[:, j])[0]
         if len(col):
-            # tinta mais perto da altura do rótulo (o traço vizinho pode entrar na janela)
+            # ink closest to the label height (the neighbouring trace may enter the window)
             k = col[np.argmin(np.abs(col + ya - yc))]
             ys.append(k + ya)
     if len(ys) < 5 * R:
@@ -67,10 +67,10 @@ def _baseline_near(B, w, R):
 
 
 def segment_mode(B, D, R, speed=25.0, fs=500, gain=None, min_labels=8):
-    """Lê a página por segmentos. Devolve dict(leads, signals, per_segment, duration) ou None."""
+    """Read the page by segments. Returns dict(leads, signals, per_segment, duration) or None."""
     H, W = B.shape
     words = page_words(B, D, R)
-    # um rótulo por (nome, posição): duplicatas próximas viram uma
+    # one label per (name, position): close duplicates merge into one
     words.sort(key=lambda w: -w["score"])
     keep = []
     for w in words:
@@ -85,7 +85,7 @@ def segment_mode(B, D, R, speed=25.0, fs=500, gain=None, min_labels=8):
     words = [w for w in words if w["base"] is not None]
     if len({w["name"] for w in words}) < min_labels:
         return None
-    # ganho pelos pulsos (altura modal), senão o padrão
+    # gain from the pulses (modal height), else the default
     if gain is None:
         P = find_pulses(B, R)
         hs = [p["foot"] - p["top"] for p in P if 4 * R <= p["foot"] - p["top"] <= 25 * R]
@@ -93,20 +93,20 @@ def segment_mode(B, D, R, speed=25.0, fs=500, gain=None, min_labels=8):
         if len(hs) >= 3:
             h = float(np.median(hs)) / R
             gain = min((5.0, 10.0, 20.0), key=lambda g: abs(g - h)) if min(abs(h - g) for g in (5, 10, 20)) < 1.5 else h
-    # fim de cada segmento: próximo rótulo à direita na mesma faixa (±4 mm), ou fim do traço
+    # end of each segment: next label to the right in the same band (±4 mm), or end of trace
     x_org = min(w["x0"] for w in words)
     segs = []
     for w in words:
         nxt = [v["x0"] for v in words if v is not w and v["x0"] > w["x1"] + 10 * R and abs(v["base"] - w["base"]) < 4 * R]
         xe = min(nxt) - 1 * R if nxt else None
         if xe is None:
-            # fim do traço: última coluna com tinta perto da base
+            # end of trace: last column with ink near the baseline
             a, b = max(0, int(w["base"] - 6 * R)), min(H, int(w["base"] + 6 * R))
             has = B[a:b, int(w["x1"]):].any(0)
             idx = np.nonzero(has)[0]
             if not len(idx):
                 continue
-            # corta em vãos > 8 mm
+            # cut at gaps > 8 mm
             gaps = np.nonzero(np.diff(idx) > 8 * R)[0]
             last = idx[gaps[0]] if len(gaps) else idx[-1]
             xe = int(w["x1"]) + int(last)
@@ -124,7 +124,7 @@ def segment_mode(B, D, R, speed=25.0, fs=500, gain=None, min_labels=8):
     sig = {n_: np.full(N, np.nan) for n_ in NAMES}
     per_seg = {n_: [] for n_ in NAMES}
     for s in segs:
-        # faixa: metade da distância aos segmentos vizinhos que se sobrepõem em x
+        # band: half the distance to the neighbouring segments that overlap in x
         nb = [t["base"] for t in segs if t is not s and min(t["xb"], s["xb"]) - max(t["xa"], s["xa"]) > 5 * R]
         up = min([s["base"] - v for v in nb if v < s["base"]] + [25 * R])
         dn = min([v - s["base"] for v in nb if v > s["base"]] + [25 * R])
@@ -156,8 +156,8 @@ def segment_mode(B, D, R, speed=25.0, fs=500, gain=None, min_labels=8):
 
 
 def physics_residual(leads, signals):
-    """Resíduo normalizado de Einthoven (I+III=II) e Goldberger (aVR+aVL+aVF=0) nos trechos
-    simultâneos. Menor = leitura mais coerente. None se não houver trechos para testar."""
+    """Normalized residual of Einthoven (I+III=II) and Goldberger (aVR+aVL+aVF=0) on the
+    simultaneous stretches. Lower = more consistent reading. None if nothing can be tested."""
     d = {n: s for n, s in zip(leads, signals)}
     res = []
     for combo, coef in ((("I", "III", "II"), (1, 1, -1)), (("aVR", "aVL", "aVF"), (1, 1, 1))):

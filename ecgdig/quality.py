@@ -1,28 +1,28 @@
-"""Nota de qualidade por derivação, sem gabarito.
+"""Per-lead quality score, without ground truth.
 
-O digitalizador sempre devolve um sinal; esta nota diz o quanto ele merece confiança. Só usa
-o que um ECG de verdade tem de ter, e nada do conteúdo clínico:
+The digitizer always returns a signal; this score says how much it can be trusted. It only
+uses what a real ECG must have, nothing of the clinical content:
 
-  cobertura   fração das amostras do trecho impresso que foram lidas
-  batimentos  as derivações impressas no mesmo instante são simultâneas: os QRS de uma têm de
-              cair nos instantes dos QRS da página (mediana entre as outras derivações); um
-              traço que seguiu grade, texto ou a linha vizinha tem a energia fora deles
-  repetição   os batimentos de um mesmo trecho se parecem entre si (mediana da correlação com
-              o batimento mediano); ruído e traço trocado não se repetem
-  saltos      degraus de > 0,5 mV em 2 ms em mais de 5% das amostras (rastreio trocando de traço)
-  amplitude   pico a pico fora de 0,05–8 mV
-  membros     resíduo de Einthoven/Goldberger ANTES da fusão, onde 3 derivações de membros
-              são simultâneas (a fusão zera o resíduo, por isso ele é medido antes)
+  coverage    fraction of the samples of the printed stretch that were read
+  beats       leads printed at the same instant are simultaneous: the QRS of one must fall
+              at the page QRS instants (median over the other leads); a trace that followed
+              the grid, text or the neighbouring row has its energy elsewhere
+  repetition  beats of one stretch look alike (median correlation with the median beat);
+              noise and swapped traces do not repeat
+  jumps       steps > 0.5 mV in 2 ms in more than 5% of the samples (tracker switching traces)
+  amplitude   peak to peak outside 0.05–8 mV
+  limb        Einthoven/Goldberger residual BEFORE fusion, where 3 limb leads are
+              simultaneous (fusion zeroes the residual, so it is measured before)
 
-A nota vai de 0 a 1: cobertura x repetição (por derivação) x confiança do layout (página,
-aplicada em digitize). As outras partes ficam no relatório para diagnóstico. Não é uma
-probabilidade calibrada.
+The score goes from 0 to 1: coverage x repetition (per lead) x layout confidence (page,
+applied in digitize). The other parts stay in the report for diagnosis. It is not a
+calibrated probability.
 
-Medida contra o gabarito (PM-ECG-ID, 60 ECGs, 15/11/2026): AUC 0,75 para separar derivações
-com PCC < 0,5; a confiança do layout sozinha dá 0,76. É pouco para recusar com segurança
-(recusar os 20% piores sobe o SNR das aceitas de 8,7 para 9,8 dB e ainda deixa passar 18%
-de derivações ruins): a maior parte do lixo vem de layout trocado, em que cada traço é um
-ECG bem formado com o nome errado. `Config(refuse_below=...)` existe, mas fica desligado.
+Measured against ground truth (PM-ECG-ID, 60 ECGs, 15/11/2026): AUC 0.75 for separating leads
+with PCC < 0.5; layout confidence alone gives 0.76. Too little to refuse safely (refusing the
+worst 20% raises the SNR of the accepted leads from 8.7 to 9.8 dB and still lets 18% of bad
+leads through): most of the garbage comes from a swapped layout, where each trace is a
+well-formed ECG with the wrong name. `Config(refuse_below=...)` exists but is off.
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ LIMB = ("I", "II", "III", "aVR", "aVL", "aVF")
 
 
 def _slope_energy(v: np.ndarray, fs: int) -> np.ndarray:
-    """Energia da derivada numa janela de ~80 ms (realça o QRS); NaN onde não há sinal."""
+    """Derivative energy over a ~80 ms window (emphasizes the QRS); NaN where there is no signal."""
     d = np.diff(v, prepend=np.nan)
     e = d * d
     k = max(3, int(0.08 * fs) | 1)
@@ -44,8 +44,8 @@ def _slope_energy(v: np.ndarray, fs: int) -> np.ndarray:
 
 
 def _page_beats(sig: np.ndarray, fs: int):
-    """Instantes dos QRS da página: picos da mediana, entre as derivações presentes em cada
-    instante, da energia de inclinação normalizada por derivação. Devolve (índices, perfil)."""
+    """Page QRS instants: peaks of the median, over the leads present at each instant, of the
+    per-lead normalized slope energy. Returns (indices, profile)."""
     n = sig.shape[1]
     E = np.full(sig.shape, np.nan)
     for i, v in enumerate(sig):
@@ -61,7 +61,7 @@ def _page_beats(sig: np.ndarray, fs: int):
         warnings.simplefilter("ignore", RuntimeWarning)
         prof = np.where(cnt >= 2, np.nanmedian(E, axis=0), np.where(cnt == 1, np.nanmax(E, axis=0), 0.0))
     prof = np.nan_to_num(prof)
-    # picos separados por >= 0,25 s (até 240 bpm) e acima de 30% do maior
+    # peaks >= 0.25 s apart (up to 240 bpm) and above 30% of the largest
     thr = 0.3 * prof.max() if prof.max() > 0 else np.inf
     gap = int(0.25 * fs)
     order = np.argsort(-prof)
@@ -83,7 +83,7 @@ def _spans(ok: np.ndarray, min_len: int):
 
 
 def lead_quality(v: np.ndarray, fs: int, beats: np.ndarray, others_prof: np.ndarray | None = None) -> dict:
-    """Partes da nota de uma derivação (v em mV, NaN fora do trecho impresso)."""
+    """Score parts of one lead (v in mV, NaN outside the printed stretch)."""
     ok = np.isfinite(v)
     out = dict(coverage=0.0, beat_sync=np.nan, repeat=np.nan, jumps=0.0, p2p=0.0, score=0.0, flags=[])
     if ok.sum() < 0.3 * fs:
@@ -99,7 +99,7 @@ def lead_quality(v: np.ndarray, fs: int, beats: np.ndarray, others_prof: np.ndar
     d = d[np.isfinite(d)]
     out["jumps"] = float((d > 0.5 * (500.0 / fs)).mean()) if d.size else 0.0
 
-    # batimentos: energia de inclinação perto dos QRS da página x longe deles
+    # beats: slope energy near the page QRS vs away from them
     e = _slope_energy(x, fs)
     w = int(0.07 * fs)
     near = np.zeros(len(x), bool)
@@ -111,9 +111,9 @@ def lead_quality(v: np.ndarray, fs: int, beats: np.ndarray, others_prof: np.ndar
         tot = float(e[fin].sum())
         frac_t = float((fin & near).sum()) / float(fin.sum())
         frac_e = float(e[fin & near].sum()) / tot if tot > 0 else 0.0
-        # 1 = toda a energia nos QRS; 0 = espalhada como o tempo (traço sem relação com eles)
+        # 1 = all energy in the QRS; 0 = spread like time (trace unrelated to them)
         out["beat_sync"] = float(np.clip((frac_e - frac_t) / max(1e-6, 1.0 - frac_t), 0.0, 1.0))
-    # repetição: correlação de cada batimento com o batimento mediano do trecho
+    # repetition: correlation of each beat with the median beat of the stretch
     h = int(0.12 * fs)
     cuts = [x[t - h:t + h] for t in bs if t - h >= a and t + h <= b]
     cuts = [c - np.nanmedian(c) for c in cuts if np.isfinite(c).mean() > 0.9]
@@ -130,22 +130,22 @@ def lead_quality(v: np.ndarray, fs: int, beats: np.ndarray, others_prof: np.ndar
 
 
 def _combine(q: dict, limb_rel: float | None) -> float:
-    """Nota da derivação. Só entram as partes que ordenaram bem as derivações contra o gabarito
-    do PM-ECG-ID (60 ECGs, 660 derivações lidas, "ruim" = PCC < 0,5): cobertura e repetição
-    dos batimentos (AUC 0,72), sem saturar (saturar em 1 empata quase tudo e piora a ordem).
-    A energia nos QRS (AUC 0,59), os degraus (0,55) e o resíduo de membros (0,74, mas só existe
-    em metade das derivações e misturado derrubou o conjunto para 0,63) ficam só no relatório."""
-    s = float(np.clip((q["coverage"] - 0.5) / 0.4, 0.0, 1.0))     # < 50% coberto vale 0; >= 90% vale 1
+    """Lead score. Only the parts that ranked leads well against PM-ECG-ID ground truth
+    (60 ECGs, 660 read leads, "bad" = PCC < 0.5) enter: coverage and beat repetition
+    (AUC 0.72), without saturating (saturating at 1 ties almost everything and hurts ranking).
+    QRS energy (AUC 0.59), steps (0.55) and the limb residual (0.74, but it only exists for
+    half the leads and mixing it in dropped the whole to 0.63) stay in the report only."""
+    s = float(np.clip((q["coverage"] - 0.5) / 0.4, 0.0, 1.0))     # < 50% covered scores 0; >= 90% scores 1
     rep = q["repeat"]
-    s *= float(np.clip(rep, 0.05, 1.0)) if np.isfinite(rep) else 0.8   # sem 2 batimentos no trecho: neutro
+    s *= float(np.clip(rep, 0.05, 1.0)) if np.isfinite(rep) else 0.8   # fewer than 2 beats in the stretch: neutral
     if q["p2p"] < 0.05 or q["p2p"] > 8.0:
         s *= 0.3
     return float(s)
 
 
 def assess(sig: np.ndarray, leads: list, fs: int, prefusion: np.ndarray | None = None) -> dict:
-    """sig: (L, N) em mV depois da fusão; prefusion: o mesmo ANTES da fusão de Einthoven
-    (para o resíduo de membros). Devolve {"leads": {nome: partes + score}, "global": float}."""
+    """sig: (L, N) in mV after fusion; prefusion: the same BEFORE Einthoven fusion
+    (for the limb residual). Returns {"leads": {name: parts + score}, "global": float}."""
     sig = np.asarray(sig, float)
     beats, _ = _page_beats(sig, fs)
     limb_rel = {}

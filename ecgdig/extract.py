@@ -1,19 +1,19 @@
 """
-Extração do sinal na imagem retificada (R px/mm, linhas grossas em múltiplos de 5R).
+Signal extraction on the rectified image (R px/mm, major lines at multiples of 5R).
 
-1. Mapa de tinta: normalização de iluminação por canal + remoção da grade por
-   modelo de transmitância (tinta sobre grade = T_grade * T_tinta). T_grade vem de
-   (a) mediana periódica na fase mod 5 mm e (b) resíduo por linha/coluna reta
-   (percentil 80), o que cobre grades de qualquer cor e espaçamentos irregulares.
-2. Layout: linhas de base pelos picos de cobertura horizontal filtrados por
-   "parecer traçado" (componentes longas); pulsos de calibração (ganho e 0 mV).
-3. Rastreamento: Viterbi sobre os segmentos de tinta de cada coluna (continuidade +
-   prior da linha de base + penalidade de fragmentos + estado de falha).
-4. Linha central sub-pixel por inversão morfológica: o traço impresso é a curva
-   dilatada por uma pena elíptica (rh, rv). Borda de cima = erosão(y), de baixo =
-   dilatação(y); abertura/fechamento recuperam y, exatos em picos/vales. O raio
-   horizontal da pena é auto-calibrado (abertura == fechamento em trechos retos).
-5. Oclusões: bordas que caem dentro da tinta de um traço vizinho plano viram NaN.
+1. Ink map: per-channel illumination normalization + grid removal by a transmittance
+   model (ink over grid = T_grid * T_ink). T_grid comes from (a) a periodic median over the
+   phase mod 5 mm and (b) a residual per straight row/column (80th percentile), which covers
+   grids of any colour and irregular spacings.
+2. Layout: baselines from the horizontal-coverage peaks filtered by "looking like a trace"
+   (long components); calibration pulses (gain and 0 mV).
+3. Tracking: Viterbi over the ink segments of each column (continuity + baseline prior +
+   fragment penalty + failure state).
+4. Sub-pixel centre line by morphological inversion: the printed trace is the curve dilated
+   by an elliptical pen (rh, rv). Top edge = erosion(y), bottom = dilation(y); opening and
+   closing recover y, exact at peaks/valleys. The horizontal pen radius is self-calibrated
+   (opening == closing on straight stretches).
+5. Occlusions: edges that fall inside the ink of a flat neighbouring trace become NaN.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from scipy.signal import find_peaks
 from skimage.filters import apply_hysteresis_threshold, threshold_otsu
 
 
-# ------------------------------------------------------------------- mapa de tinta
+# ------------------------------------------------------------------- ink map
 
 def _bg(ch, R):
     H, W = ch.shape
@@ -41,9 +41,9 @@ GLEV_RELATIVE = [False]
 
 
 def _median5_cells(cells: np.ndarray) -> np.ndarray:
-    """Mediana 5x5 entre células vizinhas, fase a fase: o mesmo que
-    scipy.ndimage.median_filter(cells, size=(5, 5, 1, 1), mode="nearest"), mas com a mediana 5x5
-    do OpenCV em cada uma das P*P imagens pequenas (ny, nx) — era ~2,5 s por página."""
+    """5x5 median across neighbouring cells, phase by phase: the same as
+    scipy.ndimage.median_filter(cells, size=(5, 5, 1, 1), mode="nearest"), but with the OpenCV
+    5x5 median on each of the P*P small images (ny, nx); it used to take ~2.5 s per page."""
     ny, nx, P1, P2 = cells.shape
     a = np.ascontiguousarray(cells.reshape(ny, nx, P1 * P2).transpose(2, 0, 1), dtype=np.float32)
     out = np.empty_like(a)
@@ -55,9 +55,9 @@ def _median5_cells(cells: np.ndarray) -> np.ndarray:
 def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bool = False, tmin: float | None = None):
     f = rect.astype(np.float32)
     n = [f[..., c] / (_bg(f[..., c], R) + 1e-3) for c in range(3)]
-    t = np.clip(np.maximum(np.maximum(n[0], n[1]), n[2]), 0, 1.2)  # transmitância no canal mais claro
-    # molde de 10 mm: cobre a periodicidade de 5 mm e também grades com linha extra a cada
-    # 10 mm (as de 5 mm deixavam essa linha como "tinta" e criavam linhas falsas)
+    t = np.clip(np.maximum(np.maximum(n[0], n[1]), n[2]), 0, 1.2)  # transmittance in the brightest channel
+    # 10 mm template: covers the 5 mm periodicity and also grids with an extra line every
+    # 10 mm (5 mm templates left that line as "ink" and created false rows)
     H, W = t.shape
 
     def _tmpl(P):
@@ -71,8 +71,8 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
     P = int(round(TEMPLATE_MM[0] * R))
     ny, nx, blk, pm, tmpl = _tmpl(P)
     if TEMPLATE_AUTO[0] and TEMPLATE_MM[0] == 10.0:
-        # o molde de 10 mm só vale quando a grade tem mesmo estrutura de 10 mm (linha extra);
-        # senão o de 5 mm, com o dobro de células e vizinhança local de 25 mm, é melhor
+        # the 10 mm template only counts when the grid really has a 10 mm structure (extra
+        # line); otherwise the 5 mm one, with twice the cells and a 25 mm local neighbourhood, is better
         P5 = int(round(5.0 * R))
         r5 = _tmpl(P5)
         if P == 2 * P5:
@@ -80,62 +80,62 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
             if float(np.percentile(d, 95)) < 0.08:
                 P = P5
                 ny, nx, blk, pm, tmpl = r5
-    # grade escura (scan P&B, fotocópia): as linhas grossas são tão pretas quanto o traço.
-    # O molde precisa descer até elas (senão a linha da grade vira "tinta" contínua que
-    # estende as linhas até a borda da folha e cria linhas falsas)
+    # dark grid (B&W scan, photocopy): the major lines are as black as the trace. The template
+    # has to reach down to them (otherwise the grid line becomes continuous "ink" that
+    # stretches the rows to the sheet border and creates false rows)
     dark_grid = float(tmpl.min()) < 0.15
     ink_map.tmpl_min = float(tmpl.min())
     ink_map.dark_grid = dark_grid
     if tmin is None:
         tmin = 0.05 if dark_grid else 0.3
         if TMIN_ADAPT[0] and not dark_grid:
-            # grade escura mas não preta (foto escurecida): linhas a 0,15-0,3 de transmitância
-            # passariam do piso 0,3 e virariam "tinta" na página toda
+            # dark but not black grid (darkened photo): lines at 0.15-0.3 transmittance would
+            # pass the 0.3 floor and become "ink" over the whole page
             tmin = float(np.clip(0.85 * tmpl.min(), 0.05, 0.3))
     tmpl = np.clip(tmpl, tmin, 1.0)
     reps = (int(np.ceil(H / P)), int(np.ceil(W / P)))
     T = np.tile(tmpl, reps)[:H, :W]
-    # molde LOCAL: mediana por fase (mod 5 mm) numa vizinhança de 5x5 células (25 mm).
-    # Em fotos a nitidez/escuridão da grade varia pela folha; o molde global deixa a
-    # grade "vazar" como tinta onde ela é mais escura que a média.
+    # LOCAL template: median per phase (mod 5 mm) over a neighbourhood of 5x5 cells (25 mm).
+    # In photos the sharpness/darkness of the grid varies across the sheet; the global
+    # template lets the grid "leak" as ink where it is darker than average.
     if ny >= 5 and nx >= 5:
         cells = blk.transpose(0, 2, 1, 3).copy()               # (ny, nx, P, P)
-        cells[~pm] = tmpl                                        # fora do papel: global
+        cells[~pm] = tmpl                                        # off the paper: global
         loc = _median5_cells(cells)
         loc = np.clip(loc, tmin, 1.0)
         TL = np.ones((reps[0] * P, reps[1] * P), np.float32)
         TL[: ny * P, : nx * P] = loc.transpose(0, 2, 1, 3).reshape(ny * P, nx * P)
         TL = TL[:H, :W]
-        # bordas que sobram (fração de célula) ficam com o global
+        # leftover edges (fraction of a cell) keep the global one
         TL[ny * P:, :] = T[ny * P:, :]; TL[:, nx * P:] = T[:, nx * P:]
         T = TL
-    # resíduo por linha/coluna: linhas retas da grade que o molde periódico não explica
-    # (grades irregulares, linha extra-escura a cada 25 mm...).
+    # residual per row/column: straight grid lines the periodic template does not explain
+    # (irregular grids, extra-dark line every 25 mm...).
     t1 = t / T
     tt = np.where(paper > 0, np.minimum(t1, 1.0), np.nan)
     with np.errstate(all="ignore"):
         import warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            # percentil 80: o traço (mesmo em linha de base longa e plana) cobre bem menos
-            # de 80% de uma linha da grade; uma linha da grade de verdade cobre ~100%
+            # 80th percentile: the trace (even on a long flat baseline) covers far less than
+            # 80% of a grid line; a real grid line covers ~100%
             lv = np.nan_to_num(np.nanpercentile(tt, 80, axis=0), nan=1.0)
             lh = np.nan_to_num(np.nanpercentile(tt, 80, axis=1), nan=1.0)
     lv = np.where(lv < 0.92, lv, 1.0); lh = np.where(lh < 0.92, lh, 1.0)
     T = T * np.clip(lh[:, None] * lv[None, :], 0.2, 1.0)
     if dark_grid:
-        # grade escura (scan P&B): o molde precisa cobrir o pequeno erro de posição das
-        # linhas (±1 px) ou as bordas delas vazam como tinta
+        # dark grid (B&W scan): the template must cover the small position error of the
+        # lines (±1 px) or their edges leak as ink
         T = cv2.erode(T.astype(np.float32), np.ones((3, 3), np.uint8))
     D = 1.0 - np.clip(t / T, 0, 1)
     pe = cv2.erode(paper.astype(np.uint8), np.ones((int(2 * R), int(2 * R)), np.uint8))
     D[pe == 0] = 0
     D = D.astype(np.float32)
     if return_grid_level:
-        # nível residual da grade: tinta aparente nos pixels de linha da grade (o traço
-        # ocupa uma fração mínima deles, então o percentil 95 mede o vazamento da grade)
-        # "tinta forte" relativa: traço borrado/claro fica em 0,2-0,4 e, se não for excluído,
-        # o halo dele vira "vazamento da grade" e o limiar sobe até apagar o próprio traço
+        # residual grid level: apparent ink on grid-line pixels (the trace occupies a tiny
+        # fraction of them, so the 95th percentile measures the grid leakage)
+        # relative "strong ink": a blurred/light trace sits at 0.2-0.4 and, if not excluded,
+        # its halo becomes "grid leakage" and the threshold rises until it erases the trace itself
         vv = D[D > 0.08]
         s_th = 0.55 if not GLEV_RELATIVE[0] or vv.size < 100 else min(0.55, max(0.15, 0.5 * float(np.percentile(vv, 90))))
         kd = 7 if not GLEV_RELATIVE[0] else max(7, int(1.0 * R) | 1)
@@ -147,8 +147,8 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
 
 
 def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: float = 1.0) -> np.ndarray:
-    # Otsu só sobre estruturas finas: tarjas, carimbos e blocos de texto preto (> 2.5 mm
-    # de espessura) puxariam o limiar para cima e apagariam traçados claros/finos
+    # Otsu on thin structures only: bars, stamps and black text blocks (> 2.5 mm thick)
+    # would pull the threshold up and erase light/thin traces
     kb = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(2.5 * R) | 1,) * 2)
     blob = cv2.morphologyEx((D > 0.25).astype(np.uint8), cv2.MORPH_OPEN, kb)
     blob = cv2.dilate(blob, np.ones((int(0.8 * R) | 1,) * 2, np.uint8)) > 0
@@ -158,28 +158,28 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: flo
     else:
         floor = 0.2
         if OTSU_FLOOR_REL[0]:
-            # página toda de baixo contraste (gama alto, toner fraco): o traço mais escuro não
-            # passa de ~0,2; o piso fixo de 0,2 apagaria o traço inteiro. O piso passa a ser
-            # relativo ao contraste do próprio traço (p99), sempre acima do vazamento da grade.
+            # low-contrast page (high gamma, weak toner): the darkest trace does not exceed
+            # ~0.2; the fixed 0.2 floor would erase the whole trace. The floor becomes
+            # relative to the trace's own contrast (p99), always above the grid leakage.
             floor = min(0.2, max(grid_level + 0.05, 0.35 * float(np.percentile(v, 99))))
         th = float(np.clip(threshold_otsu(v), floor, 0.6))
         if scale != 1.0:
-            # traço muito claro (opacidade baixa, toner fraco): o Otsu é decidido por texto e
-            # QR pretos; tenta limiares menores, sempre acima do vazamento da grade
+            # very light trace (low opacity, weak toner): Otsu is decided by black text and QR;
+            # try lower thresholds, always above the grid leakage
             th = max(grid_level + 0.04, 0.05, th * scale)
-        # limiar baixo da histerese acima do vazamento da grade (linhas da grade tocam o
-        # traço e seriam "puxadas" junto pela conectividade)
+        # low hysteresis threshold above the grid leakage (grid lines touch the trace and
+        # would be "pulled" along through connectivity)
         lo = max(0.55 * th, min(grid_level + 0.08, 0.85 * th))
         Dn = _local_contrast(D, R, blob, grid_level, lo) if LOCAL_CONTRAST[0] and scale == 1.0 else D
         B = apply_hysteresis_threshold(Dn, lo, max(th, lo + 0.05))
-    # linhas retas da grade que sobraram (grade preta grossa, molde 1 px fora): linhas/colunas
-    # de pixel quase todas "tinta" ao longo da página, várias, em passo regular. Um traço
-    # não cobre 70% de uma linha de pixel na página inteira.
+    # leftover straight grid lines (thick black grid, template 1 px off): pixel rows/columns
+    # that are almost all "ink" across the page, several, at a regular step. A trace does
+    # not cover 70% of a pixel row over the whole page.
     if GRID_LINE_CLEAN[0]:
         B = _clean_grid_lines(B, R)
     if LONG_VLINES[0]:
         B = _remove_long_vertical(B, R)
-    # remove sal-e-pimenta: componentes minúsculas (< ~0.4 mm²) não são traçado
+    # salt-and-pepper removal: tiny components (< ~0.4 mm²) are not trace
     n, lab, st, _ = cv2.connectedComponentsWithStats(B.astype(np.uint8), connectivity=8)
     small = st[:, cv2.CC_STAT_AREA] < max(4, int(0.4 * R * R))
     small[0] = False
@@ -190,16 +190,16 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: flo
 
 GRID_LINE_CLEAN = [True]
 LONG_VLINES = [True]
-LONG_VLINES_EDGE = [True]   # só sai a linha com traçado de um lado só (borda); cadeia de QRS fica
+LONG_VLINES_EDGE = [True]   # only lines with trace on one side (border) are removed; QRS chains stay
 LONG_VLINES_SIDE = [0.15]
 LOCAL_CONTRAST = [True]
 
 
 def _local_contrast(D, R, blob, glev, lo, tile_mm=50.0):
-    """Contraste do traço que cai ao longo da página (reflexo, luz rasante numa foto): o
-    limiar global corta o traço da parte apagada em pedaços. Nível do traço por bloco de
-    ~5 cm (percentil alto da tinta); onde ele está abaixo do da página, a tinta é reforçada
-    até o nível da página — no máximo até o vazamento da grade encostar no limiar baixo."""
+    """Trace contrast falling across the page (glare, grazing light in a photo): the global
+    threshold cuts the trace in the faded part into pieces. Trace level per ~5 cm block (high
+    ink percentile); where it is below the page level, the ink is boosted up to the page
+    level, at most until the grid leakage touches the low threshold."""
     H, W = D.shape
     T = max(16, int(tile_mm * R))
     ny, nx = max(1, H // T), max(1, W // T)
@@ -224,16 +224,16 @@ def _local_contrast(D, R, blob, glev, lo, tile_mm=50.0):
 
 
 def _remove_long_vertical(B, R, min_mm=100.0):
-    """Linha vertical (quase) contínua de >= 10 cm: borda da área da grade, dobra/sombra da
-    folha, linha de grade escura que a correção de perspectiva deixou curva. Um S profundo
-    chega a 6-7 mV (60-70 mm a 10 mm/mV) e cruza linhas vizinhas; um pulso tem ~10 mm. Sem
-    isso, o rastreio sobe pela borda e a linha começa na borda da grade."""
+    """(Almost) continuous vertical line >= 10 cm: border of the grid area, fold/shadow of the
+    sheet, dark grid line left curved by the perspective correction. A deep S reaches 6-7 mV
+    (60-70 mm at 10 mm/mV) and crosses neighbouring rows; a pulse is ~10 mm. Without this,
+    the tracker climbs the border and the row starts at the grid border."""
     H, W = B.shape
     L = max(5, int(8 * R))
     V = cv2.morphologyEx(B.astype(np.uint8), cv2.MORPH_OPEN, np.ones((L, 1), np.uint8))
     if not V.any():
         return B
-    # emenda pedaços da mesma linha curva (deriva lateral de 1-2 px por trecho)
+    # join pieces of the same curved line (lateral drift of 1-2 px per stretch)
     Vc = cv2.morphologyEx(V, cv2.MORPH_CLOSE, np.ones((int(2 * R) | 1, 3), np.uint8))
     n, lab, st, _ = cv2.connectedComponentsWithStats(Vc, connectivity=8)
     longc = np.zeros(n, bool)
@@ -241,17 +241,17 @@ def _remove_long_vertical(B, R, min_mm=100.0):
     cx = st[1:, cv2.CC_STAT_LEFT] + 0.5 * ww
     xs_ = np.nonzero(B.any(0))[0]
     x_lo, x_hi = (float(np.percentile(xs_, 0.5)), float(np.percentile(xs_, 99.5))) if len(xs_) else (0, W)
-    # >= 10 cm em qualquer lugar; >= 45 mm só nas margens do bloco de tinta (borda da grade):
-    # QRS fundos ficam dentro das linhas
+    # >= 10 cm anywhere; >= 45 mm only at the margins of the ink block (grid border): deep
+    # QRS stay inside the rows
     margin = (cx <= x_lo + 15 * R) | (cx >= x_hi - 15 * R)
     longc[1:] = (ww <= 6 * R) & ((hh >= min_mm * R) | ((hh >= 45 * R) & margin))
     if LONG_VLINES_EDGE[0]:
-        # QRS de derivações empilhadas caem na mesma coluna e se tocam (o S de uma encosta
-        # no R da de baixo): numa página 6x2 a cadeia passa de 10 cm, e na margem o último
-        # QRS da página passa de 45 mm. Apagá-la leva o R de um batimento em cada linha
-        # (scans do PM-ECG-ID: −4 a −7 dB). A cadeia tem traçado dos dois lados; a borda da
-        # grade, de um só. Com traçado dos dois lados a linha fica, qualquer que seja o
-        # comprimento; a de menos de 10 cm só sai se pegar >= 70% da altura do bloco
+        # QRS of stacked leads fall in the same column and touch (the S of one touches the R
+        # of the one below): on a 6x2 page the chain exceeds 10 cm, and at the margin the
+        # page's last QRS exceeds 45 mm. Erasing it takes the R of one beat in every row (PM-ECG-ID
+        # scans: -4 to -7 dB). The chain has trace on both sides; the grid border on one only.
+        # With trace on both sides the line stays, whatever its length; one shorter than
+        # 10 cm is only removed if it spans >= 70% of the block height
         wm, gm = int(13 * R), int(2 * R)
         yy = np.nonzero(B.any(1))[0]
         yspan = float(yy[-1] - yy[0] + 1) if len(yy) else float(H)
@@ -284,7 +284,7 @@ def _clean_grid_lines(B, R, frac=0.7):
         lines = np.nonzero(cov > frac)[0]
         if len(lines) < 3:
             continue
-        # agrupa pixels vizinhos numa linha só e exige passo regular (múltiplo de ~5 mm)
+        # group neighbouring pixels into a single line and require a regular step (multiple of ~5 mm)
         grp = np.split(lines, np.nonzero(np.diff(lines) > 1)[0] + 1)
         cen = np.array([g.mean() for g in grp])
         if len(cen) < 3:
@@ -293,8 +293,8 @@ def _clean_grid_lines(B, R, frac=0.7):
         reg = np.mean(np.abs(d / 5.0 - np.round(d / 5.0)) < 0.15)
         if reg < 0.7:
             continue
-        # grade de verdade: a maioria dos vizinhos a 5 mm (ou 1 mm). Linhas de base planas de
-        # traçado longo também cobrem a página e ficam em múltiplos de 5 mm, mas a 25-40 mm
+        # a real grid: most neighbours at 5 mm (or 1 mm). Flat baselines of long traces also
+        # cover the page and sit at multiples of 5 mm, but 25-40 mm apart
         near = np.mean((np.abs(d - 5.0) < 0.75) | (np.abs(d - 1.0) < 0.3))
         if len(cen) < 5 or near < 0.6:
             continue
@@ -307,17 +307,17 @@ def _clean_grid_lines(B, R, frac=0.7):
     return out
 
 
-# ------------------------------------------------------------------------ layout
+# ------------------------------------------------------------------------ rows
 
 GRID_SEGS = [True]
 
 
 def clean_grid_segments(B, R, L_mm=8.0, frac=0.03, axes=(1, 0)):
-    """Grade monocromática (preta/cinza) sobra no binário em pedaços retos e partidos (a
-    limpeza por linha inteira exige >= 70% de cobertura). Pedaços retos >= L_mm numa faixa
-    fina (<= ~0,5 mm) com outra faixa assim a 5 ou 10 mm: são grade e saem; o traço que
-    cruza fica (só sai o pedaço reto). Uma linha de base plana também é reta, mas as linhas
-    de ECG ficam a >= ~15 mm umas das outras."""
+    """A monochrome (black/grey) grid is left in the binary map as straight, broken pieces
+    (cleanup by whole line needs >= 70% coverage). Straight pieces >= L_mm in a thin band
+    (<= ~0.5 mm) with another such band 5 or 10 mm away are grid and are removed; the trace
+    crossing them stays (only the straight piece goes). A flat baseline is straight too, but
+    ECG rows sit >= ~15 mm apart."""
     from scipy.signal import find_peaks as _fp
     H, W = B.shape
     ys, xs = np.nonzero(B.any(1))[0], np.nonzero(B.any(0))[0]
@@ -329,7 +329,7 @@ def clean_grid_segments(B, R, L_mm=8.0, frac=0.03, axes=(1, 0)):
     for axis in axes:
         k = np.ones((1, L), np.uint8) if axis == 1 else np.ones((L, 1), np.uint8)
         kc = max(3, int(1.5 * R))
-        # linha tracejada (grade fraca binarizada aos pedaços): fecha os vãos curtos antes
+        # dashed line (weak grid binarized in pieces): close the short gaps first
         Bc_ = cv2.morphologyEx(Bu, cv2.MORPH_CLOSE, np.ones((1, kc), np.uint8) if axis == 1
                                else np.ones((kc, 1), np.uint8))
         S = cv2.morphologyEx(Bc_, cv2.MORPH_OPEN, k)
@@ -364,9 +364,9 @@ def find_rows(B: np.ndarray, R: float):
 
 
 def find_pulses(B: np.ndarray, R: float):
-    """Todos os pulsos de calibração (retângulos) da página, sem saber onde estão as linhas.
-    Bordas verticais de 4..25 mm (abertura vertical), aos pares separados por 1,5..12 mm, com
-    topos e pés alinhados e platô de tinta entre elas. Devolve lista de dict(x_start, x_end,
+    """All calibration pulses (rectangles) on the page, without knowing where the rows are.
+    Vertical edges of 4..25 mm (vertical opening), in pairs 1.5..12 mm apart, with aligned
+    tops and feet and an ink plateau between them. Returns a list of dict(x_start, x_end,
     top, foot)."""
     H, W = B.shape
     Bu = B.astype(np.uint8)
@@ -396,7 +396,7 @@ def find_pulses(B: np.ndarray, R: float):
             band = B[max(0, ty - int(0.5 * R)):ty + int(0.5 * R) + 1, int(x1 + w1):int(x2)]
             if band.size == 0 or band.any(0).mean() < 0.8:
                 continue
-            # pé: a base do traço logo à esquerda da subida (ou o fim da borda esquerda)
+            # foot: the trace baseline just left of the rise (or the end of the left edge)
             out.append(dict(x_start=int(x1), x_end=int(x2 + w2 - 1), top=float(0.5 * (t1 + t2)),
                             foot=float(b1), x_fall=float(xc2)))
             break
@@ -404,12 +404,12 @@ def find_pulses(B: np.ndarray, R: float):
 
 
 def pulse_rows(B: np.ndarray, R: float):
-    """Linhas de base das linhas de traçado pelos pulsos de calibração: o maior grupo de
-    pulsos de mesma altura (±12%) na mesma coluna (±5 mm), um por linha. None se < 3."""
+    """Baselines of the trace rows from the calibration pulses: the largest group of pulses of
+    the same height (±12%) in the same column (±5 mm), one per row. None if < 3."""
     P = find_pulses(B, R)
     H, W = B.shape
-    # pulso de verdade emenda no traço: logo depois dele há tinta perto do pé por boa parte
-    # dos 25 mm seguintes (bloco de QR code, caixa de texto e cabeçalho não)
+    # a real pulse joins the trace: right after it there is ink near the foot for most of the
+    # next 25 mm (QR code block, text box and header do not)
     def _cont(p):
         a, b = max(0, int(p["foot"] - 4 * R)), min(H, int(p["foot"] + 4 * R))
         x0, x1 = int(p["x_end"] + 1), min(W, int(p["x_end"] + 25 * R))
@@ -425,9 +425,9 @@ def pulse_rows(B: np.ndarray, R: float):
         feet = sorted(q["foot"] for q in grp)
         uniq = [f for i, f in enumerate(feet) if i == 0 or f - feet[i - 1] > 3 * R]
         if len(uniq) >= 2 and np.min(np.diff(uniq)) < 8 * R:
-            continue  # linhas de ECG ficam a >= ~10 mm umas das outras
-        # pontas fora do passo do grupo (retângulo de QR code ou carimbo bem abaixo/acima do
-        # bloco): saem
+            continue  # ECG rows sit >= ~10 mm apart
+        # ends off the group step (QR code rectangle or stamp well below/above the block):
+        # removed
         while len(uniq) >= 4:
             dd = np.diff(uniq); md = float(np.median(dd))
             if dd[-1] > 1.5 * md:
@@ -445,11 +445,11 @@ def pulse_rows(B: np.ndarray, R: float):
 
 
 def pulse_column(B: np.ndarray, R: float, P=None, all_groups: bool = False):
-    """Coluna de pulsos de calibração que não emendam no traço (impressos à parte, na linha
-    nominal, com o traço deslocado pelo nível DC da derivação). Exige >= 3 pulsos com o
-    mesmo x (±2 mm), a mesma altura (±8%), a mesma largura (±1 mm) e passo vertical regular
-    (±15%): um bloco de texto ou um QR code não forma isso. Devolve dict(x_start, x_end,
-    height, feet) ou None."""
+    """Column of calibration pulses that do not join the trace (printed apart, on the
+    nominal row, with the trace offset by the lead's DC level). Requires >= 3 pulses with the
+    same x (±2 mm), the same height (±8%), the same width (±1 mm) and a regular vertical step
+    (±15%): a text block or a QR code does not form that. Returns dict(x_start, x_end,
+    height, feet) or None."""
     P = find_pulses(B, R) if P is None else P
     best, groups = None, []
     for p in P:
@@ -482,11 +482,11 @@ def _runs(mask_1d):
 
 
 def row_extent(B, y0, half, R, max_gap_mm=3.0):
-    """Maior trecho horizontal contínuo de tinta na faixa da linha."""
+    """Longest continuous horizontal ink stretch in the row band."""
     H, W = B.shape
     a, b = max(0, int(y0 - half)), min(H, int(y0 + half))
     has = B[a:b].any(0)
-    # fecha lacunas pequenas
+    # close small gaps
     k = int(max_gap_mm * R) | 1
     hc = cv2.morphologyEx(has.astype(np.uint8).reshape(1, -1), cv2.MORPH_CLOSE, np.ones((1, k), np.uint8)).ravel()
     s, e = _runs(hc > 0)
@@ -495,10 +495,10 @@ def row_extent(B, y0, half, R, max_gap_mm=3.0):
     i = int(np.argmax(e - s))
     lo, hi = int(s[i]), int(e[i])
     if ROW_CHAIN[0]:
-        # colunas separadas por um vão (pulso de calibração no começo de cada coluna, margem
-        # entre colunas): emenda trechos longos na mesma faixa a até 12 mm de distância
-        # (o traço da outra coluna pode vir partido em pedaços; basta que a sequência de
-        # pedaços seja densa e chegue a um trecho longo)
+        # columns separated by a gap (calibration pulse at the start of each column, margin
+        # between columns): join long stretches in the same band up to 12 mm apart
+        # (the trace of the other column may come broken into pieces; it is enough that the
+        # sequence of pieces is dense and reaches a long stretch)
         gap, minlen = 12 * R, 15 * R
         for direction in (-1, 1):
             j = i + direction; acc = []
@@ -509,7 +509,7 @@ def row_extent(B, y0, half, R, max_gap_mm=3.0):
                     break
                 acc.append(j)
                 edge = s[j] if direction < 0 else e[j]
-                if (e[j] - s[j]) >= minlen:  # chegou a um trecho longo: aceita a cadeia
+                if (e[j] - s[j]) >= minlen:  # reached a long stretch: accept the chain
                     if direction < 0:
                         lo = int(s[j])
                     else:
@@ -523,19 +523,19 @@ ROW_CHAIN = [True]
 
 
 def detect_pulse(B, y0, half, xa, R, up=None, close_mm=0.8):
-    """Pulso de calibração (retângulo) no início da linha.
-    Exige: duas bordas verticais altas (4..25 mm) separadas por 1.5..12 mm, de alturas,
-    topos e pés alinhados (< 1 mm), topo horizontal coberto de tinta entre elas e pé
-    perto da linha de base. Isso descarta QRS (ponta, não platô) e texto.
-    Retorna dict(top, foot, x_start, x_end) ou None."""
+    """Calibration pulse (rectangle) at the start of the row.
+    Requires two tall vertical edges (4..25 mm) 1.5..12 mm apart, with aligned heights, tops
+    and feet (< 1 mm), a horizontal top covered with ink between them and a foot near the
+    baseline. This rules out QRS (a point, not a plateau) and text.
+    Returns dict(top, foot, x_start, x_end) or None."""
     H, W = B.shape
     up = half if up is None else up
     a, b = max(0, int(y0 - up)), min(H, int(y0 + 0.6 * half))
     x0s = max(0, int(xa - 10 * R))
-    # 30 mm: em fotos a extensão da linha pode começar na borda da folha/grade, antes do pulso
+    # 30 mm: in photos the row extent may start at the sheet/grid border, before the pulse
     x1 = min(W, int(xa + 30 * R))
     sub = B[a:b, x0s:x1].astype(np.uint8)
-    kv = max(3, int(close_mm * R) | 1)  # fecha quebras verticais (resolução baixa / JPEG)
+    kv = max(3, int(close_mm * R) | 1)  # close vertical breaks (low resolution / JPEG)
     sub = cv2.morphologyEx(sub, cv2.MORPH_CLOSE, np.ones((kv, 1), np.uint8)) > 0
     n = sub.shape[1]
     tops = np.full(n, np.nan); bots = np.full(n, np.nan)
@@ -556,16 +556,16 @@ def detect_pulse(B, y0, half, xa, R, up=None, close_mm=0.8):
             j1 = np.arange(cs[i], ce[i] + 1); j2 = np.arange(cs[k], ce[k] + 1)
             t1, b1 = np.median(tops[j1]), np.median(bots[j1])
             t2, b2 = np.median(tops[j2]), np.median(bots[j2])
-            # a borda de SUBIDA vai de 0 a 1 mV; a de descida termina no valor do ECG em
-            # t = 0 (qualquer). Pé = borda esquerda; topo = platô (média das duas).
-            # altura pela borda mais curta (a mais longa pode carregar sombra/vinco ou o
-            # valor do ECG em t = 0); a linha de base final vem do platô + ganho comum
+            # the RISING edge goes from 0 to 1 mV; the falling one ends at the ECG value at
+            # t = 0 (anything). Foot = left edge; top = plateau (mean of both).
+            # height from the shorter edge (the longer may carry shadow/crease or the ECG
+            # value at t = 0); the final baseline comes from the plateau + common gain
             h = min(b1, b2) - 0.5 * (t1 + t2)
             if not (4 * R <= h <= 25 * R):
                 continue
             if abs(t1 - t2) > 1.0 * R and abs(b1 - b2) < 1.0 * R and min(b1 - t1, b2 - t2) >= 2 * R:
-                # pulso em DEGRAU (ganho dividido, ex. 10/5 mm/mV): platô alto à esquerda,
-                # degrau vertical, platô baixo à direita. Verifica os dois platôs.
+                # STEP pulse (split gain, e.g. 10/5 mm/mV): high plateau on the left,
+                # vertical step, low plateau on the right. Check both plateaus.
                 foot = min(b1, b2)
                 if abs(foot - y0) > 4 * R:
                     continue
@@ -575,28 +575,28 @@ def detect_pulse(B, y0, half, xa, R, up=None, close_mm=0.8):
                 hb = int(0.5 * R)
                 cov1 = B[max(0, int(t1) - hb):int(t1) + hb + 1, xa_:xb_].any(0)
                 cov2 = B[max(0, int(t2) - hb):int(t2) + hb + 1, xa_:xb_].any(0)
-                # o platô 1 cobre um prefixo e o 2 um sufixo, juntos cobrem quase tudo
+                # plateau 1 covers a prefix and plateau 2 a suffix; together they cover almost everything
                 if (cov1 | cov2).mean() < 0.8 or cov1[: len(cov1) // 4].mean() < 0.6 or \
                         cov2[-(len(cov2) // 4):].mean() < 0.6:
                     continue
                 return dict(top=float(t1), top2=float(t2), foot=float(foot), x_start=int(x0s + cs[i]),
                             x_end=int(x0s + ce[k]), x_fall=float(x0s + 0.5 * (cs[k] + ce[k])), step=True)
-            # a borda de descida termina no valor do ECG em t = 0 e pode emendar na marca
-            # separadora: o pé dela fica bem abaixo do da subida (até ~1 mV)
+            # the falling edge ends at the ECG value at t = 0 and may join the separator mark:
+            # its foot sits well below the rising edge's (up to ~1 mV)
             if abs(t1 - t2) > 1.0 * R or abs(b1 - b2) > 10.0 * R:
                 continue
             top = 0.5 * (t1 + t2); foot = min(b1, b2)
             if abs(foot - y0) > 4 * R:
                 continue
-            # platô: tinta numa faixa estreita em torno do topo, entre as bordas
+            # plateau: ink in a narrow band around the top, between the edges
             ty = int(round(top))
             band = B[max(0, ty - int(0.5 * R)):ty + int(0.5 * R) + 1, x0s + ce[i] + 1:x0s + cs[k]]
             if band.size == 0 or band.any(0).mean() < 0.8:
                 continue
             return dict(top=float(top), foot=float(foot), x_start=int(x0s + cs[i]), x_end=int(x0s + ce[k]),
                         x_fall=float(x0s + 0.5 * (cs[k] + ce[k])))
-    # meio pulso (borda esquerda cortada pela margem da imagem): platô >= 1.5 mm
-    # terminando numa borda de descida alta, pé perto da linha de base
+    # half pulse (left edge cut by the image margin): plateau >= 1.5 mm ending in a tall
+    # falling edge, foot near the baseline
     for i in range(len(cs)):
         j1 = np.arange(cs[i], ce[i] + 1)
         t1, b1 = np.median(tops[j1]), np.median(bots[j1])
@@ -615,12 +615,12 @@ def detect_pulse(B, y0, half, xa, R, up=None, close_mm=0.8):
     return None
 
 
-# ----------------------------------------------------------------- rastreamento
+# ----------------------------------------------------------------- tracking
 
 def column_runs(B, D, ya, yb, xa, xb):
-    """Lista por coluna de segmentos (top, bot, centróide, massa).
+    """Per-column list of segments (top, bot, centroid, mass).
 
-    Todas as colunas de uma vez (antes era um laço por coluna em Python)."""
+    All columns at once (it used to be a Python loop per column)."""
     sub = B[ya:yb, xa:xb]
     h, w = sub.shape
     if w == 0:
@@ -630,28 +630,28 @@ def column_runs(B, D, ya, yb, xa, xb):
     pad = np.zeros((w, h + 2), np.int8)
     pad[:, 1:-1] = sub.T
     d = np.diff(pad, axis=1)
-    cs, ss = np.nonzero(d == 1)          # coluna, primeira linha do segmento (ordem: coluna, linha)
+    cs, ss = np.nonzero(d == 1)          # column, first row of the segment (order: column, row)
     _, ee = np.nonzero(d == -1)
-    ee = ee - 1                           # última linha do segmento
+    ee = ee - 1                           # last row of the segment
     if len(ss) == 0:
         return [[] for _ in range(w)]
-    # funde fragmentos da mesma coluna separados por <= 3 px (halo de antialiasing / JPEG)
+    # merge fragments of the same column separated by <= 3 px (antialiasing / JPEG halo)
     first = np.r_[True, (cs[1:] != cs[:-1]) | ((ss[1:] - ee[:-1] - 1) > 3)]
     last = np.r_[first[1:], True]
     c_, a_, b_ = cs[first], ss[first], ee[last]
-    # massa e centróide de cada segmento fundido (inclui os pixels do vão), em float64
+    # mass and centroid of each merged segment (gap pixels included), in float64
     Dt = np.zeros(w * h + 1, np.float64)
     Dt[:-1] = D[ya:yb, xa:xb].T.ravel()
     idx = np.empty(2 * len(a_), np.int64)
     idx[0::2] = c_ * h + a_
     idx[1::2] = c_ * h + b_ + 1
     m = np.add.reduceat(Dt, idx)[0::2] + 1e-9
-    yy = np.arange(ya, ya + h, dtype=np.float64)   # yb pode passar do fim da imagem
+    yy = np.arange(ya, ya + h, dtype=np.float64)   # yb may go past the end of the image
     Dy = Dt.copy()
     Dy[:-1] *= np.tile(yy, w)
     cen = np.add.reduceat(Dy, idx)[0::2] / m
-    # topo/base continuam np.int64, como antes: quem usa os segmentos depois faz contas com
-    # float32, e int do Python mudaria a precisão do resultado (float32 em vez de float64)
+    # top/bottom stay np.int64, as before: later users of the segments compute with float32,
+    # and a Python int would change the precision of the result (float32 instead of float64)
     top = list(a_ + ya); bot = list(b_ + ya); cen = cen.tolist(); m = m.tolist()
     cnt = np.bincount(c_, minlength=w).tolist()
     out = []
@@ -662,7 +662,7 @@ def column_runs(B, D, ya, yb, xa, xb):
             continue
         col = [(top[k], bot[k], cen[k], m[k]) for k in range(i, i + n)]
         i += n
-        # descarta fragmentos sem massa quando há alternativa
+        # drop massless fragments when there is an alternative
         if n > 1:
             big = [c for c in col if c[3] >= 0.6]
             col = big or col
@@ -671,39 +671,39 @@ def column_runs(B, D, ya, yb, xa, xb):
 
 
 def _bridge_table(D, xa, n, R, floor=0.0):
-    """Soma acumulada (em y) da tinta máxima em 3 colunas (x-2..x): evidência de um traço
-    fraco ligando dois segmentos na vertical (subida/descida rápida do QRS)."""
+    """Cumulative sum (in y) of the max ink over 3 columns (x-2..x): evidence of a weak trace
+    joining two segments vertically (fast QRS upstroke/downstroke)."""
     from scipy.ndimage import maximum_filter1d
     H, W = D.shape
     a, b = max(0, xa - 2), min(W, xa + n)
     Dm = maximum_filter1d(np.clip(D[:, a:b].astype(np.float32) - floor, 0, None), 3, axis=1, origin=1)
     Dm = Dm[:, xa - a:xa - a + n] if xa - a >= 0 else Dm
     from scipy.ndimage import uniform_filter1d
-    return uniform_filter1d(Dm, 3, axis=0)  # média vertical de 3 px: buraco de 1 px no traço fraco não conta
+    return uniform_filter1d(Dm, 3, axis=0)  # 3 px vertical mean: a 1 px hole in a weak trace does not count
 
 
 def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_edge=0.0,
                   D=None, xa=0, bridge_ref=None, rigid=False, bridge_floor=0.0):
-    """Escolhe um segmento por coluna (ou falha) minimizando custo de continuidade.
+    """Pick one segment per column (or failure) minimizing a continuity cost.
 
-    Com D: um salto vertical entre segmentos que a tinta (mesmo fraca, abaixo do limiar da
-    binarização) liga custa pouco. A pena é contínua: a subida e a descida do QRS, finas e
-    claras no scan/foto, se partem no binário, e sem isso o rastreio pulava o pico do R ou o
-    vale do S (o erro dominante nos picos)."""
+    With D: a vertical jump between segments that the ink links (even weak, below the
+    binarization threshold) costs little. The penalty is continuous: the QRS upstroke and
+    downstroke, thin and light in a scan/photo, break apart in the binary map, and without
+    this the tracker skipped the R peak or the S valley (the dominant error at the peaks)."""
     INF = 1e18
     n = len(runs)
     if n == 0:
         return []
     base, R = float(base), float(R)
     others = [float(o) for o in others]
-    # escalares do Python dentro do laço (mesmos valores; os do NumPy custam várias vezes mais)
+    # Python scalars inside the loop (same values; NumPy scalars cost several times more)
     runs = [[(int(t), int(b), float(c), float(m)) for (t, b, c, m) in col] for col in runs]
     cs_br = None
     if D is not None and bridge_ref is not None and bridge_ref > 0 and n > 0:
         cs_br = _bridge_table(D, xa, n, R, bridge_floor)
         bridge_ref = float(bridge_ref - bridge_floor)
         Hb = cs_br.shape[0]
-    states = []  # por coluna: lista de (top, bot, center)
+    states = []  # per column: list of (top, bot, center)
     backs = []
     flat_h = float(3.0 * (lw if lw else 0.3 * R))
     w_base, c_gap = float(w_base), float(c_gap)
@@ -711,13 +711,13 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
     m_ref = float(np.median(mx)) if mx else 1.0
 
     def emis(t, b, c, m):
-        # distância do intervalo à linha de base (0 se o segmento a cruza)
+        # distance from the interval to the baseline (0 if the segment crosses it)
         dm = max(0.0, t - base, base - b) / R
-        # prior saturado: ondas de 2-4 mV são fisiológicas; a penalidade só precisa
-        # desempatar entre traços próximos, não empurrar um R alto de volta à base
+        # saturated prior: 2-4 mV waves are physiological; the penalty only needs to break
+        # ties between nearby traces, not push a tall R back to the baseline
         e = min(w_base * dm * dm, 0.1)
-        # trecho plano em cima da linha de base de OUTRA derivação = traço vizinho.
-        # (um R alto cruza a linha vizinha na vertical: segmento alto, sem penalidade)
+        # flat stretch on top of ANOTHER lead's baseline = neighbouring trace.
+        # (a tall R crosses the neighbouring row vertically: tall segment, no penalty)
         if others and (b - t) <= flat_h and dm > 6:
             for ob in others:
                 if abs(c - ob) < 4 * R:
@@ -725,7 +725,7 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
                     break
         if (b - t) / R > 30:
             e += 5.0
-        if m < 0.35 * m_ref:  # fragmento fraco (halo/ruído)
+        if m < 0.35 * m_ref:  # weak fragment (halo/noise)
             e += 0.8
         return e
 
@@ -736,27 +736,27 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
         g = max(0.0, t - pb, pt - b) / R
         g0 = g
         if g > 0.2 and cs_br is not None and i is not None and i < cs_br.shape[1]:
-            # intervalo vertical vazio entre os segmentos
+            # empty vertical interval between the segments
             y0, y1 = (int(pb) + 1, int(t)) if t > pb else (int(b) + 1, int(pt))
             y0, y1 = max(0, y0), min(Hb, y1)
             if y1 > y0:
-                # quantil baixo ao longo do vão: um traço fraco é contínuo; mancha/pontilhado
-                # de scan tem buracos (a média sozinha atravessava manchas escuras)
+                # low quantile along the gap: a weak trace is continuous; scan stains/dots
+                # have holes (the mean alone went through dark stains)
                 ev = float(cs_br[y0:y1, i].min()) / bridge_ref
                 if ev > 0.35:
                     g *= max(0.05, 1.0 - (ev - 0.35) / 0.35)
-        # continuidade das BORDAS: num traço desenhado por pena, de uma coluna para a
-        # outra pelo menos uma das bordas (topo/base) anda pouco; letra colada ao traço
-        # (rótulo atravessado por um R) fica no meio e quebra as duas
-        # (traço íngreme: o segmento inteiro translada de uma coluna para a outra, as duas
-        # bordas andam juntas; só a letra colada muda topo e base de forma desigual)
+        # EDGE continuity: in a pen-drawn trace, from one column to the next at least one of
+        # the edges (top/bottom) moves little; a letter stuck to the trace (label crossed by
+        # an R) sits in the middle and breaks both
+        # (steep trace: the whole segment translates from one column to the next, both edges
+        # move together; only a stuck letter changes top and bottom unevenly)
         ed = min(abs(t - pt), abs(b - pb))
-        if _rigid and g0 == 0.0:  # só com sobreposição: o mesmo traço continuando
+        if _rigid and g0 == 0.0:  # only with overlap: the same trace continuing
             ed = min(ed, abs((t - pt) - (b - pb)))
         return 2.0 * g + 0.5 * g * g + 0.02 * abs(c - pc) / R + _we * ed / R
 
-    # contas em escalares do Python (float/int): mesmos valores IEEE, sem o custo dos
-    # escalares do NumPy em cada soma
+    # arithmetic on Python scalars (float/int): same IEEE values, without the cost of NumPy
+    # scalars in every sum
     prev_states = [(base, base, base)]
     prev_cost = [0.0]
     last_cost = prev_cost
@@ -774,9 +774,9 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
                 k += 1
             cs.append(best + emis(t, b, c, m))
             bk.append(arg)
-        # estado de falha (último índice)
+        # failure state (last index)
         pmin = min(prev_cost)
-        kmin = prev_cost.index(pmin)        # primeiro mínimo, como o np.argmin
+        kmin = prev_cost.index(pmin)        # first minimum, like np.argmin
         cs.append(pmin + c_gap)
         bk.append(kmin)
         new_states = [(t, b, c) for (t, b, c, m) in col]
@@ -796,7 +796,7 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
 
 
 def selected_envelopes(D, runs, sel, xa):
-    """Bordas sub-pixel (nível 50% da tinta cheia) do segmento escolhido em cada coluna."""
+    """Sub-pixel edges (50% of full ink level) of the chosen segment in each column."""
     n = len(runs)
     tb = np.full((n, 2), np.nan)
     pk = np.full(n, np.nan)
@@ -876,12 +876,12 @@ def _gamma_phi(top, bot, r, rh, U):
 
 
 def calibrate_pen(segments, r, U=4):
-    """Auto-calibração da meia-largura horizontal da pena (pena elíptica: impressoras
-    térmicas/renderizadores raramente são isotrópicos). No modelo correto, abertura (do
-    topo) e fechamento (da base) coincidem nos traços inclinados; escolhe o rh que
-    minimiza a discordância mediana, numa faixa plausível (0.7..1.1 x rv)."""
+    """Self-calibration of the pen's horizontal half-width (elliptical pen: thermal printers
+    and renderers are rarely isotropic). In the right model, opening (of the top) and closing
+    (of the bottom) agree on sloped strokes; pick the rh that minimizes the median
+    disagreement, within a plausible range (0.7..1.1 x rv)."""
     best, best_rh = np.inf, r
-    for f in np.arange(0.7, 1.11, 0.05):  # faixa plausível de anisotropia da pena
+    for f in np.arange(0.7, 1.11, 0.05):  # plausible range of pen anisotropy
         rh = r * f
         errs = []
         for top, bot in segments:
@@ -889,7 +889,7 @@ def calibrate_pen(segments, r, U=4):
             if ok.sum() < 20:
                 continue
             xf, tf, bf, gam, phi, _ = _gamma_phi(top, bot, r, rh, U)
-            # colunas de traço inclinado (borda de cima e de baixo bem separadas)
+            # sloped-trace columns (top and bottom edges well apart)
             straight = (bf - tf) > 6 * r
             if straight.sum() > 5:
                 errs.append(np.abs(gam - phi)[straight])
@@ -902,9 +902,9 @@ def calibrate_pen(segments, r, U=4):
 
 
 def centerline_from_envelopes(top, bot, r, U=4, rh=None):
-    """Inverte o modelo 'traço = curva (+) pena elíptica (rh, r)':
-       topo = erosão(y), base = dilatação(y). Abertura do topo (<= y) é exata em
-       picos para cima; fechamento da base (>= y) é exato em vales. Escolhe por curvatura."""
+    """Invert the model 'trace = curve (+) elliptical pen (rh, r)':
+       top = erosion(y), bottom = dilation(y). Opening the top (<= y) is exact at upward
+       peaks; closing the bottom (>= y) is exact at valleys. Pick by curvature."""
     n = len(top)
     xs = np.arange(n, dtype=np.float64)
     ok = ~np.isnan(top) | ~np.isnan(bot)
@@ -923,14 +923,14 @@ def centerline_from_envelopes(top, bot, r, U=4, rh=None):
 
 
 def refine_steep(D, xs, yc, rh, min_dy=2.0):
-    """Média a posteriori do INSTANTE nos trechos íngremes (QRS).
+    """Posterior mean of the INSTANT on steep stretches (QRS).
 
-    Numa coluna, o traço quase vertical ocupa um run alto e o centro dele só diz o x com
-    resolução de 1 coluna (0,1 mm = 4 ms a 25 mm/s); num QRS de 50 mV/s isso já é 0,2 mV
-    de erro. Aqui o papel de x e y se inverte: em cada linha de pixel que o traço íngreme
-    cruza, o centróide horizontal da tinta (pesado pela densidade, sub-pixel) é a estimativa
-    de mínimo erro quadrático do instante em que a curva passa por aquela altura.
-    Trechos planos ficam com o centro por coluna. Devolve (x, y) ordenados em x."""
+    In a column, the almost vertical trace occupies a tall run and its centre only gives x to
+    1-column resolution (0.1 mm = 4 ms at 25 mm/s); on a 50 mV/s QRS that is already 0.2 mV
+    of error. Here x and y swap roles: on each pixel row the steep trace crosses, the
+    horizontal ink centroid (density-weighted, sub-pixel) is the minimum squared-error
+    estimate of the instant at which the curve passes that height.
+    Flat stretches keep the per-column centre. Returns (x, y) sorted in x."""
     xs = np.asarray(xs, float); yc = np.asarray(yc, float)
     n = len(xs)
     if n < 4:
@@ -940,7 +940,7 @@ def refine_steep(D, xs, yc, rh, min_dy=2.0):
     contig = np.diff(xs) == 1
     sgn = np.sign(dy)
     steep = (np.abs(dy) >= min_dy) & contig & np.isfinite(dy)
-    # mesmo sentido nos vizinhos: longe da volta do pico (onde subida e descida se fundem)
+    # same direction in the neighbours: away from the turn of the peak (where up and down strokes merge)
     same = np.zeros_like(steep)
     same[1:-1] = (sgn[1:-1] == sgn[:-2]) & (sgn[1:-1] == sgn[2:])
     steep &= same
@@ -970,18 +970,18 @@ def refine_steep(D, xs, yc, rh, min_dy=2.0):
             while r_ + 1 < len(prof) and on[r_ + 1]:
                 r_ += 1
             if l_ == 0 or r_ == len(prof) - 1 or (r_ - l_ + 1) > 2 * rh + 4:
-                continue  # encostado na janela ou largo demais: dois traços/borrão
+                continue  # touching the window or too wide: two traces/smear
             wt = prof[l_:r_ + 1] - thr
             xc = a + l_ + float((wt * np.arange(r_ - l_ + 1)).sum() / max(wt.sum(), 1e-9))
             if abs(xc - x0) > 1.5:
                 continue
             if not (min(xs[i], xs[i + 1]) < xc < max(xs[i], xs[i + 1])):
-                continue  # fora do intervalo entre as duas colunas: quebraria a monotonia
+                continue  # outside the interval between the two columns: would break monotonicity
             px.append(xc); py.append(float(Y))
     if not px:
         return xs, yc
-    # os pontos de coluna ficam (no pico/vale a inversão da pena é exata); os de linha entram
-    # entre eles e dão o instante sub-coluna das subidas e descidas
+    # the column points stay (at the peak/valley the pen inversion is exact); the row points
+    # go between them and give the sub-column instant of the upstrokes and downstrokes
     X = np.concatenate([xs, px]); Y = np.concatenate([yc, py])
     o = np.argsort(X, kind="stable")
     X, Y = X[o], Y[o]
@@ -990,9 +990,9 @@ def refine_steep(D, xs, yc, rh, min_dy=2.0):
 
 
 def mark_occlusions(jobs, lw, margin=1.0):
-    """Traços sobrepostos (linhas vizinhas que se cruzam): a borda superior/inferior
-    de um traço que cai dentro da tinta de OUTRO traço não é confiável -> NaN.
-    O envelope é então interpolado sobre a oclusão."""
+    """Overlapping traces (neighbouring rows that cross): the top/bottom edge of a trace
+    that falls inside the ink of ANOTHER trace is not reliable -> NaN.
+    The envelope is then interpolated over the occlusion."""
     for j in jobs:
         j["top_o"], j["bot_o"] = j["top"].copy(), j["bot"].copy()
     for j in jobs:
@@ -1009,7 +1009,7 @@ def mark_occlusions(jobs, lw, margin=1.0):
             ot, ob = o["top"][so] - margin, o["bot"][so] + margin
             tj, bj = j["top"][sj], j["bot"][sj]
             with np.errstate(invalid="ignore"):
-                # só um traço vizinho localmente plano (não "engoliu" um QRS alheio) oclui
+                # only a locally flat neighbouring trace (that did not "swallow" another QRS) occludes
                 flat_o = (o["bot"][so] - o["top"][so]) <= 2.5 * lw
                 occ_t = flat_o & (tj >= ot) & (tj <= ob)
                 occ_b = flat_o & (bj >= ot) & (bj <= ob)
@@ -1020,10 +1020,10 @@ def mark_occlusions(jobs, lw, margin=1.0):
 
 
 def trace_likeness(B, peaks, R, min_len_mm=25.0, return_raw=False):
-    """Para cada linha candidata: largura total coberta por componentes conexas longas
-    (traçados), centradas perto da linha. Texto/cabeçalho = muitos pedaços curtos."""
+    """For each candidate row: total width covered by long connected components (traces),
+    centred near the row. Text/header = many short pieces."""
     k = int(1.5 * R) | 1
-    Bc = cv2.dilate(B.astype(np.uint8), np.ones((3, k), np.uint8))  # junta quebras pequenas
+    Bc = cv2.dilate(B.astype(np.uint8), np.ones((3, k), np.uint8))  # joins small breaks
     n, lab, st, cen = cv2.connectedComponentsWithStats(Bc, connectivity=8)
     long_ = [i for i in range(1, n) if st[i, cv2.CC_STAT_WIDTH] >= min_len_mm * R]
     scores = []
@@ -1032,26 +1032,26 @@ def trace_likeness(B, peaks, R, min_len_mm=25.0, return_raw=False):
         for i in long_:
             y0, h = st[i, cv2.CC_STAT_TOP], st[i, cv2.CC_STAT_HEIGHT]
             if y0 <= y <= y0 + h:
-                # a componente precisa ter tinta perto da linha ao longo de boa parte da largura
+                # the component must have ink near the row over much of its width
                 x0, w = st[i, cv2.CC_STAT_LEFT], st[i, cv2.CC_STAT_WIDTH]
                 band = lab[max(0, int(y - 3 * R)):int(y + 3 * R), x0:x0 + w] == i
                 cov += band.any(0).sum()
-        scores.append(cov / R)  # em mm
+        scores.append(cov / R)  # in mm
     if not return_raw:
         return np.array(scores)
-    # cobertura "crua": componentes longas SEM juntar quebras de 1.5 mm. Texto (rodapé
-    # "50mm/s 10mm/mV ...") vira uma componente longa depois da dilatação, mas cru são
-    # letras de poucos mm; traçado continua longo.
+    # "raw" coverage: long components WITHOUT joining 1.5 mm breaks. Text (footer
+    # "50mm/s 10mm/mV ...") becomes one long component after dilation, but raw it is letters
+    # of a few mm; a trace stays long.
     B8 = B.astype(np.uint8)
-    # retira réguas retas (borda da área quadriculada etc.): retas de > 60 mm na horizontal
+    # remove straight rulers (border of the gridded area etc.): lines > 60 mm horizontally
     lines = cv2.morphologyEx(B8, cv2.MORPH_OPEN, np.ones((1, int(60 * R) | 1), np.uint8))
     lines = cv2.dilate(lines, np.ones((5, 1), np.uint8))
     Br = cv2.morphologyEx(B8 & (1 - lines), cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
     n2, lab2, st2, _ = cv2.connectedComponentsWithStats(Br, connectivity=8)
-    # linhas retas (borda da área quadriculada, réguas) não são traçado: um traço de
-    # > 50 mm sempre tem QRS/ondas com > 1.5 mm de altura
+    # straight lines (border of the gridded area, rulers) are not traces: a trace of
+    # > 50 mm always has QRS/waves taller than 1.5 mm
     w2, h2 = st2[:, cv2.CC_STAT_WIDTH], st2[:, cv2.CC_STAT_HEIGHT]
-    # palavras: largas mas baixas (< 4 mm); pedaços de traçado têm ondas ou são longos
+    # words: wide but short (< 4 mm); trace pieces have waves or are long
     long2 = np.nonzero(((w2 >= 6.0 * R) & (h2 >= 4.0 * R)) | (w2 >= 25.0 * R))[0]
     long2 = long2[long2 > 0]
     keep = np.zeros(n2, bool); keep[long2] = True
@@ -1063,9 +1063,9 @@ def trace_likeness(B, peaks, R, min_len_mm=25.0, return_raw=False):
 
 
 def horizontal_halfwidth(D, jobs, lev, rv):
-    """Meia largura horizontal da pena medida diretamente: no meio de traços quase
-    verticais (QRS), perfil horizontal da tinta no nível de 50%. Traços de subida e
-    descida colados dão larguras dobradas -> usa um percentil baixo."""
+    """Pen horizontal half-width measured directly: in the middle of nearly vertical strokes
+    (QRS), horizontal ink profile at the 50% level. Up and down strokes stuck together give
+    doubled widths -> use a low percentile."""
     H, W = D.shape
     out = []
     for j in jobs:

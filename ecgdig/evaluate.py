@@ -1,4 +1,4 @@
-"""Avaliação no conjunto sintético: SNR (dB) e correlação por derivação, só nas amostras visíveis."""
+"""Evaluation on the synthetic set: SNR (dB) and correlation per lead, on visible samples only."""
 from __future__ import annotations
 
 import glob
@@ -31,19 +31,19 @@ def evaluate(folder, cfg=None, verbose=True):
             rows.append([np.nan] * 12 + [np.nan])
             continue
         pr = res["signals"].copy()
-        pr[~shown] = np.nan  # mesma janela visível
+        pr[~shown] = np.nan  # same visible window
         s = [snr_db(np.where(shown[i], gt[i], np.nan), pr[i]) for i in range(12)]
         r = [np.corrcoef(gt[i][shown[i] & ~np.isnan(pr[i])], pr[i][shown[i] & ~np.isnan(pr[i])])[0, 1]
              if (shown[i] & ~np.isnan(pr[i])).sum() > 10 else np.nan for i in range(12)]
         rows.append(s + [np.nanmean(r)])
         if verbose:
-            print(f"{f.split('/')[-1]}  SNR médio {np.nanmean(s):6.2f} dB  min {np.nanmin(s):6.2f}  "
-                  f"r {np.nanmean(r):.4f}  ganho {res['gain_mm_per_mv']}  layout {res['layout']}  "
-                  f"pulsos {res['pulses_found']}  {time.time() - t:.1f}s")
+            print(f"{f.split('/')[-1]}  mean SNR {np.nanmean(s):6.2f} dB  min {np.nanmin(s):6.2f}  "
+                  f"r {np.nanmean(r):.4f}  gain {res['gain_mm_per_mv']}  layout {res['layout']}  "
+                  f"pulses {res['pulses_found']}  {time.time() - t:.1f}s")
     A = np.array(rows)
     if verbose:
-        print("por derivação (dB):", " ".join(f"{l}:{v:.1f}" for l, v in zip(LEADS, np.nanmean(A[:, :12], 0))))
-        print(f"MÉDIA GERAL: SNR {np.nanmean(A[:, :12]):.2f} dB   correlação {np.nanmean(A[:, 12]):.4f}")
+        print("per lead (dB):", " ".join(f"{l}:{v:.1f}" for l, v in zip(LEADS, np.nanmean(A[:, :12], 0))))
+        print(f"OVERALL MEAN: SNR {np.nanmean(A[:, :12]):.2f} dB   correlation {np.nanmean(A[:, 12]):.4f}")
     return A
 
 

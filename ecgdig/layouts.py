@@ -1,18 +1,18 @@
-"""Biblioteca de layouts e utilidades de nomes de derivações.
+"""Layout library and lead-name helpers.
 
-Um layout é uma lista de linhas; cada linha é uma lista de derivações que dividem
-igualmente a duração exibida (ex.: 3x4 -> 4 derivações de 2.5 s por linha a 25 mm/s).
-"-aVR" é a derivação invertida do sistema de Cabrera.
+A layout is a list of rows; each row is a list of leads that split the displayed duration
+equally (e.g. 3x4 -> 4 leads of 2.5 s per row at 25 mm/s). "-aVR" is the inverted lead of
+the Cabrera system.
 """
 from __future__ import annotations
 
 import numpy as np
 
 LEADS = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
-LEAD_NAMES = LEADS + ["-aVR"]                # nomes que podem aparecer impressos
+LEAD_NAMES = LEADS + ["-aVR"]                # names that may be printed on a page
 LIMB = {"I", "II", "III", "aVR", "aVL", "aVF", "-aVR"}
 
-# cada derivação de membros como combinação de (I, II)  [Einthoven/Goldberger]
+# each limb lead as a combination of (I, II)  [Einthoven/Goldberger]
 LIMB_COEF = {
     "I": (1.0, 0.0), "II": (0.0, 1.0), "III": (-1.0, 1.0),
     "aVR": (-0.5, -0.5), "aVL": (1.0, -0.5), "aVF": (-0.5, 1.0), "-aVR": (0.5, 0.5),
@@ -38,11 +38,11 @@ LIBRARY = {
     "6x2-cabrera": _CAB_6x2,
     "6x2+1-cabrera": _CAB_6x2 + [["II"]],
     "12x1-cabrera": [[l] for l in _CAB_12],
-    # páginas de 6 tiras de largura total (ex.: Schiller/Mortara imprimem membros e precordiais em folhas separadas)
+    # pages of 6 full-width strips (e.g. Schiller/Mortara print limb and precordial leads on separate sheets)
     "6x1-prec": [[f"V{i}"] for i in range(1, 7)],
     "6x1-limb": [[l] for l in LEADS[:6]],
     "6x1-limb-cabrera": [[l] for l in _CAB_12[:6]],
-    # aparelhos de 3 canais: 3 tiras de 10 s por folha, um grupo de derivações em cada folha
+    # 3-channel devices: three 10 s strips per sheet, one lead group per sheet
     "3x1-limb": [["I"], ["II"], ["III"]],
     "3x1-aug": [["aVR"], ["aVL"], ["aVF"]],
     "3x1-v13": [["V1"], ["V2"], ["V3"]],
@@ -51,14 +51,14 @@ LIBRARY = {
 
 
 def lead_signal(sig12: np.ndarray, name: str) -> np.ndarray:
-    """Sinal (N,) de um nome impresso a partir das 12 derivações padrão."""
+    """Signal (N,) of a printed name, from the 12 standard leads."""
     if name == "-aVR":
         return -sig12[LEADS.index("aVR")]
     return sig12[LEADS.index(name)]
 
 
 def to_standard(name: str, v: np.ndarray):
-    """Converte medida de um nome impresso para (derivação padrão, valor)."""
+    """Map a measurement of a printed name to (standard lead, value)."""
     if name == "-aVR":
         return "aVR", -v
     return name, v

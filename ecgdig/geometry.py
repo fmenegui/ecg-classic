@@ -1,12 +1,12 @@
 """
-Geometria da página: segmentação do papel, mapa da grade, deskew, escala (px/mm),
-retificação por homografia via fase local da grade + unwrapping guiado por qualidade,
-e refinamento não-rígido (deslocamento polinomial) para papel curvado.
+Page geometry: paper segmentation, grid map, deskew, scale (px/mm), rectification by
+homography from the local grid phase + quality-guided unwrapping, and non-rigid refinement
+(polynomial displacement plus local cells) for curved paper.
 
-Ideia central: a grade milimetrada é um padrão periódico conhecido (1 mm / 5 mm).
-Em cada bloco da imagem a fase do coeficiente de Fourier na frequência da grade dá
-a posição sub-pixel das linhas. Desenrolando essas fases (como em interferometria /
-InSAR) obtém-se correspondências imagem <-> coordenadas em mm, e daí a homografia.
+Core idea: the millimetre grid is a known periodic pattern (1 mm / 5 mm). In each image
+block, the phase of the Fourier coefficient at the grid frequency gives the sub-pixel
+position of the lines. Unwrapping those phases (as in interferometry / InSAR) yields
+image <-> mm correspondences, and from them the homography.
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ import cv2
 # ----------------------------------------------------------------------------- utils
 
 def _bg_max(ch: np.ndarray, win_frac: float = 0.015, small: int = 900) -> np.ndarray:
-    """Fundo (brilho do papel) por filtro de máximo + mediana em baixa resolução."""
+    """Background (paper brightness) by max filter + median at low resolution."""
     H, W = ch.shape
     f = small / max(H, W)
     s = cv2.resize(ch, (max(8, int(W * f)), max(8, int(H * f))), interpolation=cv2.INTER_AREA)
@@ -59,10 +59,10 @@ def _paper_otsu(lab, border):
 
 
 def paper_crop(img: np.ndarray, max_frac: float = 0.3, margin: float = 0.12):
-    """Recorta a foto à folha quando ela ocupa pouco do quadro (fundo largo em volta, foto de
-    longe). A margem deixa o fundo na borda do recorte: a máscara da folha depende disso
-    (recorte justo faz a borda parecer papel e a página vira "scan", com fundo e tudo).
-    Devolve (img, (x0, y0)) — a origem do recorte; sem recorte, (img, (0, 0))."""
+    """Crop the photo to the sheet when it fills little of the frame (wide background, photo
+    taken from far). The margin keeps background at the crop border: the paper mask depends on
+    it (a tight crop makes the border look like paper and the page becomes a "scan").
+    Returns (img, (x0, y0)), the crop origin; without a crop, (img, (0, 0))."""
     if not PAPER_CROP[0]:
         return img, (0, 0)
     m = paper_mask(img)
@@ -82,18 +82,18 @@ def paper_crop(img: np.ndarray, max_frac: float = 0.3, margin: float = 0.12):
 
 
 PAPER_QUAD = [True]
-# a borda da foto pode ser papel (folha encostada no quadro): pixels da borda com a cor do
-# papel não viram semente de fundo do GrabCut (senão a margem branca vira fundo e a máscara
-# abraça só a grade, cortando a 1ª linha ou um lado)
+# the photo border may be paper (sheet touching the frame): border pixels with the paper
+# colour do not become GrabCut background seeds (otherwise the white margin becomes
+# background and the mask hugs only the grid, cutting the first row or one side)
 PAPER_SEEDFIX = [True]
 SCALE_PAPER = [True]
 
 
 def _quad_complete(mm, lab, mc, mb):
-    """A folha é um quadrilátero. Quando ela encosta na borda da foto, a cor "de fundo" da
-    borda inclui papel e o GrabCut corta um canto inteiro (o começo das primeiras linhas some).
-    Os 4 lados mais longos da envoltória, prolongados, dão o quadrilátero; a área que ele
-    acrescenta entra se tiver a cor do papel (e não a do fundo)."""
+    """The sheet is a quadrilateral. When it touches the photo border, the "background" colour
+    of the border includes paper and GrabCut cuts a whole corner (the start of the first rows
+    disappears). The 4 longest sides of the hull, extended, give the quadrilateral; the area
+    it adds is kept if it has the paper colour (and not the background colour)."""
     h, w = mm.shape
     cnts, _ = cv2.findContours(mm, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not cnts:
@@ -106,7 +106,7 @@ def _quad_complete(mm, lab, mc, mb):
     L = np.linalg.norm(np.roll(hull, -1, 0) - hull, axis=1)
     top = np.sort(np.argsort(L)[-4:])
     if L[top].sum() < 0.6 * L.sum():
-        return mm  # contorno arredondado/irregular: não é um quadrilátero cortado
+        return mm  # rounded/irregular contour: not a cut quadrilateral
     pts = []
     for a, b in zip(top, np.roll(top, -1)):
         p1, p2 = hull[a], hull[(a + 1) % n]
@@ -125,8 +125,8 @@ def _quad_complete(mm, lab, mc, mb):
     add = (mq > 0) & (mm == 0)
     if add.sum() < 0.005 * mm.sum() or add.sum() > 0.25 * mm.sum():
         return mm
-    # canto cortado é um triângulo grosso; folha curvada dá só lascas finas ao longo dos lados
-    # (os lados são arcos e o quadrilátero passa um pouco além deles, sobre a mesa)
+    # a cut corner is a thick triangle; a curved sheet gives only thin slivers along the sides
+    # (the sides are arcs and the quadrilateral goes slightly past them, onto the table)
     if float(cv2.distanceTransform(add.astype(np.uint8), cv2.DIST_L2, 3).max()) < 0.0175 * max(h, w):
         return mm
     dp = np.linalg.norm(lab[add] - mc, axis=1); db = np.linalg.norm(lab[add] - mb, axis=1)
@@ -136,9 +136,9 @@ def _quad_complete(mm, lab, mc, mb):
 
 
 def paper_mask(img: np.ndarray) -> np.ndarray:
-    """Máscara da folha. Se a borda da imagem tem a mesma cor do centro, é um scan
-    (tudo é papel). Senão: GrabCut (borda = fundo, centro = papel) + envoltória convexa
-    da maior componente — robusto a sombras fortes que quebram limiarização global."""
+    """Paper mask. If the image border has the same colour as the centre, it is a scan
+    (everything is paper). Otherwise: GrabCut (border = background, centre = paper) + convex
+    hull of the largest component; robust to strong shadows that break global thresholds."""
     H, W = img.shape[:2]
     f = 400 / max(H, W)
     small = cv2.resize(img, (max(8, int(W * f)), max(8, int(H * f))), interpolation=cv2.INTER_AREA)
@@ -150,14 +150,14 @@ def paper_mask(img: np.ndarray) -> np.ndarray:
     center = lab[h // 4:3 * h // 4, w // 4:3 * w // 4].reshape(-1, 3)
     mb, mc = np.median(border, 0), np.median(center, 0)
     dist = np.linalg.norm(mb - mc)
-    # scan: borda tão clara quanto o centro (margem branca / grade) -> tudo é papel
+    # scan: border as bright as the centre (white margin / grid) -> everything is paper
     if dist < 20 or mb[0] >= mc[0] - 8:
         return np.ones((H, W), np.uint8)
     gc = np.full((h, w), cv2.GC_PR_FGD, np.uint8)
     gc[:m] = gc[-m:] = cv2.GC_BGD
     gc[:, :m] = gc[:, -m:] = cv2.GC_BGD
     if PAPER_SEEDFIX[0]:
-        # cor do papel: os pixels mais claros do centro (fora da grade e do traço)
+        # paper colour: the brightest centre pixels (off the grid and the trace)
         cL = center[:, 0]
         pw = np.median(center[cL >= np.percentile(cL, 80)], 0)
         if np.linalg.norm(pw - mb) > 25:
@@ -166,13 +166,13 @@ def paper_mask(img: np.ndarray) -> np.ndarray:
             ring[:, :m] = ring[:, -m:] = True
             near = ring & (np.linalg.norm(lab - pw, axis=2) < 15)
             gc[near] = cv2.GC_PR_FGD
-    # pixels da borda parecidos com a mediana da borda -> fundo provável em toda a imagem
+    # border pixels similar to the border median -> probable background over the whole image
     db = np.linalg.norm(lab - np.median(border, 0), axis=2)
     gc[(db < 12) & (gc == cv2.GC_PR_FGD)] = cv2.GC_PR_BGD
     gc[h // 3:2 * h // 3, w // 3:2 * w // 3] = cv2.GC_FGD
     bgm = np.zeros((1, 65), np.float64); fgm = np.zeros((1, 65), np.float64)
     try:
-        cv2.setRNGSeed(12345)  # GrabCut usa k-means aleatório: fixa para ser determinístico
+        cv2.setRNGSeed(12345)  # GrabCut uses random k-means: fix the seed to be deterministic
         cv2.grabCut(small, gc, None, bgm, fgm, 5, cv2.GC_INIT_WITH_MASK)
     except cv2.error:
         return np.ones((H, W), np.uint8)
@@ -188,13 +188,13 @@ def paper_mask(img: np.ndarray) -> np.ndarray:
     cv2.fillPoly(mm, [hull], 1)
     solid = comp.sum() / max(1, mm.sum())
     if PAPER_OTSU[0] and (solid < 0.9 or mm.mean() < 0.15):
-        # GrabCut vazou para um fundo texturizado (papelão, madeira) ou a folha é pequena na
-        # foto: limiar de Otsu na distância de cor ao fundo da borda; aceita só um quadrilátero
-        # compacto (folha inteira, sem buracos).
+        # GrabCut leaked into a textured background (cardboard, wood) or the sheet is small in
+        # the photo: Otsu threshold on the colour distance to the border background; accept
+        # only a compact quadrilateral (whole sheet, no holes).
         mo = _paper_otsu(lab, border)
         if mo is not None:
             mm = mo
-    if mm.mean() < (0.03 if PAPER_OTSU[0] else 0.15):  # segmentação implausível -> usa tudo
+    if mm.mean() < (0.03 if PAPER_OTSU[0] else 0.15):  # implausible segmentation -> use everything
         return np.ones((H, W), np.uint8)
     if PAPER_QUAD[0]:
         mm = _quad_complete(mm, lab, mc, mb)
@@ -203,10 +203,10 @@ def paper_mask(img: np.ndarray) -> np.ndarray:
 
 
 def grid_map(img: np.ndarray, paper: np.ndarray, clamp_ink: bool = True) -> np.ndarray:
-    """Mapa de 'estrutura escura' normalizado pela iluminação, com a tinta atenuada."""
+    """Map of 'dark structure' normalized by illumination, with the ink attenuated."""
     f = img.astype(np.float32)
-    # média e máximo dos 3 canais canal a canal (mesmo resultado de f.mean(2) / f.max(2);
-    # a redução do NumPy num eixo de tamanho 3 é várias vezes mais lenta)
+    # mean and max of the 3 channels channel by channel (same result as f.mean(2) / f.max(2);
+    # a NumPy reduction over an axis of size 3 is several times slower)
     c0, c1, c2 = f[..., 0], f[..., 1], f[..., 2]
     gray = (c0 + c1 + c2) / np.float32(3)
     mx = np.maximum(np.maximum(c0, c1), c2)
@@ -214,16 +214,16 @@ def grid_map(img: np.ndarray, paper: np.ndarray, clamp_ink: bool = True) -> np.n
     ink = 1.0 - mx / (_bg_max(mx) + 1e-3)
     G = np.clip(S, 0, 1)
     if clamp_ink:
-        G = np.where(ink > 0.5, 0.25, np.minimum(G, 0.5))  # tinta vira constante (não periódica)
+        G = np.where(ink > 0.5, 0.25, np.minimum(G, 0.5))  # ink becomes constant (not periodic)
     G[paper == 0] = 0
     return G
 
 
-# ------------------------------------------------------------------- deskew + escala
+# ------------------------------------------------------------------- deskew + scale
 
 def estimate_rotation(G: np.ndarray) -> float:
-    """Ângulo (graus) que, aplicado com cv2.getRotationMatrix2D, alinha a grade.
-    Maximiza a variância das projeções (busca grossa e fina)."""
+    """Angle (degrees) that, applied with cv2.getRotationMatrix2D, aligns the grid.
+    Maximizes the variance of the projections (coarse and fine search)."""
     H, W = G.shape
 
     def score_at(Gs, a):
@@ -245,7 +245,7 @@ def estimate_rotation(G: np.ndarray) -> float:
     angs = np.arange(a0 - 0.6, a0 + 0.6, 0.04)
     sc = [score_at(G2, a) for a in angs]
     i = int(np.argmax(sc))
-    if 0 < i < len(sc) - 1:  # interpolação parabólica
+    if 0 < i < len(sc) - 1:  # parabolic interpolation
         d = sc[i - 1] - 2 * sc[i] + sc[i + 1]
         off = 0.5 * (sc[i - 1] - sc[i + 1]) / d if d != 0 else 0
         return float(angs[i] + off * 0.04)
@@ -253,7 +253,7 @@ def estimate_rotation(G: np.ndarray) -> float:
 
 
 def _profile_period(p: np.ndarray, lo: int = 3, hi: int = 400):
-    """Autocorrelação normalizada de um perfil 1D."""
+    """Normalized autocorrelation of a 1D profile."""
     p = p - cv2.blur(p.reshape(1, -1).astype(np.float32), (101, 1)).ravel()
     p = p - p.mean()
     n = len(p)
@@ -264,12 +264,12 @@ def _profile_period(p: np.ndarray, lo: int = 3, hi: int = 400):
 
 
 def estimate_ppmm(G: np.ndarray, angle: float, paper: np.ndarray) -> tuple[float, bool]:
-    """Pixels por mm a partir do período da grade. Retorna (ppmm, tem_linhas_grossas)."""
+    """Pixels per mm from the grid period. Returns (ppmm, has_major_lines)."""
     H, W = G.shape
     M = cv2.getRotationMatrix2D((W / 2, H / 2), angle, 1.0)
     R = cv2.warpAffine(G, M, (W, H))
     pm = cv2.warpAffine(paper.astype(np.float32), M, (W, H))
-    # autocorrelação média em blocos locais (robusta a perspectiva/rotação residual)
+    # mean autocorrelation over local blocks (robust to perspective/residual rotation)
     ts = max(64, min(H, W) // 4)
     cands = []
     for fy in (0.3, 0.5, 0.7):
@@ -304,17 +304,17 @@ def estimate_ppmm(G: np.ndarray, angle: float, paper: np.ndarray) -> tuple[float
         return j + (0.5 * (ac[j - 1] - ac[j + 1]) / d if d != 0 else 0)
 
     def prom(x, half):
-        """Proeminência de um pico local perto de x em relação aos vales a +-half."""
+        """Prominence of a local peak near x relative to the valleys at +-half."""
         x = int(round(x)); h = max(1, int(round(half)))
         if x - h < 0 or x + h >= n:
             return -1.0
         top = acs[max(0, x - 1):x + 2].max()
         return float(top - 0.5 * (acs[x - h:x].min() + acs[x + 1:x + h + 1].min()))
 
-    # pico mais forte = período dominante L (normalmente a linha grossa de 5 mm)
+    # strongest peak = dominant period L (usually the 5 mm major line)
     L = refine(max(pk, key=lambda i: acs[i]))
-    # se há pico forte em L/2, L é múltiplo do período
-    # se há picos fortes em todos os m*L/k (k = 2, 3), L é múltiplo do período
+    # if there is a strong peak at L/2, L is a multiple of the period
+    # if there are strong peaks at every m*L/k (k = 2, 3), L is a multiple of the period
     changed = True
     while changed:
         changed = False
@@ -328,21 +328,21 @@ def estimate_ppmm(G: np.ndarray, angle: float, paper: np.ndarray) -> tuple[float
                 L = refine(L / k)
                 changed = True
                 break
-    # linhas finas: picos em k*L/5 (k = 1..4) com proeminência
+    # minor lines: peaks at k*L/5 (k = 1..4) with prominence
     pr5 = np.mean([prom(k * L / 5, L / 10) for k in range(1, 5)]) if L / 5 >= 2.5 else -1
     if pr5 > 0.04:
         return float(L / 5.0), True
-    # grade uniforme: prior do tamanho da folha (80..600 mm visíveis)
+    # uniform grid: prior from the sheet size (80..600 mm visible)
     width_mm_if_minor = max(H, W) / L
     if 80 <= width_mm_if_minor <= 600:
         return float(L), False
     return float(L / 5.0), False
 
 
-# ------------------------------------------------------ fase local + unwrapping
+# ------------------------------------------------------ local phase + unwrapping
 
 def _tile_phases(Gc: np.ndarray, T: float, tile: int, step: int):
-    """Para cada bloco: posição das linhas (mod T) em x e y + qualidade."""
+    """For each block: line position (mod T) in x and y + quality."""
     H, W = Gc.shape
     ys = list(range(0, max(1, H - tile + 1), step))
     xs = list(range(0, max(1, W - tile + 1), step))
@@ -357,7 +357,7 @@ def _tile_phases(Gc: np.ndarray, T: float, tile: int, step: int):
             cxp = (px * e).sum(); cyp = (py * e).sum()
             nx = np.sqrt((px ** 2).sum() * tile) + 1e-9
             ny = np.sqrt((py ** 2).sum() * tile) + 1e-9
-            # posição da linha: onde cos(2*pi*j/T - arg) é máximo -> j = arg*T/2pi
+            # line position: where cos(2*pi*j/T - arg) is maximal -> j = arg*T/2pi
             ox = (-np.angle(cxp) * T / (2 * np.pi)) % T
             oy = (-np.angle(cyp) * T / (2 * np.pi)) % T
             out[a, b] = [x + ox, y + oy, abs(cxp) / nx, abs(cyp) / ny, x + tile / 2, y + tile / 2]
@@ -365,14 +365,14 @@ def _tile_phases(Gc: np.ndarray, T: float, tile: int, step: int):
 
 
 def _unwrap_quality(ph: np.ndarray, q: np.ndarray, T: float, qmin: float) -> np.ndarray:
-    """Unwrapping 2D guiado por qualidade (flood fill priorizado).
+    """Quality-guided 2D unwrapping (prioritized flood fill).
 
-    A semente é o melhor bloco da MAIOR região conexa de blocos bons. Antes era o melhor bloco
-    da página, que às vezes fica numa ilha (margem, rodapé, moldura): o preenchimento cobria
-    10-30 blocos de 600 e a homografia saía de uma dúzia de pontos amontoados (página
-    cisalhada ou "escala implausível"). Se a maior região ainda deixa de fora mais de 30% dos
-    blocos bons, as outras regiões entram também, com o inteiro de cada uma escolhido pelo
-    plano ajustado ao que já foi desembrulhado."""
+    The seed is the best block of the LARGEST connected region of good blocks. It used to be
+    the best block of the page, which sometimes sits on an island (margin, footer, frame):
+    the fill covered 10-30 of 600 blocks and the homography came from a dozen clustered
+    points (sheared page or "implausible scale"). If the largest region still leaves out more
+    than 30% of the good blocks, the other regions enter too, each with its integer chosen
+    by the plane fitted to what has already been unwrapped."""
     h, w = ph.shape
     out = np.full((h, w), np.nan)
     ok = q >= qmin
@@ -417,8 +417,8 @@ def _unwrap_quality(ph: np.ndarray, q: np.ndarray, T: float, qmin: float) -> np.
             break
         A = np.stack([np.ones(m.sum()), ii[m], jj[m]], 1).astype(float)
         c = np.linalg.lstsq(A, out[m], rcond=None)[0]
-        # só extrapola o inteiro se o que já foi desembrulhado for mesmo um plano (scan, foto
-        # sem dobra): em papel amassado o plano erra o período e a região entraria deslocada
+        # only extrapolate the integer if what has been unwrapped really is a plane (scan,
+        # photo without a fold): on crumpled paper the plane gets the period wrong and the region would enter shifted
         if float(np.sqrt(np.mean((A @ c - out[m]) ** 2))) > T / 8.0:
             break
         s = np.unravel_index(np.argmax(np.where(lab == k, q, -1)), q.shape)
@@ -429,7 +429,7 @@ def _unwrap_quality(ph: np.ndarray, q: np.ndarray, T: float, qmin: float) -> np.
 
 
 def _correspondences(Gc, T_major, T_minor, use_major, tile, step):
-    """Correspondências (pontos na imagem Gc) <-> (coordenadas ideais da grade)."""
+    """Correspondences (points in image Gc) <-> (ideal grid coordinates)."""
     T = T_major if use_major else T_minor
     P = _tile_phases(Gc, T, tile, step)
     phx, phy, qx, qy, cx, cy = [P[..., k] for k in range(6)]
@@ -437,26 +437,26 @@ def _correspondences(Gc, T_major, T_minor, use_major, tile, step):
     qmin_y = max(0.08, np.percentile(qy, 40) * 0.6)
     ux = _unwrap_quality(phx, qx, T, qmin_x)
     uy = _unwrap_quality(phy, qy, T, qmin_y)
-    if use_major:  # refina com a fase da linha fina (5x mais precisa)
+    if use_major:  # refine with the minor-line phase (5x more precise)
         Pm = _tile_phases(Gc, T_minor, tile, step)
         fx, fy = Pm[..., 0], Pm[..., 1]
         ux = ux + (((fx - ux) + T_minor / 2) % T_minor - T_minor / 2) * (Pm[..., 2] > 0.15)
         uy = uy + (((fy - uy) + T_minor / 2) % T_minor - T_minor / 2) * (Pm[..., 3] > 0.15)
     good = ~np.isnan(ux) & ~np.isnan(uy)
-    src = np.stack([cx[good], cy[good]], 1)              # pontos na imagem
-    dst = np.stack([cx[good] - ux[good], cy[good] - uy[good]], 1)  # coords onde a grade cai em k*T
+    src = np.stack([cx[good], cy[good]], 1)              # points in the image
+    dst = np.stack([cx[good] - ux[good], cy[good] - uy[good]], 1)  # coordinates where the grid falls on k*T
     w = np.minimum(qx[good], qy[good])
     return src, dst, w
 
 
 def prewarp_quad(img: np.ndarray, min_dev_deg: float = 2.0):
-    """Correção de perspectiva grosseira pelo contorno da área quadriculada.
+    """Coarse perspective correction from the outline of the gridded area.
 
-    Em fotos inclinadas, a fase da grade de 5 mm deriva tanto ao longo da folha que o ajuste
-    por fases (ambíguo a cada 5 mm) se perde. A área quadriculada é um retângulo no papel:
-    acha a região de textura de grade (variância local), aproxima por um quadrilátero e
-    leva-o a um retângulo. Só atua se o quadrilátero se afasta do retângulo (> min_dev_deg).
-    Devolve (img_corrigida, H) ou (img, None)."""
+    In tilted photos, the 5 mm grid phase drifts so much along the sheet that the phase fit
+    (ambiguous every 5 mm) gets lost. The gridded area is a rectangle on paper: find the grid
+    texture region (local variance), approximate it by a quadrilateral and map it to a
+    rectangle. Only acts if the quadrilateral departs from a rectangle (> min_dev_deg).
+    Returns (corrected_img, H) or (img, None)."""
     H0, W0 = img.shape[:2]
     f = 800.0 / max(H0, W0)
     sm = cv2.resize(img, (int(W0 * f), int(H0 * f)), interpolation=cv2.INTER_AREA)
@@ -488,7 +488,7 @@ def prewarp_quad(img: np.ndarray, min_dev_deg: float = 2.0):
             break
     if quad is None:
         return img, None
-    # ordena: topo-esq, topo-dir, baixo-dir, baixo-esq
+    # order: top-left, top-right, bottom-right, bottom-left
     c = quad.mean(0)
     ang = np.arctan2(quad[:, 1] - c[1], quad[:, 0] - c[0])
     quad = quad[np.argsort(ang)]
@@ -503,7 +503,7 @@ def prewarp_quad(img: np.ndarray, min_dev_deg: float = 2.0):
     q = quad / f
     wt = 0.5 * (np.linalg.norm(q[1] - q[0]) + np.linalg.norm(q[2] - q[3]))
     ht = 0.5 * (np.linalg.norm(q[3] - q[0]) + np.linalg.norm(q[2] - q[1]))
-    m = 0.08 * max(wt, ht)  # margem: rótulos, pulsos e a folha em volta continuam visíveis
+    m = 0.08 * max(wt, ht)  # margin: labels, pulses and the surrounding sheet stay visible
     dst = np.array([[m, m], [m + wt, m], [m + wt, m + ht], [m, m + ht]], np.float64)
     Hq = cv2.getPerspectiveTransform(q.astype(np.float32), dst.astype(np.float32))
     out = cv2.warpPerspective(img, Hq, (int(wt + 2 * m), int(ht + 2 * m)), flags=cv2.INTER_CUBIC,
@@ -513,8 +513,8 @@ def prewarp_quad(img: np.ndarray, min_dev_deg: float = 2.0):
 
 
 def _refine_long_period(G, angle, ppmm, mm=(10.0, 20.0)):
-    """Refina px/mm pelo pico da autocorrelação do perfil da página em 10 e 20 mm: o erro do
-    período de 1 mm, multiplicado por 5, vira 5% de escala."""
+    """Refine px/mm from the autocorrelation peak of the page profile at 10 and 20 mm: the
+    error of the 1 mm period, multiplied by 5, becomes 5% of scale."""
     H, W = G.shape
     M = cv2.getRotationMatrix2D((W / 2, H / 2), angle, 1.0)
     Rg = cv2.warpAffine(G, M, (W, H))
@@ -543,8 +543,8 @@ SCALE_X5 = [True]
 
 
 def _homography_sane(Hm, shape, tol=0.35):
-    """Escala local (det. do jacobiano) nos cantos dentro de um fator 3 da do centro, e sem
-    ponto no infinito."""
+    """Local scale (Jacobian determinant) at the corners within a factor 3 of the centre, and
+    no point at infinity."""
     h, w = shape[:2]
     pts = [(0, 0), (w, 0), (w, h), (0, h), (w / 2, h / 2)]
 
@@ -560,8 +560,8 @@ def _homography_sane(Hm, shape, tol=0.35):
     if any(x is None or x <= 0 for x in d):
         return False
     c = d[-1]
-    # foto com perspectiva forte muda a escala local até ~2x de um canto ao outro; só um
-    # fator > 3 (ou ponto no infinito) é degenerado
+    # a photo with strong perspective changes the local scale up to ~2x from one corner to
+    # the other; only a factor > 3 (or a point at infinity) is degenerate
     return all(1 / 3.0 <= x / c <= 3.0 for x in d[:-1]) and 0.33 <= c <= 3.0
 
 
@@ -573,23 +573,23 @@ CLIP_MARGIN = [0.1]
 def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, nonrigid: str = "cell",
             cell_min_mm: float = 0.06, major_snap: bool = True, fine_snap: bool = True,
             fine_min_mm: float = 0.06):
-    """Retorna (img_ret, paper_ret, info). img_ret tem R px/mm e linhas grossas em múltiplos de 5R.
+    """Returns (img_ret, paper_ret, info). img_ret has R px/mm and major lines at multiples of 5R.
 
-    nonrigid: "poly" (polinômio cúbico global), "cell" (polinômio + campo local por células de
-    5 mm, interpolado bilinearmente — acompanha vincos) ou "none"."""
+    nonrigid: "poly" (global cubic polynomial), "cell" (polynomial + local field on 5 mm cells,
+    bilinearly interpolated; follows creases) or "none"."""
     paper = paper_mask(img)
     G = grid_map(img, paper)
     ang = estimate_rotation(G)
     ppmm, has_major = estimate_ppmm(G, ang, paper)
     rescued = False
     rescued_ok = False
-    if ppmm_hint:  # escala conhecida (ex.: DPI do scanner / 25.4)
+    if ppmm_hint:  # known scale (e.g. scanner DPI / 25.4)
         ppmm = float(ppmm_hint)
     elif SCALE_X5[0] and max(img.shape[:2]) / ppmm > 600 and max(img.shape[:2]) / (5 * ppmm) >= 100:
-        # imagem "maior que 60 cm": o passo de 1 mm foi tomado pelo de 5 mm. Acontece com grade
-        # pontilhada preta: os pontos grossos são escuros como tinta e saem do mapa da grade.
-        # Refaz o mapa sem atenuar a tinta, liga os pontos em linhas (fechamento de ~1 mm na
-        # escala corrigida) e reestima rotação e escala
+        # image "larger than 60 cm": the 1 mm step was taken for the 5 mm one. Happens with a
+        # black dotted grid: the thick dots are as dark as ink and drop out of the grid map.
+        # Redo the map without attenuating the ink, join the dots into lines (closing of ~1 mm
+        # at the corrected scale) and re-estimate rotation and scale
         p5 = 5.0 * ppmm
         k = int(1.3 * p5) | 1
         G0 = grid_map(img, paper, clamp_ink=False)
@@ -602,9 +602,9 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
         ppmm = _refine_long_period(G0, ang, ppmm) or ppmm
         rescued = True
     if not ppmm_hint and SCALE_PAPER[0]:
-        # escala impossível para uma folha de ECG (< 15 cm na maior dimensão): o período
-        # achado é de outra coisa (blocos de JPEG, serrilhado de imagem minúscula, texto).
-        # Sem grade confiável, a folha dá a escala: A4/Carta têm ~28-30 cm no lado maior
+        # impossible scale for an ECG sheet (< 15 cm on the longest side): the period found
+        # belongs to something else (JPEG blocks, aliasing of a tiny image, text).
+        # Without a reliable grid, the sheet gives the scale: A4/Letter are ~28-30 cm on the long side
         ys_, xs_ = np.nonzero(paper)
         if len(xs_):
             pw = float(max(np.ptp(xs_), np.ptp(ys_)) + 1)
@@ -612,7 +612,7 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
                 ppmm = pw / 297.0
 
     H, W = G.shape
-    s = 5.0  # px/mm do quadro grosso
+    s = 5.0  # px/mm of the coarse frame
     M = cv2.getRotationMatrix2D((W / 2, H / 2), ang, s / ppmm)
     corners = np.array([[0, 0, 1], [W, 0, 1], [W, H, 1], [0, H, 1]], np.float64)
     pc = corners @ M.T
@@ -625,10 +625,10 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
     if not rescued:
         src, dst, w = _correspondences(Gc, 5 * s, s, has_major, tile, step)
     elif RESCUE_CORR[0]:
-        # escala resgatada: a estimativa global errou o harmônico, mas na escala corrigida a
-        # fase da linha de 1 mm (ou, se ela não aparece, a de 5 mm) ainda dá a perspectiva.
-        # Fica a que tiver mais blocos de boa qualidade; a homografia só vale se explicar a
-        # maioria deles (senão fica rotação + escala)
+        # rescued scale: the global estimate picked the wrong harmonic, but at the corrected
+        # scale the 1 mm line phase (or, if it does not show, the 5 mm one) still gives the
+        # perspective. Keep the one with more good-quality blocks; the homography only counts
+        # if it explains most of them (otherwise rotation + scale)
         c1 = _correspondences(Gc, 5 * s, s, False, tile, step)
         c5 = _correspondences(Gc, 5 * s, 5 * s, False, tile, step)
         src, dst, w = max((c1, c5), key=lambda c: float(np.sum(c[2])) if len(c[0]) else 0.0)
@@ -642,19 +642,19 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
         elif rescued:
             rescued_ok = True
         if H_SANE[0] and not _homography_sane(Hm, Gc.shape):
-            # homografia degenerada (RANSAC num conjunto de blocos mal desembrulhado): a escala
-            # local muda > 35% de um canto ao outro. Fica a afim robusta, ou rotação + escala
+            # degenerate homography (RANSAC on a badly unwrapped block set): the local scale
+            # changes > 35% from one corner to the other. Keep the robust affine, or rotation + scale
             A2, _ = cv2.estimateAffine2D(dst, src, method=cv2.RANSAC, ransacReprojThreshold=0.6 * s)
             Hm = np.vstack([A2, [0, 0, 1]]) if A2 is not None else np.eye(3)
             if not _homography_sane(Hm, Gc.shape):
                 Hm = np.eye(3)
     else:
         Hm = np.eye(3)
-    # quadro retificado: u,v em mm*R. coarse(x,y) = Hm @ (u/R*s, v/R*s)
+    # rectified frame: u,v in mm*R. coarse(x,y) = Hm @ (u/R*s, v/R*s)
     Sc = np.diag([s / R, s / R, 1.0])
-    T_total = np.linalg.inv(A3) @ Hm @ Sc  # retificado -> original
+    T_total = np.linalg.inv(A3) @ Hm @ Sc  # rectified -> original
 
-    # extensão: cantos do papel no quadro retificado
+    # extent: paper corners in the rectified frame
     Tinv = np.linalg.inv(T_total)
     ys, xs = np.nonzero(cv2.resize(paper, (W // 8 + 1, H // 8 + 1), interpolation=cv2.INTER_NEAREST))
     pts = np.stack([xs * 8.0, ys * 8.0, np.ones_like(xs, dtype=float)], 1) @ Tinv.T
@@ -663,16 +663,16 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
     u1, v1 = np.ceil(pts.max(0) / (5 * R)) * 5 * R + 5 * R
     Wo, Ho = int(u1 - u0), int(v1 - v0)
     if Wo * Ho > 40e6 or Wo > 12000 or Ho > 12000:
-        # folha de mais de ~1 m: a escala (px/mm) foi mal estimada; seguir estouraria a memória
-        raise RuntimeError(f"escala implausível: quadro retificado {Wo}x{Ho} px")
+        # sheet of more than ~1 m: the scale (px/mm) was badly estimated; going on would exhaust memory
+        raise RuntimeError(f"implausible scale: rectified frame {Wo}x{Ho} px")
     Tsh = np.array([[1, 0, u0], [0, 1, v0], [0, 0, 1.0]])
-    T_total = T_total @ Tsh  # pixel de saída -> original (linhas grossas em múltiplos de 5R)
+    T_total = T_total @ Tsh  # output pixel -> original (major lines at multiples of 5R)
 
     out = cv2.warpPerspective(img, T_total, (Wo, Ho), flags=cv2.INTER_CUBIC | cv2.WARP_INVERSE_MAP,
                               borderValue=(255, 255, 255))
     pap = cv2.warpPerspective(paper, T_total, (Wo, Ho), flags=cv2.INTER_NEAREST | cv2.WARP_INVERSE_MAP)
 
-    # refinamento não-rígido: resíduo de fase -> polinômio cúbico -> remap
+    # non-rigid refinement: phase residual -> cubic polynomial -> remap
     rms, rms_cell, snap_mm, fine_mm = float("nan"), float("nan"), 0.0, 0.0
     snp = None
     if nonrigid in ("poly", "cell") and (not rescued or rescued_ok):
@@ -680,9 +680,9 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
         cx_ = cy_ = None
         if nonrigid == "cell" and mx is not None:
             loc = _local_field(out_p, pap_p, R)
-            # só aplica o campo local quando ele se destaca do papel plano: em scans e
-            # sintéticos sem dobra o resíduo local fica em 0,01-0,04 mm (ruído de fase) e
-            # aplicá-lo só mexe em decisões marginais; vincos e fotos dão 0,09-0,7 mm
+            # only apply the local field when it stands out from flat paper: on scans and
+            # synthetic pages without folds the local residual stays at 0.01-0.04 mm (phase
+            # noise) and applying it only moves marginal decisions; creases and photos give 0.09-0.7 mm
             if loc is not None and loc[2] < cell_min_mm:
                 rms_cell = loc[2]
                 loc = None
@@ -690,13 +690,13 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
                 lx, ly, rms_cell = loc
                 H, W = out.shape[:2]
                 gx, gy = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32))
-                # composição dos mapas (uma única reamostragem da imagem original retificada)
+                # composition of the maps (a single resampling of the original rectified image)
                 cx_ = cv2.remap(mx, gx + lx, gy + ly, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
                 cy_ = cv2.remap(my, gx + lx, gy + ly, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
                 out_p = cv2.remap(out, cx_, cy_, cv2.INTER_CUBIC, borderValue=(255, 255, 255))
                 pap_p = cv2.remap(pap, cx_, cy_, cv2.INTER_NEAREST)
-        # imagem de baixa resolução (< 6 px/mm): a linha grossa mal se distingue da fina e o
-        # ajuste vira ruído
+        # low-resolution image (< 6 px/mm): the major line barely differs from the minor one
+        # and the fit becomes noise
         if mx is not None and major_snap and ppmm >= 6.0:
             if cx_ is None:
                 cx_, cy_ = mx, my
@@ -732,11 +732,11 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
 
 
 def _nanmedian_axis(a: np.ndarray, axis: int = 0) -> np.ndarray:
-    """np.nanmedian ao longo de um eixo, pelo mesmo cálculo (média dos dois valores centrais
-    entre os não-NaN), mas com uma ordenação só: o np.nanmedian cai num caminho lento quando há
-    NaN e era o maior custo dos ajustes pela grade. NaN onde a fatia inteira é NaN."""
+    """np.nanmedian along one axis, by the same computation (mean of the two central values
+    among the non-NaN), but with a single sort: np.nanmedian takes a slow path when there are
+    NaNs and was the largest cost of the grid fits. NaN where the whole slice is NaN."""
     a = np.moveaxis(a, axis, 0)
-    s = np.sort(a, axis=0)                      # NaN vai para o fim
+    s = np.sort(a, axis=0)                      # NaN goes to the end
     n = (~np.isnan(a)).sum(axis=0)
     lo = np.maximum((n - 1) // 2, 0)[None]
     hi = np.maximum(n // 2, 0)[None]
@@ -746,7 +746,7 @@ def _nanmedian_axis(a: np.ndarray, axis: int = 0) -> np.ndarray:
 
 
 def _nanmedian3x3(F: np.ndarray) -> np.ndarray:
-    """Mediana 3x3 ignorando NaN, com a borda repetida (igual a
+    """3x3 median ignoring NaN, with the border repeated (same as
     scipy.ndimage.generic_filter(F, np.nanmedian, size=3, mode="nearest"))."""
     win = np.lib.stride_tricks.sliding_window_view(np.pad(F, 1, mode="edge"), (3, 3))
     return _nanmedian_axis(win.reshape(*F.shape, 9), axis=2)
@@ -755,28 +755,28 @@ def _nanmedian3x3(F: np.ndarray) -> np.ndarray:
 
 def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_mm=0.15, max_rms_mm=0.8,
                 period_mm=5.0, outlier_mm=0.6, smooth=0.8, con_floor=0.03):
-    """Ajuste fino pelas LINHAS GROSSAS (5 mm), localizadas uma a uma.
+    """Fine fit on the MAJOR LINES (5 mm), located one by one.
 
-    Depois do polinômio e do campo por células, a grade ainda pode estar fora do lugar numa
-    faixa da folha: scans com o papel escorregando/emendado deslocam a grade em 0,3-1,5 mm
-    (às vezes em degrau) e a fase de 1 mm é ambígua nesses valores. A linha grossa é
-    inequívoca dentro de ±2,5 mm: em faixas de 20 mm, a mediana das linhas da imagem dá o
-    perfil da grade sem o traço; o máximo perto de cada múltiplo de 5 mm é a linha.
-    Com period_mm=1 (e busca < 0,5 mm) é o ajuste FINO: cada linha de 1 mm localizada, o
-    equivalente clássico da grade indexada por interseção dos primeiros colocados do Kaggle.
-    Retorna (dx, dy, rms_mm) densos (amostrar em x+dx, y+dy) ou None."""
+    After the polynomial and the cell field, the grid may still be off in a band of the sheet:
+    scans with slipping/spliced paper shift the grid by 0.3-1.5 mm (sometimes as a step) and
+    the 1 mm phase is ambiguous at those values. The major line is unambiguous within
+    ±2.5 mm: in 20 mm bands, the median of the image lines gives the grid profile without the
+    trace; the maximum near each multiple of 5 mm is the line.
+    With period_mm=1 (and search < 0.5 mm) it is the FINE fit: each 1 mm line located, the
+    classical equivalent of the intersection-indexed grid of the top Kaggle entries.
+    Returns dense (dx, dy, rms_mm) (sample at x+dx, y+dy) or None."""
     import warnings
     if out.ndim == 3:
-        # escuridão no canal em que a grade mais aparece (grade vermelha/rosa: verde e azul);
-        # a média dos canais quase apaga a linha fina
+        # darkness in the channel where the grid shows most (red/pink grid: green and blue);
+        # the channel mean almost erases the minor line
         dk = [np.clip(1.0 - out[..., c].astype(np.float32) / (_bg_max(out[..., c].astype(np.float32)) + 1e-3), 0, 1)
               for c in range(3)]
         S = np.max(dk, axis=0)
-        # o traço (escuro em TODOS os canais) sai da medida: um QRS alto cobre boa parte da
-        # faixa de 20 mm e a mediana o tomaria pela linha da grade, justo onde o tempo mais
-        # importa. Em grade preta (P&B) não dá para separar por cor: fica como está
-        # traço = escuro e neutro (preto/cinza); linha de grade = colorida (vermelha/rosa:
-        # escura em verde/azul, clara em vermelho), mesmo quando a foto a escurece
+        # the trace (dark in ALL channels) leaves the measurement: a tall QRS covers much of
+        # the 20 mm band and the median would take it for the grid line, exactly where timing
+        # matters most. On a black (B&W) grid colour cannot separate them: left as is
+        # trace = dark and neutral (black/grey); grid line = coloured (red/pink: dark in
+        # green/blue, light in red), even when the photo darkens it
         mn, mxk = np.min(dk, axis=0), np.max(dk, axis=0)
         ink = (mn > 0.35) & ((mxk - mn) < 0.25) & (pap > 0)
         if ink.sum() < 0.08 * max(1, int((pap > 0).sum())):
@@ -789,9 +789,9 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
     H, W = S.shape
     T5, bh, st, sr = period_mm * R, int(band_mm * R), int(step_mm * R), int(round(search_mm * R))
     fields = []
-    for axis in (0, 1):  # 0: linhas verticais (dx); 1: linhas horizontais (dy)
+    for axis in (0, 1):  # 0: vertical lines (dx); 1: horizontal lines (dy)
         A = S if axis == 0 else S.T
-        n_par, n_len = A.shape  # bandas ao longo de n_par, perfil ao longo de n_len
+        n_par, n_len = A.shape  # bands along n_par, profile along n_len
         b0s = list(range(0, max(1, n_par - bh + 1), st))
         ks = [k for k in range(1, int(n_len // T5)) if sr + 1 <= k * T5 < n_len - sr - 1]
         xk = np.array([int(round(k * T5)) for k in ks], dtype=np.int64)
@@ -804,7 +804,7 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
             prof = _nanmedian_axis(band, 0)
             if not ks:
                 continue
-            # todas as linhas da faixa de uma vez: janela de +-sr em torno de cada k*T5
+            # all lines of the band at once: window of +-sr around each k*T5
             Wd = prof[xk[:, None] + np.arange(-sr, sr + 1)[None, :]]
             okw = ~np.isnan(Wd).any(axis=1)
             if not okw.any():
@@ -825,7 +825,7 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
         if ok.mean() < _SNAP_OKMIN[0]:
             return None
         off[~ok] = np.nan
-        # vizinhos (3x3) que discordam muito: linha fina/traço/texto tomado pela grossa
+        # neighbours (3x3) that disagree strongly: minor line/trace/text taken for the major one
         med = _nanmedian3x3(off)
         off[np.abs(off - med) > outlier_mm * R] = np.nan
         ok = np.isfinite(off)
@@ -835,7 +835,7 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
         sm = _fill_nan(off, Wt, smooth)
         cov = cv2.GaussianBlur(Wt, (0, 0), smooth)
         sm = np.where(cov > 1e-3, sm, 0.0).astype(np.float32)
-        # amostras em (centro da banda, k*5R) -> campo denso por interpolação bilinear
+        # samples at (band centre, k*5R) -> dense field by bilinear interpolation
         yc = np.array(b0s, float) + bh / 2
         xc = np.array(ks, float) * T5
         gy = np.clip(np.interp(np.arange(n_par), yc, np.arange(len(yc))), 0, len(yc) - 1)
@@ -845,9 +845,9 @@ def _major_snap(out, pap, R, band_mm=20.0, step_mm=10.0, search_mm=2.2, min_rms_
         fields.append((dense if axis == 0 else dense.T, off))
     rms = float(np.sqrt(np.nanmean(fields[0][1] ** 2) + np.nanmean(fields[1][1] ** 2)) / R)
     _major_snap.last = [dict(off=f[1], ok_frac=float(np.isfinite(f[1]).mean())) for f in fields]
-    # < 0,15 mm: nada a corrigir além do ruído. > 0,8 mm depois do polinômio e das células não
-    # é papel deslocado, é a linha fina sendo tomada pela grossa (imagem de baixa resolução,
-    # grade sem linhas grossas distintas)
+    # < 0.15 mm: nothing to correct beyond noise. > 0.8 mm after the polynomial and the cells
+    # is not shifted paper, it is the minor line taken for the major one (low-resolution
+    # image, grid without distinct major lines)
     if not (min_rms_mm <= rms <= max_rms_mm):
         return None
     return fields[0][0].astype(np.float32), fields[1][0].astype(np.float32), rms
@@ -859,7 +859,7 @@ _SNAP_OKMIN = [float(_os.environ.get("ECGDIG_SNAP_OKMIN", 0.4))]
 
 
 def _fill_nan(F: np.ndarray, W: np.ndarray, sigma: float) -> np.ndarray:
-    """Preenche/suaviza por convolução normalizada (média ponderada gaussiana dos vizinhos válidos)."""
+    """Fill/smooth by normalized convolution (Gaussian-weighted mean of the valid neighbours)."""
     ok = ~np.isnan(F)
     num = cv2.GaussianBlur(np.where(ok, F * W, 0).astype(np.float32), (0, 0), sigma)
     den = cv2.GaussianBlur(np.where(ok, W, 0).astype(np.float32), (0, 0), sigma)
@@ -867,15 +867,15 @@ def _fill_nan(F: np.ndarray, W: np.ndarray, sigma: float) -> np.ndarray:
 
 
 def _local_field(out, pap, R, cell_mm: float = 5.0, tile_mm: float = 10.0):
-    """Resíduo local da grade de 1 mm numa malha de células de 5 mm, depois do polinômio.
+    """Local residual of the 1 mm grid on a mesh of 5 mm cells, after the polynomial.
 
-    1. fase da linha de 1 mm em blocos de 10 mm centrados em cada vértice de 5 mm;
-    2. desenrolamento 2D guiado por qualidade (período 1 mm) — o campo pode passar de ±0,5 mm
-       ao atravessar um vinco, desde que vértices vizinhos difiram menos de 0,5 mm;
-    3. limpeza à moda do Gridder: só a maior região conexa de vértices confiáveis, descarte de
-       vértices que destoam da mediana 3×3, faltantes preenchidos pelos vizinhos;
-    4. interpolação bilinear entre vértices = transformação de 4 cantos por célula.
-    Retorna (dx, dy, rms_mm) densos, ou None se a grade local não for confiável."""
+    1. phase of the 1 mm line in 10 mm blocks centred on each 5 mm vertex;
+    2. quality-guided 2D unwrapping (period 1 mm); the field may exceed ±0.5 mm across a
+       crease, as long as neighbouring vertices differ by less than 0.5 mm;
+    3. Gridder-style cleanup: only the largest connected region of reliable vertices, vertices
+       that disagree with the 3×3 median dropped, missing ones filled from the neighbours;
+    4. bilinear interpolation between vertices = 4-corner transform per cell.
+    Returns dense (dx, dy, rms_mm), or None if the local grid is not reliable."""
     G = grid_map(out, pap)
     H, W = G.shape
     step, tile = int(round(cell_mm * R)), int(round(tile_mm * R))
@@ -887,7 +887,7 @@ def _local_field(out, pap, R, cell_mm: float = 5.0, tile_mm: float = 10.0):
     good = (qx > 0.25) & (qy > 0.25)
     if good.mean() < 0.2:
         return None
-    # maior componente conexa de vértices confiáveis
+    # largest connected component of reliable vertices
     n, lab = cv2.connectedComponents(good.astype(np.uint8), connectivity=4)
     if n < 2:
         return None
@@ -895,11 +895,11 @@ def _local_field(out, pap, R, cell_mm: float = 5.0, tile_mm: float = 10.0):
     good = lab == big
     fields = []
     for ph, qq in ((phx, qx), (phy, qy)):
-        d = (ph + R / 2) % R - R / 2                        # resíduo assinado (embrulhado)
+        d = (ph + R / 2) % R - R / 2                        # signed (wrapped) residual
         u = _unwrap_quality(d, np.where(good, qq, 0), R, 1e-6)
         u[~good] = np.nan
-        u -= R * np.round(np.nanmedian(u) / R)              # o polinômio já zerou o resíduo médio
-        # vértices que destoam dos vizinhos (fase saltou um período ou bloco contaminado)
+        u -= R * np.round(np.nanmedian(u) / R)              # the polynomial already zeroed the mean residual
+        # vertices that disagree with their neighbours (phase jumped a period or block contaminated)
         win = np.lib.stride_tricks.sliding_window_view(np.pad(u, 1, constant_values=np.nan), (3, 3))
         with np.errstate(all="ignore"):
             import warnings
@@ -912,10 +912,10 @@ def _local_field(out, pap, R, cell_mm: float = 5.0, tile_mm: float = 10.0):
     w = np.where(good, q, 0).astype(np.float32)
     rms = float(np.sqrt(np.nanmean(fields[0][0] ** 2 + fields[1][0] ** 2)) / R)
     miss = cv2.GaussianBlur(w, (0, 0), 0.7) < 1e-3
-    sm = [np.where(miss, 0.0, _fill_nan(u, w, 0.7)) for u, _ in fields]   # suaviza ruído de fase
-    # Encolhimento (Wiener) pelo ruído do próprio campo: em papel plano o resíduo depois do
-    # polinômio é < 0,01 mm e o campo medido é quase só ruído — e 0,03 mm de erro horizontal num
-    # QRS íngreme já custa ~0,06 mV. Só se aplica o que se destaca do ruído (vincos: 0,3–2 mm).
+    sm = [np.where(miss, 0.0, _fill_nan(u, w, 0.7)) for u, _ in fields]   # smooth phase noise
+    # Shrinkage (Wiener) by the field's own noise: on flat paper the residual after the
+    # polynomial is < 0.01 mm and the measured field is almost only noise, and 0.03 mm of
+    # horizontal error on a steep QRS already costs ~0.06 mV. Only what stands out from the noise is applied (creases: 0.3–2 mm).
     rough = np.concatenate([r[np.isfinite(r)] for _, r in fields])
     sigma = 1.4826 * np.median(np.abs(rough)) if rough.size else 0.0
     tau = max(3.0 * sigma, 0.05 * R)
@@ -924,11 +924,11 @@ def _local_field(out, pap, R, cell_mm: float = 5.0, tile_mm: float = 10.0):
     dense = []
     for f in sm:
         f = f * gain
-        # amostras nos centros dos blocos -> campo denso bilinear
+        # samples at the block centres -> dense bilinear field
         x0, y0 = cx[0, 0], cy[0, 0]
         Fd = cv2.resize(f.astype(np.float32), (f.shape[1] * step, f.shape[0] * step),
                         interpolation=cv2.INTER_LINEAR)
-        # alinha: amostra (i, j) fica no pixel (y0 + i*step, x0 + j*step)
+        # align: sample (i, j) lands on pixel (y0 + i*step, x0 + j*step)
         Mt = np.float32([[1, 0, x0 - (step - 1) / 2], [0, 1, y0 - (step - 1) / 2]])
         dense.append(cv2.warpAffine(Fd, Mt, (W, H), borderMode=cv2.BORDER_REPLICATE))
     return dense[0], dense[1], rms
@@ -941,9 +941,9 @@ def _poly_terms(u, v, deg=3):
 def _refine_nonrigid(out, pap, R, return_map=False):
     G = grid_map(out, pap)
     tile, step = int(20 * R), int(8 * R)
-    P = _tile_phases(G, R, tile, step)  # período fino = 1 mm
+    P = _tile_phases(G, R, tile, step)  # fine period = 1 mm
     phx, phy, qx, qy, cx, cy = [P[..., k].ravel() for k in range(6)]
-    # resíduo assinado em torno de 0 (as linhas deveriam estar em múltiplos de R)
+    # signed residual around 0 (lines should sit at multiples of R)
     dx = (phx + R / 2) % R - R / 2
     dy = (phy + R / 2) % R - R / 2
     good = (qx > 0.2) & (qy > 0.2)
@@ -956,7 +956,7 @@ def _refine_nonrigid(out, pap, R, return_map=False):
     sol = []
     for d in (dx[good], dy[good]):
         c = np.linalg.lstsq(A * wts[:, None], d * wts, rcond=None)[0]
-        # uma iteração robusta (descarta resíduos grandes)
+        # one robust iteration (drops large residuals)
         r = d - A @ c
         k = np.abs(r) < 3 * (np.median(np.abs(r)) * 1.4826 + 0.05)
         c = np.linalg.lstsq(A[k] * wts[k, None], d[k] * wts[k], rcond=None)[0]
@@ -965,7 +965,7 @@ def _refine_nonrigid(out, pap, R, return_map=False):
     yy, xx = np.mgrid[0:H:8, 0:W:8].astype(np.float32)
     At = _poly_terms((xx / W - 0.5).ravel(), (yy / H - 0.5).ravel())
     fx_, fy_ = At @ sol[0], At @ sol[1]
-    # o polinômio deforma a folha (escala local fora de 0,7-1,4 em > 2% do papel)?
+    # does the polynomial distort the sheet (local scale outside 0.7-1.4 on > 2% of the paper)?
     def _bad(fx, fy):
         gx_ = (xx.ravel() + fx).reshape(xx.shape); gy_ = (yy.ravel() + fy).reshape(yy.shape)
         dxu, dxv = np.gradient(gx_, 8.0, axis=1), np.gradient(gx_, 8.0, axis=0)
@@ -976,17 +976,17 @@ def _refine_nonrigid(out, pap, R, return_map=False):
             return False
         return float(np.mean((det[pm_] < 0.7) | (det[pm_] > 1.4))) > 0.02
     if NONRIGID_CLIP[0] and _bad(fx_, fy_):
-        # o polinômio cúbico extrapola longe dos blocos bons (canto fora de foco, borda): o
-        # deslocamento fica no intervalo que ele tem sobre os blocos medidos (o resíduo medido
-        # é a fase mod 1 mm; nada fora desse intervalo foi observado)
+        # the cubic polynomial extrapolates far from the good blocks (out-of-focus corner,
+        # border): the displacement is kept within the range it has over the measured blocks
+        # (the measured residual is the phase mod 1 mm; nothing outside that range was observed)
         for f_, c_ in ((fx_, sol[0]), (fy_, sol[1])):
             v_ = A @ c_
             np.clip(f_, v_.min() - CLIP_MARGIN[0] * R, v_.max() + CLIP_MARGIN[0] * R, out=f_)
     mx = (xx.ravel() + fx_).reshape(xx.shape).astype(np.float32)
     my = (yy.ravel() + fy_).reshape(yy.shape).astype(np.float32)
-    mx = cv2.resize(mx, (W, H), interpolation=cv2.INTER_LINEAR) + 0  # aproximação densa
+    mx = cv2.resize(mx, (W, H), interpolation=cv2.INTER_LINEAR) + 0  # dense approximation
     my = cv2.resize(my, (W, H), interpolation=cv2.INTER_LINEAR)
-    # corrige o deslocamento de meio passo do resize
+    # fix the half-step offset of the resize
     gx, gy = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32))
     mx = gx + (mx - cv2.resize(xx, (W, H), interpolation=cv2.INTER_LINEAR))
     my = gy + (my - cv2.resize(yy, (W, H), interpolation=cv2.INTER_LINEAR))

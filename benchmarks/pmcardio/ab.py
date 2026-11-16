@@ -1,10 +1,10 @@
-"""A/B entre duas rodadas do eval_pm.py (mesma lista de imagens): o que mudou, ECG a ECG.
+"""A/B between two eval_pm.py runs (same image list): what changed, ECG by ECG.
 
-    python benchmarks/pmcardio/ab.py results/pm_antes results/pm_depois [--min-delta 1.0]
+    python benchmarks/pmcardio/ab.py results/pm_before results/pm_after [--min-delta 1.0]
 
-Lê o results.json de cada pasta. Mostra o resumo das duas (métrica do artigo da PMcardio:
-falha = 0 dB / PCC 0), quantos ECGs melhoraram ou pioraram e a lista dos que mudaram mais de
---min-delta dB, com o layout lido em cada rodada.
+Reads the results.json of each folder. Shows the summary of both (PMcardio paper metric:
+failure = 0 dB / PCC 0), how many ECGs improved or got worse and the list of those that
+changed by more than --min-delta dB, with the layout read in each run.
 """
 from __future__ import annotations
 
@@ -47,15 +47,15 @@ def main():
     keys = sorted(set(A) & set(B))
     if not keys:
         raise SystemExit("nenhum ECG em comum")
-    print(f"ECGs em comum: {len(keys)} (A tem {len(A)}, B tem {len(B)})\n")
-    print("| rodada | SNR (dB) | PCC | falha | SNR sem falhas | s por ECG |\n|---|---|---|---|---|---|")
+    print(f"ECGs in common: {len(keys)} (A has {len(A)}, B has {len(B)})\n")
+    print("| run | SNR (dB) | PCC | failure | SNR without failures | s per ECG |\n|---|---|---|---|---|---|")
     for name, R in (("A " + a.a.name, A), ("B " + a.b.name, B)):
         s = _agg([R[k] for k in keys])
         print(f"| {name} | {s['snr']:.2f} | {s['pcc']:.3f} | {100 * s['fail']:.1f}% | {s['snr_ok']:.2f} | {s['sec']:.0f} |")
     d = np.array([_ecg_snr(B[k]) - _ecg_snr(A[k]) for k in keys])
-    print(f"\nmelhoraram (> {a.min_delta} dB): {(d > a.min_delta).sum()}   pioraram: {(d < -a.min_delta).sum()}   "
-          f"iguais: {(np.abs(d) <= a.min_delta).sum()}   mediana da diferença: {np.median(d):+.2f} dB\n")
-    print("| cenário | formato | layout A | layout B | SNR A | SNR B | dif. |\n|---|---|---|---|---|---|---|")
+    print(f"\nimproved (> {a.min_delta} dB): {(d > a.min_delta).sum()}   worse: {(d < -a.min_delta).sum()}   "
+          f"same: {(np.abs(d) <= a.min_delta).sum()}   median difference: {np.median(d):+.2f} dB\n")
+    print("| scenario | format | layout A | layout B | SNR A | SNR B | diff. |\n|---|---|---|---|---|---|---|")
     for i in np.argsort(-np.abs(d)):
         if abs(d[i]) <= a.min_delta:
             break

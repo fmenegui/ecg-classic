@@ -1,7 +1,7 @@
-"""Modo híbrido: mapa de tinta do traço por uma rede pequena (ONNX), no lugar do mapa clássico.
+"""Hybrid mode: trace-ink map from a small network (ONNX) instead of the classical ink map.
 
-A rede só diz onde há tinta da pena do ECG na imagem retificada (10 px/mm); grade, linhas,
-pulsos, rastreio, síntese e restrições continuam clássicos. Dependência opcional: onnxruntime.
+The network only says where the ECG pen ink is in the rectified image (10 px/mm); grid, rows,
+pulses, tracking, synthesis and constraints stay classical. Optional dependency: onnxruntime.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def _session(path):
 
 
 def predict(rect_bgr: np.ndarray, model_path: str, tile: int = 512, margin: int = 32) -> np.ndarray:
-    """Probabilidade (0..1) de cada pixel ser tinta do traço. Recortes com margem (sem costura)."""
+    """Probability (0..1) that each pixel is trace ink. Tiles with overlap (no seams)."""
     sess = _session(model_path)
     H, W = rect_bgr.shape[:2]
     x = rect_bgr[..., ::-1].astype(np.float32) / 255.0  # RGB

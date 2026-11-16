@@ -1,4 +1,4 @@
-"""Estrutura da página: colunas com alturas próprias, desembrulho da fase e agrupamento de palavras."""
+"""Page structure: columns with their own heights, phase unwrapping and word grouping."""
 import numpy as np
 import cv2
 
@@ -9,7 +9,7 @@ R = 10.0
 
 
 def _trace(B, y, xa, xb, rng, beat=180):
-    """Traço sintético: linha de base com ruído de 1 px e um QRS a cada `beat` px."""
+    """Synthetic trace: baseline with 1 px noise and a QRS every `beat` px."""
     for x in range(xa, xb):
         yy = int(round(y + rng.normal(0, 0.6)))
         B[yy - 1:yy + 2, x] = True
@@ -37,7 +37,7 @@ def test_col_struct_acha_colunas_com_alturas_proprias():
     cols, P = st
     assert len(cols) == 2 and P.shape == (2, 6)
     assert np.abs(P[0] - left).max() <= 6 and np.abs(P[1] - right).max() <= 6
-    assert abs(cols[0][1] - edges[1]) <= 40           # fronteira entre as colunas
+    assert abs(cols[0][1] - edges[1]) <= 40           # boundary between the columns
 
 
 def test_col_struct_ignora_pagina_comum():
@@ -49,19 +49,19 @@ def test_col_struct_ignora_pagina_comum():
 def test_col_align_realinha_sem_sobrepor():
     left = [400, 500, 650]
     right = [450, 700, 1000]
-    B, _ = _page([left, left, right, right], margin=0)   # sem vão em branco entre as colunas
+    B, _ = _page([left, left, right, right], margin=0)   # no blank gap between the columns
     D = B.astype(np.float32)
     rect = np.full(B.shape + (3,), 255, np.uint8)
     pap = np.ones(B.shape, np.uint8)
-    colalign.STRUCT_FIRST[0] = True       # o caminho dos trilhos (por padrão vem depois das larguras iguais)
+    colalign.STRUCT_FIRST[0] = True       # the tracks path (by default it comes after the equal widths)
     try:
         _, _, _, B2, info = colalign.col_align(rect, pap, D, B, R)
     finally:
         colalign.STRUCT_FIRST[0] = False
     assert info is not None and info["how"] == "trilhos"
     ref = np.array(info["ref"])
-    assert np.diff(ref).min() >= 240                   # intervalo = o maior entre as colunas
-    # depois de realinhada, cada linha de referência tem tinta em toda a largura do traçado
+    assert np.diff(ref).min() >= 240                   # interval = the largest across columns
+    # after realignment, every reference row has ink across the whole trace width
     for y in ref.astype(int):
         cov = B2[y - 4:y + 5, 400:2800].any(0).mean()
         assert cov > 0.9
@@ -71,20 +71,20 @@ def test_unwrap_usa_a_maior_regiao():
     T = 25.0
     h, w = 12, 16
     ii, jj = np.mgrid[0:h, 0:w]
-    true = 3.0 * jj + 0.5 * ii                         # posição da linha cresce 3 px por bloco
+    true = 3.0 * jj + 0.5 * ii                         # line position grows 3 px per block
     ph = true % T
     q = np.full((h, w), 0.5)
-    q[:, 3] = 0.0                                      # faixa ruim separa uma ilha de 3 colunas
-    q[5, 1] = 0.99                                     # o melhor bloco da página está na ilha
+    q[:, 3] = 0.0                                      # a bad band separates an island of 3 columns
+    q[5, 1] = 0.99                                     # the page's best block is on the island
     u = _unwrap_quality(ph, q, T, 0.2)
     big = np.zeros((h, w), bool); big[:, 4:] = True
-    assert np.isfinite(u[big]).all()                   # a região grande inteira foi desembrulhada
+    assert np.isfinite(u[big]).all()                   # the whole large region was unwrapped
     d = (u - true)[big]
-    assert np.ptp(d) < 1e-6                            # a menos de um múltiplo de T comum
+    assert np.ptp(d) < 1e-6                            # up to a common multiple of T
 
 
 def _find_words_ref(text_mask, R, min_h_mm=1.4, max_h_mm=8.0):
-    """A varredura quadrática original."""
+    """The original quadratic sweep."""
     n, lab, st, _ = cv2.connectedComponentsWithStats(text_mask.astype(np.uint8), connectivity=8)
     boxes = []
     for i in range(1, n):
@@ -119,7 +119,7 @@ def _find_words_ref(text_mask, R, min_h_mm=1.4, max_h_mm=8.0):
 def test_find_words_igual_a_varredura_completa():
     rng = np.random.default_rng(5)
     m = np.zeros((400, 900), bool)
-    for _ in range(260):                               # caixinhas soltas de vários tamanhos
+    for _ in range(260):                               # loose small boxes of various sizes
         x, y = int(rng.integers(0, 860)), int(rng.integers(0, 360))
         w, h = int(rng.integers(3, 30)), int(rng.integers(6, 40))
         m[y:y + h, x:x + w] = True

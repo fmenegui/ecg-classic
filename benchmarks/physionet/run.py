@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Benchmark no dataset do Kaggle "PhysioNet - Digitization of ECG Images".
+"""Benchmark on the Kaggle dataset "PhysioNet - Digitization of ECG Images".
 
-  inspect : lista os arquivos da competição e baixa um registro de exemplo, para conferir
-            o formato (nomes, colunas, frequência, duração por derivação).
-  eval    : (depois de conferido o formato) baixa N registros do treino, digitaliza cada
-            imagem com o ecgdig e mede SNR contra o sinal verdadeiro.
+  inspect : list the competition files and download one example record, to check the
+            format (names, columns, sampling rate, duration per lead).
+  eval    : (once the format is checked) download N training records, digitize each image
+            with ecgdig and measure the SNR against the true signal.
 
-Autenticação: variável KAGGLE_API_TOKEN (secret do repositório), CLI kaggle>=2.2.
+Authentication: KAGGLE_API_TOKEN variable (repository secret), CLI kaggle>=2.2.
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def kaggle(*args, check=True):
 
 
 def list_files(max_pages=400):
-    """Todos os arquivos (nome, tamanho) via CLI paginada."""
+    """All files (name, size) through the paginated CLI."""
     out, token = [], None
     for _ in range(max_pages):
         args = ["competitions", "files", COMP, "--page-size", "200", "-v"]
@@ -64,21 +64,21 @@ def list_files(max_pages=400):
 
 
 def download(name, dest: Path):
-    """Baixa um arquivo da competição; devolve o caminho local (descompacta se vier .zip)."""
+    """Download one competition file; return the local path (unzips a .zip)."""
     dest.mkdir(parents=True, exist_ok=True)
     base = Path(name).name
     have = [p for p in dest.rglob(base) if p.is_file()]
-    if have:  # já baixado (cache do workflow): não gasta requisição do Kaggle
+    if have:  # already downloaded (workflow cache): no Kaggle request spent
         return have[0]
     before = {p for p in dest.rglob("*")}
     import time
     for tent in range(7):
         r = subprocess.run(["kaggle", "competitions", "download", COMP, "-f", name, "-p", str(dest)],
                            capture_output=True, text=True)
-        log = (r.stdout + " | " + r.stderr).strip()  # stderr mostra limite de uso/credencial
+        log = (r.stdout + " | " + r.stderr).strip()  # stderr shows usage limit/credential problems
         if "429" not in log:
             break
-        time.sleep(min(300, 15 * 2 ** tent))  # limite de requisições do Kaggle: espera e tenta de novo
+        time.sleep(min(300, 15 * 2 ** tent))  # Kaggle request limit: wait and retry
     new = [p for p in dest.rglob("*") if p not in before and p.is_file()]
     for z in [p for p in new if p.suffix == ".zip"]:
         try:
@@ -90,7 +90,7 @@ def download(name, dest: Path):
     base = Path(name).name
     hits = [p for p in dest.rglob("*") if p.is_file() and p.name == base]
     if not hits:
-        raise FileNotFoundError(f"{name} não apareceu em {dest}; saída do CLI: {log.strip()[:300]}")
+        raise FileNotFoundError(f"{name} did not appear in {dest}; CLI output: {log.strip()[:300]}")
     return hits[0]
 
 
@@ -99,13 +99,13 @@ def inspect(out: Path):
     files = list_files()
     (out / "files.json").write_text(json.dumps(files, indent=0))
     names = [f.get("name") or f.get("ref") or "" for f in files]
-    L = ["# PhysioNet (Kaggle): inspeção", "", f"{len(names)} arquivos.", ""]
+    L = ["# PhysioNet (Kaggle): inspection", "", f"{len(names)} files.", ""]
     top = Counter(n.split("/")[0] for n in names)
     ext = Counter(Path(n).suffix for n in names)
-    L += ["Diretórios de topo: " + ", ".join(f"{k} ({v})" for k, v in top.most_common(20)), "",
-          "Extensões: " + ", ".join(f"{k or '∅'} ({v})" for k, v in ext.most_common(20)), "",
-          "Primeiros 60 nomes:", "", "```", *names[:60], "```", ""]
-    # CSVs pequenos de topo e um registro de exemplo
+    L += ["Top-level directories: " + ", ".join(f"{k} ({v})" for k, v in top.most_common(20)), "",
+          "Extensions: " + ", ".join(f"{k or '∅'} ({v})" for k, v in ext.most_common(20)), "",
+          "First 60 names:", "", "```", *names[:60], "```", ""]
+    # small top-level CSVs and one example record
     small = [f for f in files if "/" not in (f.get("name") or "") and (f.get("name") or "").endswith(".csv")]
     for f in small[:6]:
         try:
@@ -114,28 +114,28 @@ def inspect(out: Path):
         except Exception as e:  # noqa: BLE001
             head = [repr(e)]
         L += [f"## {f['name']} ({f.get('size', '?')})", "", "```", *head, "```", ""]
-    # primeiro registro de treino (todos os arquivos com o mesmo prefixo de pasta)
+    # first training record (all files with the same folder prefix)
     train = [n for n in names if n.startswith("train/")]
     if train:
         rec = "/".join(train[0].split("/")[:2])
         members = [n for n in names if n.startswith(rec + "/") or n.startswith(rec + "-") or n == rec]
-        L += [f"## Registro de exemplo `{rec}` ({len(members)} arquivos)", "", "```", *members[:40], "```", ""]
+        L += [f"## Example record `{rec}` ({len(members)} files)", "", "```", *members[:40], "```", ""]
         for n in members[:20]:
             try:
                 p = download(n, out / "sample" / Path(n).parent)
             except Exception as e:  # noqa: BLE001
-                L.append(f"falhou {n}: {e}")
+                L.append(f"failed {n}: {e}")
                 continue
             if p.suffix == ".csv":
                 txt = p.read_text(errors="replace").splitlines()
                 (out / "sample_record.csv").write_text("\n".join(txt[:20]))
-                L += [f"`{n}`: {len(txt)} linhas", "", "```", *txt[:4], "```", ""]
+                L += [f"`{n}`: {len(txt)} lines", "", "```", *txt[:4], "```", ""]
             elif p.suffix.lower() in (".png", ".jpg", ".jpeg"):
                 import cv2
                 im = cv2.imread(str(p))
-                L.append(f"`{n}`: imagem {None if im is None else im.shape}")
+                L.append(f"`{n}`: image {None if im is None else im.shape}")
         L.append("")
-    L += ["## Arquivos baixados", "", "```", *[str(p) for p in sorted((out / "sample").rglob("*"))][:80], "```"]
+    L += ["## Downloaded files", "", "```", *[str(p) for p in sorted((out / "sample").rglob("*"))][:80], "```"]
     (out / "report.md").write_text("\n".join(L))
     print("\n".join(L))
 
@@ -146,13 +146,13 @@ def main():
     ap.add_argument("--out", type=Path, default=Path("results/physionet"))
     ap.add_argument("--n", type=int, default=40)
     ap.add_argument("--jobs", type=int, default=2)
-    ap.add_argument("--keep-raw", type=int, default=5, help="registros cujas imagens brutas vão no artefato")
+    ap.add_argument("--keep-raw", type=int, default=5, help="records whose raw images go into the artifact")
     ap.add_argument("--config", action="append", default=[])
-    ap.add_argument("--ids", default="", help="registros específicos, separados por vírgula")
+    ap.add_argument("--ids", default="", help="specific records, comma-separated")
     a = ap.parse_args()
     if a.mode == "inspect":
         inspect(a.out)
-    elif a.mode == "prefetch":  # só baixa (cache do workflow), sem avaliar
+    elif a.mode == "prefetch":  # download only (workflow cache), no evaluation
         import csv as _csv
         cache = a.out / "data"
         meta = download("train.csv", cache)
@@ -168,13 +168,13 @@ def main():
                     download(nm, cache / rid)
                     if not have:
                         import time as _t
-                        _t.sleep(3)  # devagar: o limite de requisições do Kaggle derruba rajadas
+                        _t.sleep(3)  # slowly: the Kaggle request limit drops bursts
                 except Exception as e:  # noqa: BLE001
                     miss += 1
                     print("falhou", nm, str(e)[:120], flush=True)
         print("faltando", miss)
     else:
-        from eval_snr import evaluate  # escrito depois da inspeção do formato
+        from eval_snr import evaluate  # written after inspecting the format
         evaluate(a)
 
 

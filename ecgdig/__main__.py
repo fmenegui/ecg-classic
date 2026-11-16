@@ -1,7 +1,7 @@
-"""Linha de comando:
+"""Command line:
 
-    python -m ecgdig imagem.jpg -o saida            # gera saida.csv, saida.json, saida_debug.jpg
-    python -m ecgdig imagem.jpg --layout 6x2 --fs 500 --duration 10
+    python -m ecgdig image.jpg -o out               # writes out.csv, out.json, out_debug.jpg
+    python -m ecgdig image.jpg --layout 6x2 --fs 500 --duration 10
 """
 import argparse
 import json
@@ -14,16 +14,16 @@ from .digitize import digitize, Config, LAYOUTS
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="ecgdig", description="Digitalizador clássico de ECG (sem deep learning)")
+    ap = argparse.ArgumentParser(prog="ecgdig", description="Classical ECG digitizer (no deep learning)")
     ap.add_argument("image")
-    ap.add_argument("-o", "--out", default=None, help="prefixo dos arquivos de saída")
+    ap.add_argument("-o", "--out", default=None, help="prefix of the output files")
     ap.add_argument("--layout", default="auto", choices=["auto"] + list(LAYOUTS))
     ap.add_argument("--fs", type=int, default=500)
     ap.add_argument("--duration", type=float, default=10.0)
     ap.add_argument("--speed", type=float, default=25.0, help="mm/s")
-    ap.add_argument("--gain", type=float, default=None, help="mm/mV (padrão: mede no pulso)")
-    ap.add_argument("--ppmm", type=float, default=None, help="px/mm da imagem, se conhecido")
-    ap.add_argument("--fill-limb", action="store_true", help="reconstrói derivações dos membros via Einthoven/Goldberger")
+    ap.add_argument("--gain", type=float, default=None, help="mm/mV (default: measured on the calibration pulse)")
+    ap.add_argument("--ppmm", type=float, default=None, help="image px/mm, if known")
+    ap.add_argument("--fill-limb", action="store_true", help="rebuild missing limb leads via Einthoven/Goldberger")
     ap.add_argument("--no-einthoven", action="store_true")
     a = ap.parse_args(argv)
     cfg = Config(fs=a.fs, duration=a.duration, speed=a.speed, gain=a.gain, layout=a.layout,
@@ -39,8 +39,8 @@ def main(argv=None):
     with open(out + ".json", "w") as f:
         json.dump(meta, f, indent=2, ensure_ascii=False)
     cv2.imwrite(out + "_debug.jpg", res["debug_image"])
-    print(f"ok: {out}.csv  ({sig.shape[0]} derivações x {sig.shape[1]} amostras, layout {res['layout']}, "
-          f"ganho {res['gain_mm_per_mv']} mm/mV)")
+    print(f"ok: {out}.csv  ({sig.shape[0]} leads x {sig.shape[1]} samples, layout {res['layout']}, "
+          f"gain {res['gain_mm_per_mv']} mm/mV)")
 
 
 if __name__ == "__main__":
