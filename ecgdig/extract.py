@@ -43,6 +43,7 @@ GLEV_RELATIVE = [False]
 # coloured trace on an achromatic grid (blue pen on a black/grey grid): the brightest channel
 # makes the trace vanish; the chroma (max - min channel) shows it and drops the grid
 CHROMA_TRACE = [True]
+CHROMA_TH = [0.25]   # chroma above the grid's that counts as coloured ink (photos desaturate the pen)
 
 
 def _median5_cells(cells: np.ndarray) -> np.ndarray:
@@ -83,7 +84,7 @@ def _chroma_trace(n, t, paper, R):
     # the trace runs across the page: its chromatic ink covers most of the columns (coloured
     # labels or stamps cover a few)
     reps = (int(np.ceil(H / P)), int(np.ceil(W / P)))
-    M = ((C - np.tile(Ct, reps)[:H, :W]) > 0.35) & (paper > 0)
+    M = ((C - np.tile(Ct, reps)[:H, :W]) > CHROMA_TH[0]) & (paper > 0)
     xs = paper.any(0)
     if not xs.any() or float(np.mean(M.any(0)[xs])) < 0.5:
         return t

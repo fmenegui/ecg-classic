@@ -508,6 +508,18 @@ def _rows_pulses(B, pap, R, rows_hint=None):
         # trace: long after joining breaks (tl) OR with long/tall pieces without joining
         # (raw; a weak scan trace may have low tl but high raw)
         ok = tl >= 0.4 * tl.max()
+        if TL_COVER[0]:
+            # a line of ink across almost the whole page (coverage as high as the best row)
+            # with some long pieces is a row even with a middling trace-likeness: rows packed
+            # 3-8 mm apart share their long components with the neighbour
+            hi_ = cov[peaks] >= 0.8 * cov.max()
+            close_ = np.zeros(len(peaks), bool)
+            for i in range(len(peaks)):
+                for j in (i - 1, i + 1):
+                    if 0 <= j < len(peaks) and abs(peaks[j] - peaks[i]) < 8 * R:
+                        a_, b_ = sorted((int(peaks[i]), int(peaks[j])))
+                        close_[i] |= cov[a_:b_ + 1].min() < 0.6 * cov[peaks[i]]
+            ok |= hi_ & ((tl >= 0.2 * tl.max()) | close_)
         weak = ~ok & (raw >= 0.3 * max(raw.max(), 1e-9))
         # "weak" rows only enter if they continue the regular spacing of the strong ones
         # (a header with a text table also has tall pieces, but off the step)
@@ -729,6 +741,7 @@ def _rows_pulses(B, pap, R, rows_hint=None):
 _ROW_BEAT_RULE = [True]
 EDGE_PULSE_HEIGHT = [True]
 PULSE_COL_LEFT = [True]
+TL_COVER = [True]
 HALF_ALONE = [True]
 MID_PULSE_CUT = [True]
 # row extents measured without the straight grid pieces left in the binary map

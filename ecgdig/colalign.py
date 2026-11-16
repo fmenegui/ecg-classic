@@ -91,8 +91,25 @@ def _keep_trace_rows(B, R, cols, pks, lr):
             out.append(p)
             continue
         sub = B[:, a:b]
-        out.append(np.array([y for y in p if sub[max(0, int(y - 3 * R)):min(H, int(y + 3 * R))].any(0).mean() >= 0.5], int))
+        out.append(np.array([y for y in p if sub[max(0, int(y - 3 * R)):min(H, int(y + 3 * R))].any(0).mean() >= 0.5
+                             and not (ROW_STRAIGHT[0] and _straight_line(sub, int(y), R))], int))
     return out
+
+
+def _straight_line(sub, y, R):
+    """The band holds one straight line (grid border or leaked grid line), not a trace: ink in
+    almost every column, but taller than 1.5 mm in fewer than 1% of them (a flat lead still
+    has its QRS)."""
+    H = sub.shape[0]
+    band = sub[max(0, y - int(3 * R)):min(H, y + int(3 * R))]
+    has = band.any(0)
+    if has.mean() < 0.5:
+        return False
+    idx = np.arange(band.shape[0])[:, None]
+    top = np.where(band, idx, band.shape[0]).min(0)
+    bot = np.where(band, idx, -1).max(0)
+    tall = (bot - top)[has] >= 1.5 * R
+    return float(tall.mean()) < 0.01
 
 
 def _col_rows(B, R, xa, xb):
@@ -108,6 +125,7 @@ def _col_rows(B, R, xa, xb):
 
 EQUAL_SPLIT = [True]
 PAIR_MERGE = [True]
+ROW_STRAIGHT = [True]
 # columns with rows at their own heights (each column with its own spacing): the
 # (column, row) bands move to stacked new rows instead of the median across columns
 RELAYOUT = [True]
