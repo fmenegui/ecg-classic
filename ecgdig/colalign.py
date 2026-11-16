@@ -73,6 +73,26 @@ def _equal_columns(gaps, L, Rr, R):
         min(widths) >= 0.9 * max(widths) - 30 * R
 
 
+ROW_FILTER = [True]
+
+
+def _keep_trace_rows(B, R, cols, pks, lr):
+    """Picos que não são traço (QR code, texto do rodapé: tinta em < 50% da largura da
+    coluna dentro da extensão do traçado) saem antes de comparar o número de linhas."""
+    if not ROW_FILTER[0] or lr is None:
+        return pks
+    H = B.shape[0]
+    out = []
+    for (xa, xb), p in zip(cols, pks):
+        a, b = max(xa, lr[0]), min(xb, lr[1] + 1)
+        if b - a < 20 * R:
+            out.append(p)
+            continue
+        sub = B[:, a:b]
+        out.append(np.array([y for y in p if sub[max(0, int(y - 3 * R)):min(H, int(y + 3 * R))].any(0).mean() >= 0.5], int))
+    return out
+
+
 def _col_rows(B, R, xa, xb):
     k = int(2 * R) | 1
     Bd = cv2.dilate(B[:, xa:xb].astype(np.uint8), np.ones((k, 1), np.uint8))
@@ -122,7 +142,7 @@ def _equal_split(B, R, ya, yb, lr):
             cuts.append(a + int(np.argmin(P[a:b])))
         cuts.append(B.shape[1])
         cols = [(cuts[i], cuts[i + 1]) for i in range(k)]
-        pks = [_col_rows(B, R, a, b) for a, b in cols]
+        pks = _keep_trace_rows(B, R, cols, [_col_rows(B, R, a, b) for a, b in cols], lr)
         n = len(pks[0])
         if n >= 2 and all(len(p) == n for p in pks):
             P_ = np.array(pks, float)
@@ -154,7 +174,7 @@ def col_align(rect, pap, D, B, R):
     if gaps and _equal_columns(gaps, lr[0], lr[1], R):
         cuts = [0] + [int(0.5 * (a + b)) for a, b in gaps] + [W]
         cols = [(cuts[i], cuts[i + 1]) for i in range(len(cuts) - 1)]
-        pks = [_col_rows(B, R, a, b) for a, b in cols]
+        pks = _keep_trace_rows(B, R, cols, [_col_rows(B, R, a, b) for a, b in cols], lr)
         n = len(pks[0])
         if n < 2 or any(len(p) != n for p in pks):
             cols = None
@@ -165,7 +185,7 @@ def col_align(rect, pap, D, B, R):
         cols = _equal_split(B, R, ya, yb, lr)
         if cols is None:
             return rect, pap, D, B, None
-        pks = [_col_rows(B, R, a, b) for a, b in cols]
+        pks = _keep_trace_rows(B, R, cols, [_col_rows(B, R, a, b) for a, b in cols], lr)
         n = len(pks[0])
     if cols is None:
         return rect, pap, D, B, None
