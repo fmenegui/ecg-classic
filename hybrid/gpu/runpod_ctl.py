@@ -84,18 +84,19 @@ def start():
     q = """mutation($input: PodFindAndDeployOnDemandInput) {
              podFindAndDeployOnDemand(input: $input) { id machineId costPerHr gpuCount } }"""
     last = None
-    for g in gpus:
-        inp = dict(cloudType="ALL", gpuCount=1, volumeInGb=0, containerDiskInGb=60, minVcpuCount=8,
+    # more vCPU first: the crops are generated on the CPU and feed the GPU
+    for vcpu, g in [(v, g) for v in (16, 8) for g in gpus]:
+        inp = dict(cloudType="ALL", gpuCount=1, volumeInGb=0, containerDiskInGb=60, minVcpuCount=vcpu,
                    minMemoryInGb=30, gpuTypeId=g, name=NAME, imageName=IMAGE, dockerArgs=cmd,
                    ports="8000/http", volumeMountPath="/workspace", env=env)
         try:
             d = gql(q, {"input": inp})["podFindAndDeployOnDemand"]
         except Exception as e:  # noqa: BLE001
             last = e
-            print(f"{g}: {e}", file=sys.stderr)
+            print(f"{g} ({vcpu} vCPU): {e}", file=sys.stderr)
             continue
         if d and d.get("id"):
-            print(f"started {d['id']} on {g}, {d.get('costPerHr')} USD/h", file=sys.stderr)
+            print(f"started {d['id']} on {g} (>= {vcpu} vCPU), {d.get('costPerHr')} USD/h", file=sys.stderr)
             print(f"pod_id={d['id']}")
             print(f"gpu={g}")
             return

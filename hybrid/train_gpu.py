@@ -88,6 +88,7 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--encoder", default="resnet34")
     ap.add_argument("--weights", default="imagenet")
+    ap.add_argument("--val", type=int, default=256, help="fixed validation crops")
     ap.add_argument("--out", type=Path, default=Path("hybrid/out_gpu"))
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
@@ -106,7 +107,7 @@ def main():
                                      worker_init_fn=_worker_init, multiprocessing_context="spawn")
     # fixed validation set (same crops every time)
     vr = np.random.default_rng(999)
-    val = [sample(vr, a.size) for _ in range(256)]
+    val = [sample(vr, a.size) for _ in range(a.val)]
     vx = torch.stack([torch.from_numpy(im[..., ::-1].copy()).permute(2, 0, 1).float() / 255.0 for im, _ in val])
     vy = torch.stack([torch.from_numpy(lb)[None] for _, lb in val])
     opt = torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=1e-4)
@@ -121,8 +122,8 @@ def main():
     def validate():
         net.eval(); tot = 0.0; inter = 0.0; uni = 0.0
         with torch.no_grad(), torch.autocast(dev, enabled=dev == "cuda"):
-            for i in range(0, len(vx), 32):
-                x, y = vx[i:i + 32].to(dev), vy[i:i + 32].to(dev)
+            for i in range(0, len(vx), 16):
+                x, y = vx[i:i + 16].to(dev), vy[i:i + 16].to(dev)
                 lg = net(x).float()
                 tot += float(F.binary_cross_entropy_with_logits(lg, y, pos_weight=pos_w)) * len(x)
                 p = (torch.sigmoid(lg) > 0.5).float(); yb = (y > 0.5).float()

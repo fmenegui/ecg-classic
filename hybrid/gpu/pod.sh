@@ -18,6 +18,8 @@ echo "setup" > "$OUT/status.txt"
   pip install -q -e . onnx onnxruntime segmentation-models-pytorch==0.3.4 timm
   echo "running" > "$OUT/status.txt"
   echo "command: $JOB"
+  # GPU use every 2 minutes in the log (utilization %, memory): shows whether the GPU is starved
+  (while sleep 120; do echo "GPU $(nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader)"; done &)
   timeout "$(python -c "print(int(float('$MAX_HOURS') * 3600))")" bash -c "$JOB"
   echo "exit code $?"
 } >> "$OUT/log.txt" 2>&1
