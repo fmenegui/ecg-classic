@@ -108,6 +108,10 @@ python -m ecgdig.evaluate data/test                 # SNR per image and per lead
 - Without any grid, the scale comes from `--ppmm` or from the sheet size.
 - Heavy blur, very low resolution, crumpled paper and near-invisible traces remain the weak points.
 
+## License
+
+Apache-2.0 (see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)). The figures in `docs/gallery/` are derived from PM-ECG-ID images and stay under GPL-3.0-or-later, like their source.
+
 ## References
 
 - Demolder A et al. High precision ECG digitization using artificial intelligence. medRxiv 2024.08.31.24312876.

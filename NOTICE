@@ -1,0 +1,10 @@
+ecgdig
+Copyright 2026 Felipe Meneguitti Dias
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The figures in docs/gallery/ are derived from images of the PMcardio ECG Image
+Database (PM-ECG-ID), Iring A, Krešňáková V, Hojcka M, Boza V, Rafajdus A, Vavrik B,
+Zenodo 2024, doi:10.5281/zenodo.13617673, distributed under the GNU General Public
+License v3.0 or later. Those figures are distributed under the same license
+(GPL-3.0-or-later); the rest of the repository is under Apache-2.0.
