@@ -24,7 +24,7 @@ def _ecg_wave(rng, n):
         from ecgdig.synth import synth_signals
         S = synth_signals(rng)
         lead = S[rng.integers(12)]
-        if rng.random() < 0.3:          # morfologias extremas (QRS gigante, baixa voltagem)
+        if rng.random() < 0.3:          # extreme morphologies (giant QRS, low voltage)
             lead = lead * rng.choice([0.3, 2.0, 3.0])
         i0 = rng.integers(0, max(1, S.shape[1] - n))
         v = lead[i0:i0 + n]
@@ -79,10 +79,10 @@ def _grid_layer(rng, H, W, S):
     if kind == 0:      # classic red/pink
         cmin = (int(rng.integers(150, 230)), int(rng.integers(150, 225)), int(rng.integers(220, 256)))
         cmaj = (int(rng.integers(60, 170)), int(rng.integers(60, 160)), int(rng.integers(180, 256)))
-    elif kind == 1:    # laranja/marrom
+    elif kind == 1:    # orange/brown
         cmin = (int(rng.integers(140, 210)), int(rng.integers(180, 230)), int(rng.integers(220, 256)))
         cmaj = (int(rng.integers(40, 120)), int(rng.integers(90, 170)), int(rng.integers(180, 240)))
-    elif kind == 2:    # verde/azul
+    elif kind == 2:    # green/blue
         g = rng.integers(2)
         cmin = (int(rng.integers(170, 240)),) * 3
         cmin = tuple(int(v_) if i != 1 + g else int(rng.integers(200, 256)) for i, v_ in enumerate(cmin))
@@ -90,7 +90,7 @@ def _grid_layer(rng, H, W, S):
     elif kind == 3:    # grey/black (B&W printer, darkened scan): the hard case
         gmin = int(rng.integers(120, 220)); gmaj = int(rng.integers(20, max(30, gmin - 30)))
         cmin, cmaj = (gmin,) * 3, (gmaj,) * 3
-    else:              # cores livres claras
+    else:              # free light colours
         cmin = _rand_color(rng, dark=False)
         cmaj = tuple(int(c * rng.uniform(0.4, 0.85)) for c in cmin)
     a_min = rng.uniform(0.4, 1.0)
@@ -115,7 +115,7 @@ def _trace_layer(rng, H, W, S):
         v = _ecg_wave(rng, n) + rng.normal(0, 0.01, n).cumsum() * 0.02
         xs = x0 + np.arange(n) / 500.0 * speed * R
         yv = y0 - v * gain * R / 10.0 * (R / R)
-        # gain em mm/mV -> px: v (mV) * gain (mm/mV) * R (px/mm)
+        # gain in mm/mV -> px: v (mV) * gain (mm/mV) * R (px/mm)
         yv = y0 - v * gain * R
         pts = np.stack([xs * S, yv * S], 1).astype(np.int32)
         cv2.polylines(lay, [pts], False, 255, th, cv2.LINE_AA)
@@ -125,7 +125,7 @@ def _trace_layer(rng, H, W, S):
             P = np.array([[xa - 2 * R, y0], [xa, y0], [xa, y0 - h], [xa + 5 * R, y0 - h], [xa + 5 * R, y0],
                           [xa + 7 * R, y0]]) * S
             cv2.polylines(lay, [P.astype(np.int32)], False, 255, th, cv2.LINE_AA)
-        if rng.random() < 0.3:    # marca separadora
+        if rng.random() < 0.3:    # separator mark
             xt = rng.uniform(0.1, 0.9) * W
             hh = rng.uniform(2, 8) * R
             cv2.line(lay, (int(xt * S), int((y0 - hh / 2) * S)), (int(xt * S), int((y0 + hh / 2) * S)), 255,
@@ -143,9 +143,9 @@ def _distractors(rng, img, H, W, ink):
         col = ink if rng.random() < 0.6 else _rand_color(rng)
         cv2.putText(img, s, (int(rng.uniform(-20, W)), int(rng.uniform(10, H + 10))), font,
                     rng.uniform(0.3, 1.2), col, int(rng.integers(1, 3)), cv2.LINE_AA)
-    if rng.random() < 0.15:  # borda/linha reta longa
+    if rng.random() < 0.15:  # border / long straight line
         y = int(rng.uniform(0, H)); cv2.line(img, (0, y), (W, y + int(rng.normal(0, 3))), _rand_color(rng), int(rng.integers(1, 4)))
-    if rng.random() < 0.08:  # bloco tipo QR
+    if rng.random() < 0.08:  # QR-like block
         x, y, s = int(rng.uniform(0, W)), int(rng.uniform(0, H)), int(rng.uniform(15, 60))
         q = (rng.random((8, 8)) < 0.5).astype(np.uint8) * 255
         q = cv2.resize(q, (s, s), interpolation=cv2.INTER_NEAREST)
@@ -170,7 +170,7 @@ def _degrade(rng, img):
     # illumination: gradient, shadow, colour balance
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
     g = 1 - rng.uniform(0, 0.45) * (0.5 + 0.5 * np.sin(rng.uniform(0, 6.28) + (xx * rng.normal() + yy * rng.normal()) / (3 * W)))
-    if rng.random() < 0.25:  # sombra dura
+    if rng.random() < 0.25:  # hard shadow
         cx, cy = rng.uniform(0, W), rng.uniform(0, H)
         g *= 1 - rng.uniform(0.2, 0.5) * (((xx - cx) * rng.normal() + (yy - cy) * rng.normal()) > 0)
         g = cv2.GaussianBlur(g, (0, 0), rng.uniform(2, 15))
@@ -204,7 +204,7 @@ def sample(rng, size=192):
     H = W = size
     S = 4
     paper = np.array(_rand_color(rng, dark=False), np.float32)
-    if rng.random() < 0.7:  # papel quase branco/creme na maioria
+    if rng.random() < 0.7:  # mostly near-white/cream paper
         paper = np.array([rng.uniform(215, 255)] * 3, np.float32) * rng.uniform(0.94, 1.0, 3)
     img = np.ones((H * S, W * S, 3), np.float32) * paper[None, None, :]
     for a, c in _grid_layer(rng, H, W, S):
