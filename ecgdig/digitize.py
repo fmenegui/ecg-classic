@@ -335,13 +335,21 @@ def _shift_pulse(p, keep_x):
     return q
 
 
+def _trace_span(ex):
+    """Common start and end of the rows. A row whose first stretch is too light to binarize
+    starts late: the low quartile of the starts (high quartile of the ends) is the page's."""
+    if GAP_ROBUST_LR[0]:
+        return int(np.percentile([e[0] for e in ex], 25)), int(np.percentile([e[1] for e in ex], 75))
+    return int(np.median([e[0] for e in ex])), int(np.median([e[1] for e in ex]))
+
+
 def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
     """Gaps common to all rows (no ink in any row band), min_mm to max_mm wide, that split the
     trace into k equal-width columns (±3%). Returns [(x0, x1)] or None."""
     ex = [e for e in ext if e]
     if len(ex) < len(rows) or len(rows) < 2:
         return None
-    L, Rr = int(np.median([e[0] for e in ex])), int(np.median([e[1] for e in ex]))
+    L, Rr = _trace_span(ex)
     if Rr - L < 60 * R:
         return None
     occ = np.zeros(Rr - L, bool)
@@ -422,7 +430,7 @@ def _mid_pulse_cuts(B, rows, ext, half, R):
     ex = [e for e in ext if e]
     if len(rows) < 2 or len(ex) < len(rows):
         return None
-    L, Rr = float(np.median([e[0] for e in ex])), float(np.median([e[1] for e in ex]))
+    L, Rr = _trace_span(ex)
     if Rr - L < 60 * R:
         return None
     ys = np.asarray(rows, float)
@@ -742,6 +750,7 @@ _ROW_BEAT_RULE = [True]
 EDGE_PULSE_HEIGHT = [True]
 PULSE_COL_LEFT = [True]
 TL_COVER = [True]
+GAP_ROBUST_LR = [True]
 HALF_ALONE = [True]
 MID_PULSE_CUT = [True]
 # row extents measured without the straight grid pieces left in the binary map
@@ -802,12 +811,23 @@ def _orient(arrs, R):
     # traces = long structures (> 50 mm) in one direction; tall QRS do not exceed ~40 mm.
     # Close small breaks (thin/weak trace) before measuring.
     k = int(1.5 * R) | 1
-    Bc = cv2.dilate(B.astype(np.uint8), np.ones((k, k), np.uint8))
+    B0 = B
+    if ORIENT_WIGGLE[0]:
+        from .extract import GRID_SEGS, clean_grid_segments
+        if GRID_SEGS[0]:
+            B0 = clean_grid_segments(B, R)   # leaked grid pieces are long and straight too
+    Bc = cv2.dilate(B0.astype(np.uint8), np.ones((k, k), np.uint8))
     n, lab, st, _ = cv2.connectedComponentsWithStats(Bc, connectivity=8)
     w, h = st[1:, cv2.CC_STAT_WIDTH], st[1:, cv2.CC_STAT_HEIGHT]
-    sh = w[(w >= 50 * R) & (w > 1.5 * h)].sum()
-    sv = h[(h >= 50 * R) & (h > 1.5 * w)].sum()
-    cands = [cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE] if sv > sh else [None, cv2.ROTATE_180]
+    # a trace wiggles (QRS, T): its long components are >= 4 mm thick across their length
+    # direction; a leaked grid line is straight (the dilation alone makes it ~1.5 mm)
+    th_ = 4 * R if ORIENT_WIGGLE[0] else 0
+    sh = w[(w >= 50 * R) & (w > 1.5 * h) & (h >= th_)].sum()
+    sv = h[(h >= 50 * R) & (h > 1.5 * w) & (w >= th_)].sum()
+    # a page turned 90 degrees has several rows of >= 50 mm standing up: a little vertical
+    # ink (leaked grid column, sheet edge) next to a broken trace does not turn it
+    vert = sv > sh and (not ORIENT_WIGGLE[0] or sv >= 150 * R)
+    cands = [cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE] if vert else [None, cv2.ROTATE_180]
 
     def rot(a, c):
         if c is None:
@@ -858,6 +878,7 @@ def _orient(arrs, R):
 
 
 PULSE_ROWS_GUARD = [True]
+ORIENT_WIGGLE = [True]
 ORIENT_FORCE = [None]   # "keep" / "flip": fixes the 0 vs 180 degree choice (internal use)
 
 

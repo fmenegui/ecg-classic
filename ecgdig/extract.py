@@ -43,7 +43,7 @@ GLEV_RELATIVE = [False]
 # coloured trace on an achromatic grid (blue pen on a black/grey grid): the brightest channel
 # makes the trace vanish; the chroma (max - min channel) shows it and drops the grid
 CHROMA_TRACE = [True]
-CHROMA_TH = [0.25]   # chroma above the grid's that counts as coloured ink (photos desaturate the pen)
+CHROMA_TH = [0.15]   # chroma above the grid's that counts as coloured ink (photos desaturate the pen)
 
 
 def _median5_cells(cells: np.ndarray) -> np.ndarray:
