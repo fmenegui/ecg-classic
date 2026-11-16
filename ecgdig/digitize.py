@@ -2070,7 +2070,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             for li, l in enumerate(names):
                 if quality["leads"][l]["score"] < cfg.refuse_below:
                     sig[li] = np.nan
-                    quality["leads"][l]["flags"].append("recusada")
+                    quality["leads"][l]["flags"].append("refused")
     except Exception as e:  # the score never brings the digitization down
         quality = dict(error=f"{type(e).__name__}: {e}")
 

@@ -124,7 +124,7 @@ def main():
         if step % 50 == 0:
             el = time.time() - t0
             log.append(dict(step=step, loss=float(loss), sec=round(el, 1)))
-            print(f"passo {step} perda {float(loss):.4f} {el / step:.2f} s/passo", flush=True)
+            print(f"step {step} loss {float(loss):.4f} {el / step:.2f} s/step", flush=True)
         if step % 1000 == 0 or step == a.steps:
             torch.save(net.state_dict(), a.out / "unet.pt")
         if frac >= 1.0:

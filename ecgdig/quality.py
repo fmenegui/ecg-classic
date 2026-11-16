@@ -87,7 +87,7 @@ def lead_quality(v: np.ndarray, fs: int, beats: np.ndarray, others_prof: np.ndar
     ok = np.isfinite(v)
     out = dict(coverage=0.0, beat_sync=np.nan, repeat=np.nan, jumps=0.0, p2p=0.0, score=0.0, flags=[])
     if ok.sum() < 0.3 * fs:
-        out["flags"].append("ausente")
+        out["flags"].append("missing")
         return out
     idx = np.nonzero(ok)[0]
     a, b = int(idx[0]), int(idx[-1]) + 1
@@ -165,9 +165,9 @@ def assess(sig: np.ndarray, leads: list, fs: int, prefusion: np.ndarray | None =
     for i, l in enumerate(leads):
         q = lead_quality(sig[i], fs, beats)
         q["limb_residual"] = limb_rel.get(l)
-        q["score"] = _combine(q, limb_rel.get(l)) if "ausente" not in q["flags"] else 0.0
-        if q["score"] < 0.4 and "ausente" not in q["flags"]:
-            q["flags"].append("suspeita")
+        q["score"] = _combine(q, limb_rel.get(l)) if "missing" not in q["flags"] else 0.0
+        if q["score"] < 0.4 and "missing" not in q["flags"]:
+            q["flags"].append("suspect")
         out[l] = q
-    present = [q["score"] for q in out.values() if "ausente" not in q["flags"]]
+    present = [q["score"] for q in out.values() if "missing" not in q["flags"]]
     return dict(leads=out, beats=len(beats), score=float(np.mean(present)) if present else 0.0)

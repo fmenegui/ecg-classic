@@ -49,7 +49,7 @@ jobs:
           python hybrid/train.py --steps ${{ inputs.steps }} --minutes ${{ inputs.minutes }} --lr ${{ inputs.lr }} --workers 3 --out hybrid/out $INIT
       - name: Samples
         if: always()
-        run: python hybrid/gen.py hybrid/out/amostras.png 7 || true
+        run: python hybrid/gen.py hybrid/out/samples.png 7 || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

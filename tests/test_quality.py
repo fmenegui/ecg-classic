@@ -39,4 +39,4 @@ def test_missing_lead():
     sig = _page(synth_signals(np.random.default_rng(5)).astype(np.float32))
     sig[LEADS.index("V1")] = np.nan
     q = assess(sig, LEADS, 500)
-    assert q["leads"]["V1"]["score"] == 0.0 and "ausente" in q["leads"]["V1"]["flags"]
+    assert q["leads"]["V1"]["score"] == 0.0 and "missing" in q["leads"]["V1"]["flags"]

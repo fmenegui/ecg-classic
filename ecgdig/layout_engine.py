@@ -571,7 +571,7 @@ class Ctx:
                 row.append(max(w["dist"], key=w["dist"].get) if w else f"?{r}{c}")
             free.append(row)
         if all(not n.startswith("?") for row in free for n in row):
-            out.append(("livre", free))
+            out.append(("free", free))
         return out
 
     def choose(self):
@@ -620,7 +620,7 @@ class Ctx:
             if kh:
                 kmax = max(len(row) for row in spec)
                 sc += 8.0 if kmax == kh else -8.0
-            if name != "livre":
+            if name != "free":
                 sc += 3.0  # prior for vendor formats (the free hypothesis depends only on OCR)
                 if "cabrera" in name:
                     sc -= 1.5  # Cabrera is regional (Scandinavia): needs some evidence
