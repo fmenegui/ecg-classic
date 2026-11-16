@@ -90,10 +90,14 @@ def main():
     ap.add_argument("--lr", type=float, default=2e-3)
     ap.add_argument("--minutes", type=float, default=0, help="stop earlier, by time (0 = no limit)")
     ap.add_argument("--out", type=Path, default=Path("hybrid/out"))
+    ap.add_argument("--init", type=Path, default=None, help="unet.pt to continue from (chained CPU runs)")
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
     torch.set_num_threads(max(1, (os.cpu_count() or 2) - a.workers + 1))
     net = UNet()
+    if a.init is not None and a.init.exists():
+        net.load_state_dict(torch.load(a.init, map_location="cpu"))
+        print("continuing from", a.init, flush=True)
     print("parameters", sum(p.numel() for p in net.parameters()), flush=True)
     dl = torch.utils.data.DataLoader(Stream(a.size, 1234), batch_size=a.batch, num_workers=a.workers,
                                      persistent_workers=a.workers > 0)

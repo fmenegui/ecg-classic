@@ -12,8 +12,19 @@ on:
         required: false
         default: '40000'
         type: string
+      init_run:
+        description: 'Run id whose trace-seg artifact (unet.pt) to continue from (optional)'
+        required: false
+        default: ''
+        type: string
+      lr:
+        description: 'Peak learning rate'
+        required: false
+        default: '0.002'
+        type: string
 permissions:
   contents: read
+  actions: read
 jobs:
   train:
     runs-on: ubuntu-latest
@@ -26,8 +37,16 @@ jobs:
       - run: |
           python -m pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -e . onnx onnxruntime
+      - name: Previous weights
+        if: ${{ inputs.init_run != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download ${{ inputs.init_run }} -n trace-seg-${{ inputs.init_run }} -D prev
       - name: Train
-        run: python hybrid/train.py --steps ${{ inputs.steps }} --minutes ${{ inputs.minutes }} --workers 3 --out hybrid/out
+        run: |
+          INIT=""
+          if [ -f prev/unet.pt ]; then INIT="--init prev/unet.pt"; fi
+          python hybrid/train.py --steps ${{ inputs.steps }} --minutes ${{ inputs.minutes }} --lr ${{ inputs.lr }} --workers 3 --out hybrid/out $INIT
       - name: Samples
         if: always()
         run: python hybrid/gen.py hybrid/out/amostras.png 7 || true
