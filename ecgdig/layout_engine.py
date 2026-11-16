@@ -36,6 +36,9 @@ DROP_LIMB_GAIN = [0.25]
 DROP_NEAR = [0.88]
 if STRIPS3[0]:
     FAMILIES += ["3x1-limb", "3x1-aug", "3x1-v13", "3x1-v46"]
+LAYOUT_3X2 = [True]
+if LAYOUT_3X2[0]:
+    FAMILIES += ["3x2-limb", "3x2-prec"]
 OCR_QRS_BARS = [True]
 BND_HALF_MM = [1.0]
 FRACS = {1: [], 2: [0.5], 3: [1 / 3, 2 / 3], 4: [0.25, 0.5, 0.75]}
@@ -525,13 +528,14 @@ class Ctx:
             if len(grid) > n_eff:
                 continue
             rest = n_eff - len(grid)
-            if (fam.startswith("12x1") or fam.startswith("6x1") or fam.startswith("3x1")) and rest:
+            if (fam.startswith("12x1") or fam.startswith("6x1") or fam.startswith("3x1")
+                    or fam.startswith("3x2")) and rest:
                 continue
             if fam.startswith("3x1") and not STRIPS3[0]:
                 continue
-            if (a or pos) and (fam.startswith("3x1") or fam.startswith("6x1")):
+            if (a or pos) and (fam.startswith("3x1") or fam.startswith("6x1") or fam.startswith("3x2")):
                 continue      # drop rows only to close a 12-lead page
-            if fam in ("3x1-v13", "3x1-v46"):
+            if fam in ("3x1-v13", "3x1-v46", "3x2-prec"):
                 # precordial leads have no physics among themselves (nothing closes like
                 # Einthoven): only with a V label read at the start of some row; without it the
                 # hypothesis wins just by having no physics term to lose

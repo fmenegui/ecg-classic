@@ -47,6 +47,9 @@ LIBRARY = {
     "3x1-aug": [["aVR"], ["aVL"], ["aVF"]],
     "3x1-v13": [["V1"], ["V2"], ["V3"]],
     "3x1-v46": [["V4"], ["V5"], ["V6"]],
+    # 12 leads on two sheets of 3 rows x 2 columns (5 s each): limb leads, then precordials
+    "3x2-limb": [["I", "aVR"], ["II", "aVL"], ["III", "aVF"]],
+    "3x2-prec": [["V1", "V4"], ["V2", "V5"], ["V3", "V6"]],
 }
 
 
