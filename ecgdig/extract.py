@@ -159,7 +159,8 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: flo
         # limiar baixo da histerese acima do vazamento da grade (linhas da grade tocam o
         # traço e seriam "puxadas" junto pela conectividade)
         lo = max(0.55 * th, min(grid_level + 0.08, 0.85 * th))
-        B = apply_hysteresis_threshold(D, lo, max(th, lo + 0.05))
+        Dn = _local_contrast(D, R, blob, grid_level, lo) if LOCAL_CONTRAST[0] and scale == 1.0 else D
+        B = apply_hysteresis_threshold(Dn, lo, max(th, lo + 0.05))
     # linhas retas da grade que sobraram (grade preta grossa, molde 1 px fora): linhas/colunas
     # de pixel quase todas "tinta" ao longo da página, várias, em passo regular. Um traço
     # não cobre 70% de uma linha de pixel na página inteira.
@@ -178,6 +179,35 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: flo
 
 GRID_LINE_CLEAN = [True]
 LONG_VLINES = [True]
+LOCAL_CONTRAST = [True]
+
+
+def _local_contrast(D, R, blob, glev, lo, tile_mm=50.0):
+    """Contraste do traço que cai ao longo da página (reflexo, luz rasante numa foto): o
+    limiar global corta o traço da parte apagada em pedaços. Nível do traço por bloco de
+    ~5 cm (percentil alto da tinta); onde ele está abaixo do da página, a tinta é reforçada
+    até o nível da página — no máximo até o vazamento da grade encostar no limiar baixo."""
+    H, W = D.shape
+    T = max(16, int(tile_mm * R))
+    ny, nx = max(1, H // T), max(1, W // T)
+    Dm = np.where(blob, 0, D)
+    lev = np.zeros((ny, nx), np.float32)
+    for i in range(ny):
+        for j in range(nx):
+            t = Dm[i * T:(i + 1) * T if i < ny - 1 else H, j * T:(j + 1) * T if j < nx - 1 else W]
+            lev[i, j] = float(np.percentile(t, 99.7)) if t.size else 0.0
+    valid = lev >= glev + 0.2
+    if valid.sum() < 3:
+        return D
+    g = float(np.median(lev[valid]))
+    if g / max(float(lev[valid].min()), 1e-6) < 1.25:
+        return D
+    fmax = min(1.6, (lo - 0.03) / max(glev, 0.05))
+    if fmax <= 1.05:
+        return D
+    f = np.where(valid, np.clip(g / np.maximum(lev, 1e-6), 1.0, fmax), 1.0).astype(np.float32)
+    F = cv2.resize(f, (W, H), interpolation=cv2.INTER_LINEAR)
+    return np.minimum(D * F, 1.0)
 
 
 def _remove_long_vertical(B, R, min_mm=45.0):

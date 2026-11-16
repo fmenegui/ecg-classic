@@ -86,6 +86,7 @@ PAPER_QUAD = [True]
 # papel não viram semente de fundo do GrabCut (senão a margem branca vira fundo e a máscara
 # abraça só a grade, cortando a 1ª linha ou um lado)
 PAPER_SEEDFIX = [True]
+SCALE_PAPER = [True]
 
 
 def _quad_complete(mm, lab, mc, mb):
@@ -562,6 +563,15 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
         ang, ppmm = ang2, 5.0 * pp2 if max(img.shape[:2]) / pp2 > 600 else pp2
         ppmm = _refine_long_period(G0, ang, ppmm) or ppmm
         rescued = True
+    if not ppmm_hint and SCALE_PAPER[0]:
+        # escala impossível para uma folha de ECG (< 15 cm na maior dimensão): o período
+        # achado é de outra coisa (blocos de JPEG, serrilhado de imagem minúscula, texto).
+        # Sem grade confiável, a folha dá a escala: A4/Carta têm ~28-30 cm no lado maior
+        ys_, xs_ = np.nonzero(paper)
+        if len(xs_):
+            pw = float(max(np.ptp(xs_), np.ptp(ys_)) + 1)
+            if pw / ppmm < 150.0:
+                ppmm = pw / 297.0
 
     H, W = G.shape
     s = 5.0  # px/mm do quadro grosso
