@@ -34,6 +34,7 @@ STRIPS3 = [True]
 if STRIPS3[0]:
     FAMILIES += ["3x1-limb", "3x1-aug", "3x1-v13", "3x1-v46"]
 OCR_QRS_BARS = [True]
+BND_HALF_MM = [1.0]
 FRACS = {1: [], 2: [0.5], 3: [1 / 3, 2 / 3], 4: [0.25, 0.5, 0.75]}
 W_OCR, W_BND, W_LIMB, W_DUP = 4.0, 1.5, 15.0, 3.0
 _UNEXPLAINED = [True]
@@ -321,7 +322,8 @@ class Ctx:
                 if k != r:
                     tm |= st[k]
         a, b = max(0, int(y - 4 * R)), min(H, int(y + 4 * R))
-        xa, xb = max(0, int(x - 1.0 * R)), min(W, int(x + 1.0 * R) + 1)
+        hw_ = BND_HALF_MM[0]
+        xa, xb = max(0, int(x - hw_ * R)), min(W, int(x + hw_ * R) + 1)
         if xb > xa and b > a:
             sub = self.B[a:b, xa:xb] & ~tm[a:b, xa:xb]
             col = sub.sum(0).max() if sub.size else 0
