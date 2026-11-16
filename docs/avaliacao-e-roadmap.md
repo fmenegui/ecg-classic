@@ -183,6 +183,46 @@ Cada mudança mexe em várias páginas para os dois lados; uma página isolada m
 
 Exemplo: relaxar a limpeza de linhas de grade ajudou no PM, mas apagou linhas de base no PhysioNet (11,1 → 3,4 dB) e foi revertido.
 
+### Rodadas da base inteira na nuvem (15–16/11/2026)
+
+A amostra de 120 ECGs enganou: o dev20 → dev21 (+0,5 dB) virou 6,99 → 6,99 na base inteira. Cada mudança mexe em centenas de páginas para os dois lados. Com a máscara nova da folha, 749 ECGs subiram mais de 1 dB e 704 caíram. O erro-padrão da média pareada na base inteira é ~0,05 dB.
+
+As decisões agora saem de rodadas da base inteira no Actions. O workflow aceita `flags` com chaves de ablação, por exemplo `digitize.GAP_IGNORE_TEXT=False;geometry.PAPER_QUAD=False`, e cada rodada leva ~1h40.
+
+| rodada | commit | SNR (ECGs em comum) | leitura |
+|---|---|---|---|
+| full1 | 7a60059 | 6,96 | — |
+| full2 | e9324ef | 6,95 | vão entre colunas ligado |
+| gapoff | e9324ef, vão desligado | 6,92 | o vão vale +0,04 |
+| strips3off | e9324ef, sem 3x1 | 6,86 | as tiras 3x1 valem +0,1 (3x4 +0,44) |
+| seedfix | 5dc4a5f | 7,02 | máscara da folha: +0,06, com muita troca |
+
+Um oráculo que escolhesse a melhor de duas variantes por ECG daria só +0,7 dB. Escolher entre variantes não fecha a distância.
+
+**Onde está o déficit:**
+
+| páginas de uma folha | parte | SNR médio |
+|---|---|---|
+| formato lido certo | 61% | 11,8 dB |
+| formato errado | 26% | −0,5 dB |
+| contagem de linhas sem formato ("rows") | 9% | 0 |
+
+O formato errado sozinho responde por ~3,4 dB dos 5,5 que faltam; o "rows", por ~1 dB. Quando o formato sai certo, já estamos perto da PMcardio.
+
+**Causas vistas nas páginas com formato errado:**
+- **Máscara da folha.** Quando a folha encosta no quadro, a margem branca entra no modelo de fundo do GrabCut. A máscara abraça só a grade e corta a 1ª linha, ou um lado na diagonal. Correção: `PAPER_SEEDFIX`.
+- **Grade preta ou cinza tracejada no binário.** Uma página 6x2 dava 12 "linhas" a cada 10 mm. Correção: `GRID_SEGS`, que tira pedaços retos com vizinhos a 5 ou 10 mm do mapa usado para achar linhas, contar batimentos e ler rótulos.
+- **Borda da grade curva.** A borda que a retificação deixa curva era rastreada como traço, e a linha passava a começar na borda. Correção: `LONG_VLINES`, que tira linhas verticais ≥ 10 cm, ou ≥ 45 mm nas margens. O primeiro limiar, de 45 mm em qualquer lugar, apagava S profundos de V2 que cruzam duas linhas (PhysioNet 29,9 → 5,4).
+- **Rótulos do meio da linha no 6x2 do PM.** Rótulos como "|V2" vêm colados ao separador. Correção: OCR sem barras finas nas pontas e sem linhas verticais > 6 mm. Barras "I" repetidas numa linha são QRS e saem.
+- **3x4 com colunas em alturas próprias.** O gerador do PM põe cada coluna numa altura, e o traço emenda entre colunas, então não há vão vertical. Correção: `EQUAL_SPLIT` em colalign, com hipótese de 4 ou 2 colunas de mesma largura.
+- **Contraste do traço que cai ao longo da foto.** Com reflexo, o traço vira pedaços. Correção: `LOCAL_CONTRAST`, que reforça a tinta por bloco de 5 cm até o nível da página, sem passar o vazamento da grade.
+- **Escala impossível.** Quando a escala daria uma folha < 15 cm, ela vem da largura da folha (`SCALE_PAPER`). Uma linha > 32 cm com mais de 12,5 s indica grade lida no passo errado e volta a 10 s (`SPAN_SANITY`).
+
+**Ainda abertos:**
+- 6x2 do PM lido como 6x1: em fotos, os QRS das derivações dos membros saem claros e o rastreio os pula, e a retificação deixa inclinação local.
+- 3x4 com colunas de espaçamento irregular.
+- Baixa resolução (1/8 a 1/32) e blur 21–41.
+
 ### O que ainda falha (amostra)
 
 | família | falha |

@@ -170,7 +170,8 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: flo
         # limiar baixo da histerese acima do vazamento da grade (linhas da grade tocam o
         # traço e seriam "puxadas" junto pela conectividade)
         lo = max(0.55 * th, min(grid_level + 0.08, 0.85 * th))
-        B = apply_hysteresis_threshold(D, lo, max(th, lo + 0.05))
+        Dn = _local_contrast(D, R, blob, grid_level, lo) if LOCAL_CONTRAST[0] and scale == 1.0 else D
+        B = apply_hysteresis_threshold(Dn, lo, max(th, lo + 0.05))
     # linhas retas da grade que sobraram (grade preta grossa, molde 1 px fora): linhas/colunas
     # de pixel quase todas "tinta" ao longo da página, várias, em passo regular. Um traço
     # não cobre 70% de uma linha de pixel na página inteira.
@@ -189,15 +190,44 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: flo
 
 GRID_LINE_CLEAN = [True]
 LONG_VLINES = [True]
-LONG_VLINES_EDGE = [True]   # só linha com traçado de um lado só (borda); cadeia de QRS fica
+LONG_VLINES_EDGE = [True]   # linha de 45 mm a 10 cm na margem: só sai se for mesmo a borda (cadeia de QRS fica)
 LONG_VLINES_SIDE = [0.15]
+LOCAL_CONTRAST = [True]
 
 
-def _remove_long_vertical(B, R, min_mm=45.0):
-    """Linha vertical (quase) contínua de >= 45 mm: borda da área da grade, dobra/sombra da
-    folha, linha de grade escura que a correção de perspectiva deixou curva. Nenhum traço de
-    ECG sobe 45 mm seguidos (QRS de 4 mV a 10 mm/mV = 40 mm, e nunca reto) e um pulso tem
-    ~10 mm. Sem isso, o rastreio sobe pela borda e a linha começa na borda da grade."""
+def _local_contrast(D, R, blob, glev, lo, tile_mm=50.0):
+    """Contraste do traço que cai ao longo da página (reflexo, luz rasante numa foto): o
+    limiar global corta o traço da parte apagada em pedaços. Nível do traço por bloco de
+    ~5 cm (percentil alto da tinta); onde ele está abaixo do da página, a tinta é reforçada
+    até o nível da página — no máximo até o vazamento da grade encostar no limiar baixo."""
+    H, W = D.shape
+    T = max(16, int(tile_mm * R))
+    ny, nx = max(1, H // T), max(1, W // T)
+    Dm = np.where(blob, 0, D)
+    lev = np.zeros((ny, nx), np.float32)
+    for i in range(ny):
+        for j in range(nx):
+            t = Dm[i * T:(i + 1) * T if i < ny - 1 else H, j * T:(j + 1) * T if j < nx - 1 else W]
+            lev[i, j] = float(np.percentile(t, 99.7)) if t.size else 0.0
+    valid = lev >= glev + 0.2
+    if valid.sum() < 3:
+        return D
+    g = float(np.median(lev[valid]))
+    if g / max(float(lev[valid].min()), 1e-6) < 1.25:
+        return D
+    fmax = min(1.6, (lo - 0.03) / max(glev, 0.05))
+    if fmax <= 1.05:
+        return D
+    f = np.where(valid, np.clip(g / np.maximum(lev, 1e-6), 1.0, fmax), 1.0).astype(np.float32)
+    F = cv2.resize(f, (W, H), interpolation=cv2.INTER_LINEAR)
+    return np.minimum(D * F, 1.0)
+
+
+def _remove_long_vertical(B, R, min_mm=100.0):
+    """Linha vertical (quase) contínua de >= 10 cm: borda da área da grade, dobra/sombra da
+    folha, linha de grade escura que a correção de perspectiva deixou curva. Um S profundo
+    chega a 6-7 mV (60-70 mm a 10 mm/mV) e cruza linhas vizinhas; um pulso tem ~10 mm. Sem
+    isso, o rastreio sobe pela borda e a linha começa na borda da grade."""
     H, W = B.shape
     L = max(5, int(8 * R))
     V = cv2.morphologyEx(B.astype(np.uint8), cv2.MORPH_OPEN, np.ones((L, 1), np.uint8))
@@ -207,20 +237,27 @@ def _remove_long_vertical(B, R, min_mm=45.0):
     Vc = cv2.morphologyEx(V, cv2.MORPH_CLOSE, np.ones((int(2 * R) | 1, 3), np.uint8))
     n, lab, st, _ = cv2.connectedComponentsWithStats(Vc, connectivity=8)
     longc = np.zeros(n, bool)
-    longc[1:] = (st[1:, cv2.CC_STAT_HEIGHT] >= min_mm * R) & (st[1:, cv2.CC_STAT_WIDTH] <= 6 * R)
+    hh, ww = st[1:, cv2.CC_STAT_HEIGHT], st[1:, cv2.CC_STAT_WIDTH]
+    cx = st[1:, cv2.CC_STAT_LEFT] + 0.5 * ww
+    xs_ = np.nonzero(B.any(0))[0]
+    x_lo, x_hi = (float(np.percentile(xs_, 0.5)), float(np.percentile(xs_, 99.5))) if len(xs_) else (0, W)
+    # >= 10 cm em qualquer lugar; >= 45 mm só nas margens do bloco de tinta (borda da grade):
+    # QRS fundos ficam dentro das linhas
+    margin = (cx <= x_lo + 15 * R) | (cx >= x_hi - 15 * R)
+    longc[1:] = (ww <= 6 * R) & ((hh >= min_mm * R) | ((hh >= 45 * R) & margin))
     if LONG_VLINES_EDGE[0]:
-        # QRS de derivações empilhadas caem na mesma coluna e se tocam (o S de uma linha
-        # encosta no R da de baixo): a cadeia passa de 45 mm e era apagada, levando o R de
-        # um batimento em cada linha (scans do PM-ECG-ID: −5 a −7 dB em 28 de 100 ECGs). A
-        # cadeia de QRS tem traçado dos dois lados; a borda da área da grade só de um.
-        # Com tinta em pelo menos 15% das colunas dos dois lados (13 mm de cada), a linha fica
-        # (o último QRS da página tem traçado de um lado só: a borda de verdade pega quase
-        # toda a altura do bloco de traçados, a cadeia de QRS não)
+        # na margem, o último (ou o primeiro) QRS da página também é uma "linha" de 45 mm ou
+        # mais quando as derivações empilhadas se tocam (o S de uma encosta no R da de
+        # baixo), e apagá-la leva o R de um batimento em cada linha. A borda de verdade tem
+        # traçado de um lado só e pega quase toda a altura do bloco de traçados; a cadeia de
+        # QRS, não. Só vale para as linhas de menos de 10 cm
         wm, gm = int(13 * R), int(2 * R)
         yy = np.nonzero(B.any(1))[0]
         yspan = float(yy[-1] - yy[0] + 1) if len(yy) else float(H)
         for i in np.nonzero(longc)[0]:
             x0, y0, w_, h_ = (int(v) for v in st[i, :4])
+            if h_ >= min_mm * R:
+                continue
             lft = B[y0:y0 + h_, max(0, x0 - gm - wm):max(0, x0 - gm)]
             rgt = B[y0:y0 + h_, min(W, x0 + w_ + gm):min(W, x0 + w_ + gm + wm)]
             cl = float(lft.any(0).mean()) if lft.shape[1] >= 3 * R else 0.0

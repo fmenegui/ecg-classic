@@ -1026,6 +1026,8 @@ def _vote_x0(xl, xe, rad, span_px, R, weak=()):
 
 BASELINE_GUARD = [True]
 GAP_IGNORE_TEXT = [True]
+SPAN_SANITY = [True]
+GRID_SEGS_ALL = [False]
 GAP_PULSE_SLACK = [True]
 RPULSE_RARE = [True]
 
@@ -1163,6 +1165,9 @@ def _digitize_once(image, cfg: Config | None = None, return_debug: bool = False)
         D = Pn if cfg.ink_mix >= 1.0 else (cfg.ink_mix * Pn + (1 - cfg.ink_mix) * D).astype(np.float32)
         glev = 0.0 if cfg.ink_mix >= 1.0 else glev
     B = binarize(D, R, glev)
+    if GRID_SEGS_ALL[0]:
+        from .extract import clean_grid_segments
+        B = clean_grid_segments(B, R)
     _PRE[0] = (cfg, rect, pap, D, B, glev, ginfo)
     return _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug)
 
@@ -1424,6 +1429,13 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                 speed = span_mm / duration
             else:
                 duration = round(duration, 1)
+    if SPAN_SANITY[0] and not cfg.duration and duration > 12.5 and span_mm > 320 and len(rows) >= 2:
+        # linha com mais de 32 cm: não cabe em A4/Carta. A escala da grade está errada (passo
+        # de 2 mm tomado por 1 mm, grade pontilhada); o pulso mede o dobro também, então a
+        # amplitude fica certa, e o tempo volta à página padrão de 10 s
+        duration = 10.0
+        duration_assumed = True
+        speed = span_mm / duration
     N = int(round(duration * cfg.fs))
     span_px = (N - 1) / cfg.fs * speed * R
     if os.environ.get("ECGDIG_DBG_SPEED"):
