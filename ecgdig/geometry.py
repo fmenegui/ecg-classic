@@ -354,9 +354,10 @@ def _tile_phases(Gc: np.ndarray, T: float, tile: int, step: int):
             blk = Gc[y:y + tile, x:x + tile]
             px = blk.mean(0); py = blk.mean(1)
             px = px - px.mean(); py = py - py.mean()
-            cxp = (px * e).sum(); cyp = (py * e).sum()
-            nx = np.sqrt((px ** 2).sum() * tile) + 1e-9
-            ny = np.sqrt((py ** 2).sum() * tile) + 1e-9
+            # (a frame smaller than the tile: the block is cut, use its own length)
+            cxp = (px * e[:len(px)]).sum(); cyp = (py * e[:len(py)]).sum()
+            nx = np.sqrt((px ** 2).sum() * len(px)) + 1e-9
+            ny = np.sqrt((py ** 2).sum() * len(py)) + 1e-9
             # line position: where cos(2*pi*j/T - arg) is maximal -> j = arg*T/2pi
             ox = (-np.angle(cxp) * T / (2 * np.pi)) % T
             oy = (-np.angle(cyp) * T / (2 * np.pi)) % T
@@ -542,6 +543,7 @@ def _refine_long_period(G, angle, ppmm, mm=(10.0, 20.0)):
 SCALE_X5 = [True]
 
 
+H_FALLBACK = [True]
 NONRIGID_CLIP = [True]
 CLIP_MARGIN = [0.1]
 
@@ -621,16 +623,25 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
         Hm = np.eye(3)
     # rectified frame: u,v in mm*R. coarse(x,y) = Hm @ (u/R*s, v/R*s)
     Sc = np.diag([s / R, s / R, 1.0])
-    T_total = np.linalg.inv(A3) @ Hm @ Sc  # rectified -> original
-
-    # extent: paper corners in the rectified frame
-    Tinv = np.linalg.inv(T_total)
     ys, xs = np.nonzero(cv2.resize(paper, (W // 8 + 1, H // 8 + 1), interpolation=cv2.INTER_NEAREST))
-    pts = np.stack([xs * 8.0, ys * 8.0, np.ones_like(xs, dtype=float)], 1) @ Tinv.T
-    pts = pts[:, :2] / pts[:, 2:3]
-    u0, v0 = np.floor(pts.min(0) / (5 * R)) * 5 * R - 5 * R
-    u1, v1 = np.ceil(pts.max(0) / (5 * R)) * 5 * R + 5 * R
+
+    def _frame(Hm_):
+        T_ = np.linalg.inv(A3) @ Hm_ @ Sc  # rectified -> original
+        # extent: paper corners in the rectified frame
+        pts_ = np.stack([xs * 8.0, ys * 8.0, np.ones_like(xs, dtype=float)], 1) @ np.linalg.inv(T_).T
+        pts_ = pts_[:, :2] / pts_[:, 2:3]
+        a0 = np.floor(pts_.min(0) / (5 * R)) * 5 * R - 5 * R
+        a1 = np.ceil(pts_.max(0) / (5 * R)) * 5 * R + 5 * R
+        return T_, a0, a1
+    T_total, (u0, v0), (u1, v1) = _frame(Hm)
     Wo, Ho = int(u1 - u0), int(v1 - v0)
+    if H_FALLBACK[0] and (Wo * Ho > 40e6 or Wo > 12000 or Ho > 12000 or min(Wo, Ho) < 40 * R) \
+            and not np.allclose(Hm, np.eye(3)):
+        # degenerate homography (the correspondences collapsed onto a line: the sheet comes
+        # out kilometres wide or a few cm): rotation and scale alone
+        Hm = np.eye(3)
+        T_total, (u0, v0), (u1, v1) = _frame(Hm)
+        Wo, Ho = int(u1 - u0), int(v1 - v0)
     if Wo * Ho > 40e6 or Wo > 12000 or Ho > 12000:
         # sheet of more than ~1 m: the scale (px/mm) was badly estimated; going on would exhaust memory
         raise RuntimeError(f"implausible scale: rectified frame {Wo}x{Ho} px")
