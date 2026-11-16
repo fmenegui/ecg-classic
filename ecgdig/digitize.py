@@ -887,22 +887,24 @@ def _orient(arrs, R):
     # traces = long structures (> 50 mm) in one direction; tall QRS do not exceed ~40 mm.
     # Close small breaks (thin/weak trace) before measuring.
     k = int(1.5 * R) | 1
-    B0 = B
-    if ORIENT_WIGGLE[0]:
+
+    def _hv(Bx, th_):
+        Bc = cv2.dilate(Bx.astype(np.uint8), np.ones((k, k), np.uint8))
+        n, lab, st, _ = cv2.connectedComponentsWithStats(Bc, connectivity=8)
+        w, h = st[1:, cv2.CC_STAT_WIDTH], st[1:, cv2.CC_STAT_HEIGHT]
+        return (w[(w >= 50 * R) & (w > 1.5 * h) & (h >= th_)].sum(),
+                h[(h >= 50 * R) & (h > 1.5 * w) & (w >= th_)].sum())
+    sh, sv = _hv(B, 0)
+    vert = sv > sh
+    if vert and ORIENT_WIGGLE[0]:
+        # a page turned 90 degrees has several rows of >= 50 mm standing up, and they wiggle
+        # (>= 4 mm across) and survive the removal of straight grid pieces: leaked grid columns
+        # next to a broken trace do not turn the page. (Only checked when the raw count already
+        # says "vertical": the grid cleanup also cuts flat baselines that sit on grid lines)
         from .extract import GRID_SEGS, clean_grid_segments
-        if GRID_SEGS[0]:
-            B0 = clean_grid_segments(B, R)   # leaked grid pieces are long and straight too
-    Bc = cv2.dilate(B0.astype(np.uint8), np.ones((k, k), np.uint8))
-    n, lab, st, _ = cv2.connectedComponentsWithStats(Bc, connectivity=8)
-    w, h = st[1:, cv2.CC_STAT_WIDTH], st[1:, cv2.CC_STAT_HEIGHT]
-    # a trace wiggles (QRS, T): its long components are >= 4 mm thick across their length
-    # direction; a leaked grid line is straight (the dilation alone makes it ~1.5 mm)
-    th_ = 4 * R if ORIENT_WIGGLE[0] else 0
-    sh = w[(w >= 50 * R) & (w > 1.5 * h) & (h >= th_)].sum()
-    sv = h[(h >= 50 * R) & (h > 1.5 * w) & (w >= th_)].sum()
-    # a page turned 90 degrees has several rows of >= 50 mm standing up: a little vertical
-    # ink (leaked grid column, sheet edge) next to a broken trace does not turn it
-    vert = sv > sh and (not ORIENT_WIGGLE[0] or sv >= 150 * R)
+        B0 = clean_grid_segments(B, R) if GRID_SEGS[0] else B
+        sh2, sv2 = _hv(B0, 4 * R)
+        vert = sv2 > sh2 and sv2 >= 150 * R
     cands = [cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE] if vert else [None, cv2.ROTATE_180]
 
     def rot(a, c):
