@@ -190,7 +190,7 @@ def binarize(D: np.ndarray, R: float = 10.0, grid_level: float = 0.0, scale: flo
 
 GRID_LINE_CLEAN = [True]
 LONG_VLINES = [True]
-LONG_VLINES_EDGE = [True]   # linha de 45 mm a 10 cm na margem: só sai se for mesmo a borda (cadeia de QRS fica)
+LONG_VLINES_EDGE = [True]   # só sai a linha com traçado de um lado só (borda); cadeia de QRS fica
 LONG_VLINES_SIDE = [0.15]
 LOCAL_CONTRAST = [True]
 
@@ -246,23 +246,22 @@ def _remove_long_vertical(B, R, min_mm=100.0):
     margin = (cx <= x_lo + 15 * R) | (cx >= x_hi - 15 * R)
     longc[1:] = (ww <= 6 * R) & ((hh >= min_mm * R) | ((hh >= 45 * R) & margin))
     if LONG_VLINES_EDGE[0]:
-        # na margem, o último (ou o primeiro) QRS da página também é uma "linha" de 45 mm ou
-        # mais quando as derivações empilhadas se tocam (o S de uma encosta no R da de
-        # baixo), e apagá-la leva o R de um batimento em cada linha. A borda de verdade tem
-        # traçado de um lado só e pega quase toda a altura do bloco de traçados; a cadeia de
-        # QRS, não. Só vale para as linhas de menos de 10 cm
+        # QRS de derivações empilhadas caem na mesma coluna e se tocam (o S de uma encosta
+        # no R da de baixo): numa página 6x2 a cadeia passa de 10 cm, e na margem o último
+        # QRS da página passa de 45 mm. Apagá-la leva o R de um batimento em cada linha
+        # (scans do PM-ECG-ID: −4 a −7 dB). A cadeia tem traçado dos dois lados; a borda da
+        # grade, de um só. Com traçado dos dois lados a linha fica, qualquer que seja o
+        # comprimento; a de menos de 10 cm só sai se pegar >= 70% da altura do bloco
         wm, gm = int(13 * R), int(2 * R)
         yy = np.nonzero(B.any(1))[0]
         yspan = float(yy[-1] - yy[0] + 1) if len(yy) else float(H)
         for i in np.nonzero(longc)[0]:
             x0, y0, w_, h_ = (int(v) for v in st[i, :4])
-            if h_ >= min_mm * R:
-                continue
             lft = B[y0:y0 + h_, max(0, x0 - gm - wm):max(0, x0 - gm)]
             rgt = B[y0:y0 + h_, min(W, x0 + w_ + gm):min(W, x0 + w_ + gm + wm)]
             cl = float(lft.any(0).mean()) if lft.shape[1] >= 3 * R else 0.0
             cr = float(rgt.any(0).mean()) if rgt.shape[1] >= 3 * R else 0.0
-            if min(cl, cr) >= LONG_VLINES_SIDE[0] or h_ < 0.7 * yspan:
+            if min(cl, cr) >= LONG_VLINES_SIDE[0] or (h_ < min_mm * R and h_ < 0.7 * yspan):
                 longc[i] = False
     if not longc.any():
         return B
