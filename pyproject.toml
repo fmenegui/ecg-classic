@@ -1,7 +1,7 @@
 [project]
 name = "ecgdig"
 version = "0.1.0"
-description = "Digitalizador clássico de ECG em papel (visão computacional, sem deep learning)"
+description = "Classical digitizer for paper ECG images (computer vision, no deep learning)"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = ["numpy>=1.23", "opencv-python-headless>=4.7", "scipy>=1.9", "scikit-image>=0.20"]

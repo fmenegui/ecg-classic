@@ -1,133 +1,37 @@
-# Benchmark PhysioNet (Kaggle)
+# PhysioNet (Kaggle) benchmark
 
-Treino da competição *PhysioNet - Digitization of ECG Images* (Kaggle): cada registro tem o sinal verdadeiro (`<id>.csv`, 12 derivações, 250–1025 Hz, 10 s; vazio onde o papel não mostra a derivação) e 9 imagens do mesmo ECG em tipos de captura diferentes (`<id>-NNNN.png`). Todas as páginas são 3x4 + ritmo II.
+Training set of the Kaggle competition *PhysioNet - Digitization of ECG Images*: each record has the true signal (`<id>.csv`, 12 leads, 250–1025 Hz, 10 s; empty where the paper does not show the lead) and 9 images of the same ECG in different capture types (`<id>-NNNN.png`). All pages are 3x4 + rhythm II.
 
-Roda no GitHub Actions (`.github/workflows/physionet-kaggle.yml`, manual) com o secret `KAGGLE_API_TOKEN` e a variável `KAGGLE_USERNAME` do repositório:
+| Type | Capture |
+|---|---|
+| 0001 | digital render |
+| 0003 / 0004 | colour / black-and-white scan |
+| 0011 / 0012 | dirty / darkened scan |
+| 0005 | phone photo |
+| 0006 | photo of a screen |
+| 0009 / 0010 | crumpled photo / photo with a shadow |
 
-- `mode=inspect`: lista os arquivos e baixa um registro de exemplo;
-- `mode=eval`, `n=20`: sorteia N registros (semente 2026), digitaliza as 9 imagens de cada um e mede SNR; `config=layout=3x4+1` força o layout.
+It runs on GitHub Actions with the repository secret `KAGGLE_API_TOKEN` and the variable `KAGGLE_USERNAME`:
 
-**Métrica**: SNR por imagem = 10·log10(Σ sinal² / Σ ruído²) somando as 12 derivações, só nas amostras mostradas. "Alinhado": por derivação, deslocamento de até ±0,2 s (passo de 1 amostra) e diferença de média removida (a métrica da competição tolera o mesmo). Com passo grosso (4 ms, usado até a rodada de 12/11), um render variava ~6 dB com 1 ms de deslocamento. Reimplementação: o placar oficial pode diferir em detalhes. Referência externa: uma solução com deep learning em 24º lugar de 1.425 times relata 19,7 dB no placar privado.
+- `physionet-kaggle.yml` (manual): `mode=inspect` lists the files and downloads one example record; `mode=eval`, `n=20` draws N records (seed 2026), digitizes the 9 images of each and measures the SNR; `config=layout=3x4+1` forces the layout; `ids=a,b,c` evaluates specific records and keeps their raw images.
+- `physionet-shards.yml` (manual): downloads the 20 records once (shared cache, slowly because of the Kaggle request limit) and evaluates them in 4 parallel shards.
 
-## Diagnóstico e relatório
+**Metric:** SNR per image = 10·log10(Σ signal² / Σ noise²) summed over the 12 leads, only on the samples shown. "Aligned": per lead, a shift of up to ±0.2 s (1-sample step) and the mean difference removed (the competition metric tolerates the same). With a coarse step (4 ms) a render varied by ~6 dB with a 1 ms shift, so the step must be one sample. This is a reimplementation: the official leaderboard may differ in details. External reference: a deep-learning solution ranked 24th of 1,425 teams reports 19.7 dB on the private leaderboard.
 
-O artefato de cada rodada traz `results.json` (diagnóstico por imagem: layout, ganhos, duração, ppmm, resíduos da grade, origens por linha), `sig/*.npz` (verdade e previsão a 250 Hz), `img/*.jpg` (sobreposições) e `raw/` (imagens brutas e gabarito dos 5 primeiros registros, para depurar localmente).
+## Diagnosis and report
+
+Each run's artifact has `results.json` (per-image diagnosis: layout, gains, duration, ppmm, grid residuals, per-row origins), `sig/*.npz` (ground truth and prediction at 250 Hz), `img/*.jpg` (overlays) and `raw/` (raw images and ground truth of the first 5 records, for local debugging).
 
 ```bash
 gh run download <run_id> -R fmenegui/ecg-digitalization-classic -D art
 python benchmarks/physionet/diagnose.py art/physionet-eval-<run_id>        # -> decomposition.json
-python benchmarks/physionet/report_html.py art/physionet-eval-<run_id> \
-    --before <artefato_anterior> --findings benchmarks/physionet/diagnostico.html -o relatorio.html
+python benchmarks/physionet/report_html.py art/physionet-eval-<run_id> --before <previous_artifact> -o report.html
 ```
 
-`diagnose.py` mede quanto SNR custa cada tipo de erro: aplica correções "oráculo" cumulativas (cada uma usa o gabarito só para o seu erro) na ordem layout/derivação trocada → trechos vazios → origem do tempo → escala horizontal → distorção horizontal local (janelas de 0,5 s) → ganho → linha de base. O que sobra é erro de forma.
+`diagnose.py` measures how much SNR each kind of error costs. It applies cumulative "oracle" corrections, each using the ground truth only for its own error, in this order: swapped layout/lead → empty stretches → time origin → horizontal scale → local horizontal distortion (0.5 s windows) → gain → baseline. What remains is shape error.
 
-## Quarta rodada (13/11/2026): rastreio e linhas, +0,9 dB nas 135 locais
+## Results
 
-Diagnóstico: depois do oráculo de tempo, ganho e linha de base, 40–48% do erro restante está nos picos, que ficam aquém do verdadeiro. Na imagem, isso vinha de traço íngreme abandonado pelo rastreio e de linhas falsas mudando o layout das fotos.
+The local regression set is 135 images (15 records × 9 captures) saved from these runs. The history of the rounds (3.3 → 14.7 dB) is in [`docs/evaluation-and-roadmap.md`](../../docs/evaluation-and-roadmap.md).
 
-| Mudança | Onde ajuda | Exemplo |
-|---|---|---|
-| Translação rígida: segmentos sobrepostos que andam juntos não pagam a continuidade das bordas (`rigid_edges`) | QRS gigante cruzando linhas | render 10,3 → 29,9 dB |
-| Ponte por tinta contínua entre segmentos no Viterbi (`bridge`) | traço fraco partido em fotos | pequeno, sempre conservador |
-| Ritmo comum entre linhas: linha da ponta sem QRS simultâneos e fora do espaçamento sai (`row_beats`) | fotos de tela, cabeçalho, faixa de grade | 0,5 → 16,7; −6,6 → 6,8 dB |
-| Pulso procurado de novo a partir da margem comum, validado contra os outros (`pulse_retry`) | bordas do pulso partidas | |
-
-135 imagens locais com gabarito: **13,64 → 14,57 dB** (32 melhores, 12 piores, a pior −0,3 dB); nenhum tipo piorou. LITFL e sintéticos idênticos à referência. Testado e descartado: renderização inversa com perfil de pena medido (`fit="lsf"`, −0,6 dB num scan), ordem isotônica na síntese (neutra), deslocamento maior na síntese (−0,2 dB).
-
-O piso da impressão: nos scans, o instante de cada QRS varia ±3 ms por batimento em relação ao gabarito, igual em todas as linhas e em várias capturas da mesma folha, enquanto a grade está certa a ±0,02 mm. É o sinal impresso que saiu deslocado (rasterização antes da impressão), e isso não se recupera da imagem.
-
-Workflow `physionet-shards.yml`: baixa os 20 registros uma vez (cache compartilhado, devagar por causa do limite do Kaggle) e avalia em 4 frentes paralelas.
-
-## Terceira rodada (13/11/2026): leitura do traço, +0,5 dB
-
-Depois da segunda rodada, 84–91% da energia do erro dos scans estava no QRS, com amplitude certa e instante errado (1 coluna = 4 ms). Foram testadas duas ideias:
-
-| Teste | Imagens | Antes | Depois | Estado |
-|---|---|---|---|---|
-| Instante sub-pixel no QRS (`steep_subpx`) | 180 (Kaggle) | 13,23 dB | 13,44 dB | opcional |
-| Ajuste por síntese (`synth`) | 135 (locais) | 13,17 dB | 13,64 dB (105 melhores) | ligado |
-| Ajuste por síntese (`synth`) | 45 (Kaggle) | 14,07 dB | 14,53 dB (31 melhores, 8 piores) | ligado |
-| Os dois juntos | 135 (locais) | 13,17 dB | 13,67 dB | — |
-
-O ajuste por síntese (`ecgdig/synthesis.py`) desenha a curva com um modelo de pena e borrão estimado na própria imagem e desloca cada ponto até o desenho casar com a tinta. Só atua em traço fino (raio ≤ 2 px): na pena grossa e nítida dos sintéticos a gaussiana erra o perfil e baixaria 3–4 dB. Ganho por tipo: render, scans e scans escurecidos +0,8 a +1,0 dB; fotos −0,2 a +0,3 dB. Custo de ~6 s por imagem. LITFL: Einthoven 0,512 → 0,473. Misturar com o batimento médio piorou (−0,1 a −0,9 dB) e não entrou.
-
-## Segunda rodada (13/11/2026, mesmos 20 registros): 11,2 → 13,2 dB
-
-| Tipo de imagem | 1ª rodada | 2ª rodada |
-|---|---|---|
-| 0001 (render) | 21,4 dB | 21,3 dB |
-| 0003 (scan colorido) | 12,1 | 15,2 |
-| 0004 (scan P&B) | 10,8 | 12,4 |
-| 0011 (scan com sujeira) | 12,9 | 15,2 |
-| 0012 (scan escurecido) | 10,7 | 12,7 |
-| 0005 (foto de celular) | 3,7 | 11,3 |
-| 0006 (foto de tela) | 9,0 | 8,3 |
-| 0009 (foto amassada) | 9,1 | 10,0 |
-| 0010 (foto com sombra) | 11,2 | 12,8 |
-| **Todas** | **11,2 dB** | **13,2 dB** |
-
-Métrica oficial reimplementada, na resolução original do gabarito. Layout 3x4+1 reconhecido em 95% das imagens. LITFL sem regressão: estrutura idêntica, Einthoven 0,519 → 0,512. Sintéticos iguais ou melhores.
-
-O que mudou, ponto de partida e motivos em `diagnostico_v2.html`:
-
-1. **Grade de 1 mm indexada linha a linha** (`_major_snap(period_mm=1)` depois do ajuste de 5 mm). É o equivalente clássico da retificação por interseções dos primeiros colocados. A medida é feita no canal em que a grade aparece, com o traço (escuro e neutro) fora dela. O resíduo nos scans caiu de 0,08–0,15 mm para ~0,05 mm. A/B nas 180 imagens: +0,5 dB (`Config(fine_snap=False)` desliga).
-2. **Marca separadora entre derivações:** tratada como um retângulo de largura típica da página e cortada. O trecho escondido é extrapolado com meia inclinação.
-3. **Restrições físicas no rastreio:**
-   - volta à linha de base: um trecho longe da base e plano por > 0,8 s é descartado e o rastreio, refeito;
-   - origem ancorada no pulso;
-   - 50 mm/s só com aval do QRS/RR.
-4. **Fotos:**
-   - pulso procurado até 30 mm do início da linha;
-   - pés da borda de descida tolerantes;
-   - pulsos na mesma coluna (3 mm);
-   - página de 10 s quando o início está nos pulsos e o fim emendou na borda.
-
-Ferramentas: `run.py eval --ids a,b,c` avalia registros específicos e guarda as imagens brutas, útil para atacar falhas. O oráculo de geometria, que registra o scan no render por fluxo óptico, mostrou que a geometria já não é o gargalo dos scans: o que falta está no traçado.
-
-## Primeira rodada (13/11/2026, mesmos 20 registros)
-
-| Tipo de imagem | Antes | Depois |
-|---|---|---|
-| 0001 (render) | 21,4 dB | 21,4 dB |
-| 0003 (scan colorido) | 6,7 | 11,8 |
-| 0004 (scan P&B) | −2,5 | 10,7 |
-| 0011 (scan com sujeira) | 5,5 | 12,6 |
-| 0012 (scan escurecido) | −4,4 | 10,6 |
-| 0005 (foto de celular) | −3,9 | 3,4 |
-| 0006 (foto de tela) | 5,8 | 8,8 |
-| 0009 (foto amassada) | 0,7 | 9,0 |
-| 0010 (foto com sombra) | 0,4 | 10,8 |
-| **Todas** | **3,3 dB** | **11,0 dB** (11,2 na resolução original) |
-
-Antes e depois recalculados com a mesma métrica sobre os sinais a 250 Hz. Layout 3x4+1 reconhecido: 44% → 92%. LITFL e sintéticos sem regressão (LITFL idêntico; heavy 19,4 → 20,3, medium 21,6 → 22,1, fold e mix iguais).
-
-Causas encontradas e correções (detalhes em `diagnostico.html`):
-
-1. **Grade preta** (scans P&B/escurecidos): o molde da grade parava em 30% de transmitância e a linha grossa virava tinta. Agora o molde desce até a linha quando a grade é escura, alargado ±1 px, e as bordas do traço usam só a tinta binarizada.
-2. **Papel deslocado no scanner**: grade fora do lugar em 0,3–1,2 mm numa faixa da folha, ambíguo para a fase de 1 mm. Nova etapa `_major_snap` em `geometry.py` localiza cada linha grossa (5 mm, sem ambiguidade) em faixas de 20 mm. Só atua com desvio de 0,15–0,8 mm e ≥ 6 px/mm.
-3. **Origem do tempo**: com o traço colado ao pulso, só os finais de linha decidiam. O fim do pulso entra como âncora fraca: escolhe o grupo na votação e entra na duração.
-4. **Linhas espúrias nas fotos**: borda da área impressa, cabeçalho isolado e régua de texto colada. Saem quando estão na ponta do bloco, sem pulso, enquanto as outras linhas têm.
-5. **Duração**: quando a mediana dos finais de linha cai num artefato, vale a duração padrão que mais finais confirmam.
-
-## Primeira rodada (12/11/2026, 20 registros, 180 imagens)
-
-| Tipo de imagem | Layout automático | Layout forçado 3x4+1 |
-|---|---|---|
-| 0001 (render limpo) | **21,3 dB** | 20,6 dB |
-| 0003 (scan) | 6,7 | 6,6 |
-| 0004 (scan cinza, ruidoso) | −3,0 | −2,0 |
-| 0005 (foto de celular) | −4,2 | −6,9 |
-| 0006 (foto de tela) | 5,8 | 6,6 |
-| 0009 (foto) | 0,7 | 2,1 |
-| 0010 (foto, papel manchado) | 0,3 | −2,6 |
-| 0011 (scan, manchas) | 5,4 | 5,4 |
-| 0012 (scan cinza, manchas) | −6,6 | −2,9 |
-| **Todas** | **3,2 dB** | **3,0 dB** |
-
-Forçar o layout certo não muda a média: o gargalo nas imagens reais é o sinal, não o layout. Diagnóstico nos 4 primeiros registros (sinais salvos em `sig/` no artefato):
-
-1. **Origem do tempo errada em fotos** (ex.: 994226251-0006 deslocado ~0,2 s): fora da janela de alinhamento, a derivação inteira vira ruído.
-2. **Deriva horizontal local em scans** (ex.: 426433979-0003, V5: alinhado em 8,2 s, −30 ms em 8,9 s, −45 ms em 9,6 s): escala horizontal não uniforme perto da borda, que o polinômio global não pega e o campo por células (com trava de 0,06 mm) não chega a aplicar.
-3. **Amplitude subestimada** nos scans (ajuste predito→verdade 0,8–0,95) e picos de R cortados nas fotos.
-4. **Layout errado em fotos e scans cinza** (6x1, "rows", 3x4+2) quando o layout é automático.
+The printing floor: on scans, the instant of each QRS varies by ±3 ms per beat relative to the ground truth, the same in every row and in several captures of the same sheet, while the grid is right to ±0.02 mm. The printed signal itself came out shifted (rasterization before printing), and no method can recover that from the image.

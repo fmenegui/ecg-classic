@@ -60,22 +60,22 @@ def figure(path, rel, lead, L, meta, out):
 
     img = cv2.cvtColor(_thumb(cv2.imread(str(path))), cv2.COLOR_BGR2RGB)
     dbg = cv2.cvtColor(_thumb(r["debug_image"]), cv2.COLOR_BGR2RGB)
-    fig = plt.figure(figsize=(14, 8.2), dpi=110)
+    fig = plt.figure(figsize=(14, 8.6), dpi=110)
     scen = rel.split("/")[0].replace("augmentation_", "")
-    fig.text(0.015, 0.975, f"{scen} · {Path(rel).stem}", fontsize=14, weight="bold", va="top")
-    fig.text(0.015, 0.94, f"printed format {row['ECG format']} · read as {o['layout']} · "
-             f"mean over 12 leads: SNR {snr:.1f} dB, PCC {pcc:.2f}, failed leads {100 * fail:.0f}%",
+    fig.text(0.015, 0.985, f"{scen} · {Path(rel).stem}", fontsize=14, weight="bold", va="top")
+    fig.text(0.015, 0.95, f"printed format {row['ECG format']} · read as {o['layout']} · "
+             f"mean over 12 leads: SNR {snr:.1f} dB, PCC {pcc:.3f}, failed leads {100 * fail:.0f}%",
              fontsize=11, va="top", color="#333")
-    ax = fig.add_axes([0.01, 0.36, 0.48, 0.55]); ax.imshow(img); ax.axis("off")
+    ax = fig.add_axes([0.01, 0.35, 0.48, 0.52]); ax.imshow(img); ax.axis("off")
     ax.set_title("Input image", fontsize=10, loc="left")
-    ax = fig.add_axes([0.51, 0.36, 0.48, 0.55]); ax.imshow(dbg); ax.axis("off")
+    ax = fig.add_axes([0.51, 0.35, 0.48, 0.52]); ax.imshow(dbg); ax.axis("off")
     ax.set_title("Rectified by the grid + extracted trace (blue)", fontsize=10, loc="left")
     ax = fig.add_axes([0.05, 0.06, 0.92, 0.25])
     t = np.arange(len(g)) / 500.0
     ax.plot(t, g, color="#1f5fbf", lw=1.4, label="ground truth")
     if p is not None:
         ax.plot(t, p, color="#d1342f", lw=1.0, label="ecgdig")
-    ls = f"SNR {per[lead]['snr']:.1f} dB, PCC {per[lead]['pcc']:.2f}" if per[lead] else "not read"
+    ls = f"SNR {per[lead]['snr']:.1f} dB, PCC {per[lead]['pcc']:.3f}" if per[lead] else "not read"
     ax.set_title(f"Lead {lead}: {ls}", fontsize=10, loc="left")
     ax.set_xlabel("s"); ax.set_ylabel("mV"); ax.grid(alpha=0.3); ax.legend(loc="upper right", fontsize=9)
     out.mkdir(parents=True, exist_ok=True)

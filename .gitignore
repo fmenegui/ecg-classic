@@ -1,12 +1,15 @@
 __pycache__/
 *.egg-info/
 .pytest_cache/
-# conjuntos sintéticos gerados (regenerar com python -m ecgdig.synth)
+# generated synthetic sets (regenerate with python -m ecgdig.synth)
 data/
 bench/
 ext/
 *.npz
 
-# benchmark LITFL: imagens baixadas e saídas
+# LITFL benchmark: downloaded images and outputs
 benchmarks/litfl/cache/
 results/
+
+# signals written next to the internet figures (regenerate with scripts/internet_figures.py)
+docs/internet/*.csv
