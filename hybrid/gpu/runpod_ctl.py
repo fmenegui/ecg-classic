@@ -74,7 +74,7 @@ def check():
     print(f"RunPod account ok, balance {me.get('clientBalance')} USD", file=sys.stderr)
 
 
-def start(exclude=()):
+def start(exclude=(), cloud="ALL"):
     check()
     ref = os.environ["REF"]
     env = [{"key": "REF", "value": ref}, {"key": "JOB", "value": os.environ["JOB"]},
@@ -88,7 +88,7 @@ def start(exclude=()):
     last = None
     # more vCPU first: the crops are generated on the CPU and feed the GPU
     for vcpu, g in [(v, g) for v in (16, 8) for g in gpus]:
-        inp = dict(cloudType="ALL", gpuCount=1, volumeInGb=0, containerDiskInGb=60, minVcpuCount=vcpu,
+        inp = dict(cloudType=cloud, gpuCount=1, volumeInGb=0, containerDiskInGb=60, minVcpuCount=vcpu,
                    minMemoryInGb=30, gpuTypeId=g, name=NAME, imageName=IMAGE, dockerArgs=cmd,
                    ports="8000/http", volumeMountPath="/workspace", env=env)
         try:
@@ -98,7 +98,7 @@ def start(exclude=()):
             print(f"{g} ({vcpu} vCPU): {e}", file=sys.stderr)
             continue
         if d and d.get("id"):
-            print(f"started {d['id']} on {g} (>= {vcpu} vCPU), {d.get('costPerHr')} USD/h", file=sys.stderr)
+            print(f"started {d['id']} on {g} (>= {vcpu} vCPU, {cloud} cloud), {d.get('costPerHr')} USD/h", file=sys.stderr)
             print(f"pod_id={d['id']}")
             print(f"gpu={g}")
             return d["id"], g
@@ -151,7 +151,8 @@ def run(out: Path, tries=3):
     """start + follow; a pod whose CUDA does not work is terminated and replaced (up to `tries`)."""
     bad = []
     for _ in range(tries):
-        pod, g = start(exclude=bad[-1:])
+        # after a broken pod: secure cloud (datacenter hosts), where CUDA has always worked
+        pod, g = start(cloud="SECURE" if bad else "ALL")
         os.environ["POD_ID"] = pod
         Path("pod_ids.txt").open("a").write(pod + "\n")
         if follow(out) != "nogpu":
