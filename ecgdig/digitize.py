@@ -403,6 +403,15 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
     return gaps
 
 
+def _grid_clean(B, R):
+    """B without the straight grid pieces (row extents must not run along a leaked grid line
+    to the frame); B itself when the switch is off."""
+    if not EXT_GRIDCLEAN[0]:
+        return B
+    from .extract import GRID_SEGS, clean_grid_segments
+    return clean_grid_segments(B, R) if GRID_SEGS[0] else B
+
+
 def _mid_pulse_cuts(B, rows, ext, half, R):
     """Calibration pulses printed again at the start of each column (a pulse between the
     columns of every row): [(x0, x1)] stretches to remove (pulse + blank margins), or None.
@@ -608,7 +617,7 @@ def _rows_pulses(B, pap, R, rows_hint=None):
             peaks = peaks[~near]
     spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else 40 * R
     half = 0.45 * spacing
-    ext = [row_extent(B, y, half, R) for y in peaks]
+    ext = [row_extent(Bb if EXT_GRIDCLEAN[0] else B, y, half, R) for y in peaks]
     pulses = []
     starts = [e[0] for e in ext if e]
     xs_med = float(np.median(starts)) if starts else None
@@ -720,6 +729,8 @@ EDGE_PULSE_HEIGHT = [True]
 PULSE_COL_LEFT = [True]
 HALF_ALONE = [True]
 MID_PULSE_CUT = [True]
+# row extents measured without the straight grid pieces left in the binary map
+EXT_GRIDCLEAN = [False]
 _PULSE_RETRY = [True]
 RIGHT_ANCHOR = [True]
 ORIENT_T = [True]
@@ -1358,7 +1369,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                 ya_, yb_ = max(0, int(f_ - 1.5 * R)), int(f_ + 3 * R)
                 B[ya_:yb_, xa_:int(xb_ + 3 * R)] = False
                 D[ya_:yb_, xa_:int(xb_ + 3 * R)] = 0
-            ext = [row_extent(B, y, half, R) for y in rows]
+            ext = [row_extent(_grid_clean(B, R), y, half, R) for y in rows]
     # common gap between columns: every row without ink in the same x range, at positions that
     # split the trace into equal columns. Time is continuous from one column to the next, so
     # the gap is removed from the image (B, D and the rectified one) and the rest sees a continuous trace
@@ -1375,7 +1386,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             H, W = B.shape
             cum_ = np.cumsum(keep_x)
             col_cut = [float(cum_[max(0, a_ - 1)]) for a_, _ in cg]  # cut x in the new image
-            ext = [row_extent(B, y, half, R) for y in rows]
+            ext = [row_extent(_grid_clean(B, R), y, half, R) for y in rows]
             pulses = [None if p is None else _shift_pulse(p, keep_x) for p in pulses]
     # pulse at the END of the row (several devices print the calibration on the right, or on
     # both sides): searched in the mirrored image; used only for gain, not for the time axis

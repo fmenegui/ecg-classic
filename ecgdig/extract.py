@@ -37,6 +37,8 @@ def _bg(ch, R):
 
 TEMPLATE_MM = [10.0]
 TEMPLATE_AUTO = [True]
+TEMPLATE_THIN = [True]
+TEMPLATE_ERODE = [0]
 GLEV_RELATIVE = [False]
 # coloured trace on an achromatic grid (blue pen on a black/grey grid): the brightest channel
 # makes the trace vanish; the chroma (max - min channel) shows it and drops the grid
@@ -115,7 +117,10 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
         r5 = _tmpl(P5)
         if P == 2 * P5:
             d = np.abs(tmpl - np.tile(r5[4], (2, 2)))
-            if float(np.percentile(d, 95)) < 0.08:
+            # (a thin 10 mm line darker than the 5 mm one covers ~1% of the tile and the 95th
+            # percentile misses it: compare the darkest line of each template)
+            thin10 = TEMPLATE_THIN[0] and float(tmpl.min()) < float(r5[4].min()) - 0.08
+            if float(np.percentile(d, 95)) < 0.08 and not thin10:
                 P = P5
                 ny, nx, blk, pm, tmpl = r5
     # dark grid (B&W scan, photocopy): the major lines are as black as the trace. The template
@@ -165,6 +170,11 @@ def ink_map(rect: np.ndarray, paper: np.ndarray, R: float, return_grid_level: bo
         # dark grid (B&W scan): the template must cover the small position error of the
         # lines (±1 px) or their edges leak as ink
         T = cv2.erode(T.astype(np.float32), np.ones((3, 3), np.uint8))
+    elif TEMPLATE_ERODE[0] > 0:
+        # photos: the lines wander by a fraction of a mm around the template (lens, paper):
+        # the template covers that error, or the line edges leak as ink and raise the threshold
+        k_ = 2 * TEMPLATE_ERODE[0] + 1
+        T = cv2.erode(T.astype(np.float32), np.ones((k_, k_), np.uint8))
     D = 1.0 - np.clip(t / T, 0, 1)
     pe = cv2.erode(paper.astype(np.uint8), np.ones((int(2 * R), int(2 * R)), np.uint8))
     D[pe == 0] = 0
