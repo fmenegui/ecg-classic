@@ -63,6 +63,33 @@ def _col_rows(B, R, xa, xb):
     return pk
 
 
+EQUAL_SPLIT = [True]
+
+
+def _equal_split(B, R, ya, yb, lr):
+    L, Rr = lr
+    P = B[ya:yb].sum(0).astype(np.float64)
+    for k in (4, 2):
+        w = (Rr - L) / k
+        if w < 40 * R:
+            continue
+        cuts = [0]
+        for i in range(1, k):
+            x = L + i * w
+            a, b = int(x - 4 * R), int(x + 4 * R)
+            cuts.append(a + int(np.argmin(P[a:b])))
+        cuts.append(B.shape[1])
+        cols = [(cuts[i], cuts[i + 1]) for i in range(k)]
+        pks = [_col_rows(B, R, a, b) for a, b in cols]
+        n = len(pks[0])
+        if n >= 2 and all(len(p) == n for p in pks):
+            P_ = np.array(pks, float)
+            dl = np.median(P_, 0)[None, :] - P_
+            if np.abs(dl).max() >= 3 * R:
+                return cols
+    return None
+
+
 def col_align(rect, pap, D, B, R):
     """Devolve (rect, pap, D, B, info) realinhados, ou as entradas e None."""
     if not ENABLED[0]:
@@ -74,16 +101,26 @@ def col_align(rect, pap, D, B, R):
         return rect, pap, D, B, None
     ya, yb = int(ys[0]), int(ys[-1]) + 1
     gaps, lr = _gaps(B, R, ya, yb)
+    cols = None
     if gaps and _equal_columns(gaps, lr[0], lr[1], R):
         cuts = [0] + [int(0.5 * (a + b)) for a, b in gaps] + [W]
         cols = [(cuts[i], cuts[i + 1]) for i in range(len(cuts) - 1)]
-        inner = cols
-    else:
+        pks = [_col_rows(B, R, a, b) for a, b in cols]
+        n = len(pks[0])
+        if n < 2 or any(len(p) != n for p in pks):
+            cols = None
+    if cols is None and EQUAL_SPLIT[0] and lr is not None:
+        # sem vão em toda a altura (traço que emenda entre colunas, tira de ritmo embaixo):
+        # hipóteses de colunas de mesma largura (4 e 2), corte no mínimo de tinta perto da
+        # posição nominal; vale se todas as colunas tiverem o mesmo número de linhas
+        cols = _equal_split(B, R, ya, yb, lr)
+        if cols is None:
+            return rect, pap, D, B, None
+        pks = [_col_rows(B, R, a, b) for a, b in cols]
+        n = len(pks[0])
+    if cols is None:
         return rect, pap, D, B, None
-    pks = [_col_rows(B, R, a, b) for a, b in inner]
-    n = len(pks[0])
-    if n < 2 or any(len(p) != n for p in pks):
-        return rect, pap, D, B, None
+    inner = cols
     P = np.array(pks, float)              # (colunas, linhas)
     ref = np.median(P, 0)
     dl = ref[None, :] - P
