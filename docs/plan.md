@@ -4,8 +4,8 @@
 
 | Target | Now (`43cb3a6`) | Goal |
 |---|---|---|
-| PM-ECG-ID, whole database: SNR / PCC / failed leads | 7.91 dB / 0.656 / 15.3% | **> 12.5 dB / > 0.91 / < 6.6%** (PMcardio) |
-| PhysioNet (Kaggle) training images, 135 local | 14.68 dB | > 19.7 dB (24th place), then ~22.7 dB (top reports) |
+| PM-ECG-ID, whole database: SNR / PCC / failed leads | 7.91 dB / 0.656 / 15.3% → **8.51 / 0.686 / 13.6%** (`2c941fa`) | **> 12.5 dB / > 0.91 / < 6.6%** (PMcardio) |
+| PhysioNet (Kaggle) training images, 135 local | 14.68 → 14.70 dB | > 19.7 dB (24th place), then ~22.7 dB (top reports) |
 
 **Where the gap is.** Format read wrong on 27% of single-page ECGs costs ~3.2 dB: ~1.6 dB in normal scenarios (structural; 10 ECGs account for 304 of 861 failures) and ~1.5 dB in extreme degradations. With the format right the mean is 11.5 dB and 41% of leads are below 10 dB, so the tracing must also improve to pass 12.5 dB. On PhysioNet the format is already right on ~95% of images; its gap is the tracing.
 
@@ -41,3 +41,9 @@
 11. Same decomposition on the 135 images: on scans the gap is the QRS instant and peak amplitude (printing floor ±3 ms); on photos the geometry and lighting.
 
 **Milestones:** A done → B → C → D measured on the whole database after each item; E starts when the format is right on ≥ 85% of single-page ECGs.
+
+## Progress (16/11/2026)
+
+- **A done.** Oracle run: forcing the printed format does not raise the SNR (7.91 → 7.91; −0.4 → −0.2 dB on the wrong-format pages). The wrong pages fail in the measurements under the format, so item D (weights) is dropped for now and the work moved to rows, pulses, gain, time origin and ink map. Details and fixes: [`evaluation-and-roadmap.md` §6b](evaluation-and-roadmap.md).
+- **B partly done:** rows 3–8 mm apart, false half pulses, pulses between columns, wide margins, four columns that are two, tracking baseline off the pulse. Joint tracking of crossing traces is still open.
+- **Next:** robustness of the same structure under degradation (JPEG, brightness, photos: desaturated coloured traces, black grid leaking into the binary map, labels touching the trace in the column gap), then the joint tracker.

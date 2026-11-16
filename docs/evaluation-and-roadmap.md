@@ -6,9 +6,10 @@
 
 | Benchmark | Start | Now | Reference |
 |---|---|---|---|
-| PM-ECG-ID, whole database (5,994–6,000 ECGs): SNR / PCC / failed leads | 6.99 dB / 0.591 / 22.2% (`7a60059`) | **7.91 dB / 0.656 / 15.3%** (`43cb3a6`) | PMcardio, published: > 12.5 dB / > 0.91 / 6.62% |
-| PM-ECG-ID, `photos_scans` (100 ECGs, desk scanner) | 11.5 dB / PCC 0.752 | 14.1 dB / PCC 0.875 | (whole-database reference above) |
-| PhysioNet (Kaggle) training images, 135 local (15 records × 9 captures) | 3.3 dB | **14.68 dB** | a deep-learning entry ranked 24th of 1,425: 19.7 dB (private leaderboard) |
+| PM-ECG-ID, whole database (5,994–6,000 ECGs): SNR / PCC / failed leads | 6.99 dB / 0.591 / 22.2% (`7a60059`) | **8.51 dB / 0.686 / 13.6%** (`2c941fa`) | PMcardio, published: > 12.5 dB / > 0.91 / 6.62% |
+| PM-ECG-ID, `photos_scans` (100 ECGs, desk scanner) | 11.5 dB / PCC 0.752 | 14.8 dB / PCC 0.917 | (whole-database reference above) |
+| PM-ECG-ID, `digital_data_opacity_1` (100 clean digital pages) | 17.2 dB (`43cb3a6`) | 18.1 dB | |
+| PhysioNet (Kaggle) training images, 135 local (15 records × 9 captures) | 3.3 dB | **14.70 dB** | a deep-learning entry ranked 24th of 1,425: 19.7 dB (private leaderboard) |
 | LITFL real pages: layout / rhythm strips / layout+speed+duration+gain / Einthoven residual | 92.2 / 87.9 / 83.3% / 0.62 (102 pages) | 92.9 / 94.0 / 91.4% / 0.45 (the 70 pages the site served to CI) | hand-reviewed reference |
 | Synthetic (exact ground truth): medium / heavy / fold | 21.6 / 16.7 / 9.7 dB | 21.6 / 19.4 / 18.1 dB | — |
 
@@ -109,6 +110,36 @@ Whole-database runs (paired on the same ECGs; each fix was also checked by turni
 
 Switches tested and left off: the row's own QRS masked as boundary evidence (`BND_OWN_QRS`: +0.08 dB on the pre-merge sample, but it also masks separator marks the tracker followed, and a 6x2 page fell from 10.9 to −0.9 dB after the merge); a loose "I" bar never contradicting a lead name (+0.02 dB on PM-ECG-ID, −0.03 dB on PhysioNet; removed); erasing pulse columns in the middle of the trace (rotation_35 img_41: 7.6 → −0.2 dB; removed); grid-segment cleanup also for tracking (removed); extending the paper mask to the gridded area (−0.13 dB).
 
+## 6b. Measurements under the format (16/11/2026, plan item A)
+
+**Layout oracle.** A whole-database run with the printed format forced on every page (`eval_pm.py --oracle-layout`, run 43859703555) gave the same mean as the automatic choice (7.91 dB; failed leads 15.3% → 8.6%). On the 1,591 single-page ECGs read in the wrong format, forcing the right one moved the mean from −0.4 to −0.2 dB; 1,319 of them stayed below 2 dB. The format decision is a symptom: on those pages the rows, the pulses, the gain, the time origin or the ink map are already wrong. The layout scoring weights (plan item D) were therefore left alone, and the work went into the measurements. `results.json` now carries a per-page diagnosis (rows found, ranking, columns, pulses, orientation, speed, gain).
+
+| Cause (clean digital page of the ECG) | Fix | Clean page |
+|---|---|---|
+| Blue trace on a black grid: the brightest channel erases the trace and keeps the grid | chroma ink map when the periodic part is achromatic and strong chromatic ink reaches most columns, 5 mm inside the sheet (`CHROMA_TRACE`) | ECG 79: −3.8 → 19.8 dB |
+| 18 mm margin between the two columns of a 6x2 | rows chained across margins up to 25 mm when the next stretch is long; column gaps up to 25 mm; gap span from the quartiles of the row starts and ends (`ROW_CHAIN_WIDE`, `GAP_WIDE`, `GAP_ROBUST_LR`) | (ECG 79, with the line above) |
+| 12x1 rows placed 3–8 mm apart, two merged per coverage peak | second coverage line with a deep valley; kept on coverage even with low trace-likeness (`ROWS_CLOSE`, `TL_COVER`) | ECG 70: 0 → 16.4 dB |
+| A deep S after a flat baseline read as a "half pulse": wrong gain and time origin | the trace must run on at the foot after the falling edge; away from 10 mm/mV a half pulse needs two agreeing rows; the edge-row rule and the pulse column check height and position (`HALF_PULSE_END`, `HALF_ALONE`, `EDGE_PULSE_HEIGHT`, `PULSE_COL_LEFT`) | ECG 17: 0.5 → 15.0; ECG 97: 2.5 → 22.4 dB |
+| Calibration pulse printed again at the start of the second column | cut out like a column gap (`MID_PULSE_CUT`) | ECG 13: 11.0 → 20.7 dB |
+| Four equal columns whose halves share the rows (a 6x2 with its own heights per half) | split in two (`PAIR_MERGE`) | ECG 23: −2.3 → 11.2 dB |
+| Pulse drawn on the nominal row, trace offset by its DC level: the tracker's baseline prior 5 mm off, drifting to the neighbour | tracking prior from the trace's own line; pulse rows snapped to the projection line (`TRACK_BASE_TRACE`, `PULSE_ROWS_SNAP`) | ECG 6: 3.8 → 10.2 dB |
+| Thin dark 10 mm lines averaged away by the 5 mm grid template | the 10 mm template stays when its darkest line is clearly darker (`TEMPLATE_THIN`) | |
+| Leaked vertical grid pieces turning a landscape page 90°; weak 0/180 decisions flipping upright pages | 90° only with ≥ 150 mm of standing traces on the grid-cleaned map; a weak first flip gets no head start (`ORIENT_WIGGLE`, `ORIENT_KEEP_DEFAULT`) | |
+| Degenerate homography (sheet kilometres wide or a few cm) | rotation and scale only (`geometry.H_FALLBACK`) | ECG 73: 0 → 26.6 dB |
+| Two pages per ECG, 3 rows × 2 columns | layouts `3x2-limb` and `3x2-prec` | |
+
+| Run | Commit | SNR / PCC / failed | Notes |
+|---|---|---|---|
+| diag0 | `f21caff` | 7.92 / 0.656 / 15.3% | baseline with the diagnosis |
+| oracle0 | `f21caff` | 7.91 / 0.684 / 8.6% | printed format forced |
+| dev1 | `cd6b4c0` | 8.20 | chroma, wide margins, close rows, half pulses, mid-row pulses |
+| dev3 | `d944b15` | 8.29 | + pair merge, 3x2, close rows on coverage |
+| dev6 | `2c941fa` | **8.51 / 0.686 / 13.6%** | + tracking baseline, orientation, chroma guards; 815 ECGs up > 1 dB, 360 down vs diag0 |
+
+Format read correctly on 74% of the single-page ECGs (72% before); those pages average 11.65 dB. PhysioNet 135: 14.70 dB (no regression). Left off after measuring: a filter of straight-line rows in the column matching (broke black 10 mm grids), row extents on the grid-cleaned map, template erosion.
+
+The remaining deficit is mostly robustness of the same structure under degradation: ECGs that give 20 dB on the clean page fall to 3–6 dB in JPEG, brightness or photo scenarios (blue trace desaturated, black grid leaking into the binary map, labels touching the trace in the column gap), and pages whose QRS cross three or four rows (ECGs 45, 53), which need the joint tracker.
+
 ## 7. What still fails
 
 | Family | Symptom |
@@ -124,4 +155,4 @@ Switches tested and left off: the row's own QRS masked as boundary evidence (`BN
 
 The current plan is in [`docs/plan.md`](plan.md): format and structure first (rows that cross, invented or missing rows, grey-level OCR, column boundaries, calibrated layout decision), then the tracing on pages read right. The hybrid waits. Every change goes through the whole PM-ECG-ID database (paired), the 135 PhysioNet images and LITFL, because a single page moves by several dB with a 1% resize and every change moves hundreds of ECGs in both directions.
 
-The per-scenario tables of each whole-database run are in [`docs/results/`](results/).
+The per-scenario tables of each whole-database run are in [`docs/results/`](results/) (latest: [`pm-ecg-id-2c941fa.md`](results/pm-ecg-id-2c941fa.md)).
