@@ -428,6 +428,8 @@ def clean_grid_segments(B, R, L_mm=8.0, frac=0.03, axes=(1, 0)):
 
 
 ROWS_CLOSE = [True]
+OTHERS_NEARER = [True]
+OTHERS_PEN = [0.5]
 HALF_PULSE_END = [True]
 
 
@@ -803,6 +805,9 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
     mx = [max(m for (_, _, _, m) in col) for col in runs if col]
     m_ref = float(np.median(mx)) if mx else 1.0
 
+    _near = bool(OTHERS_NEARER[0])
+    _pen = float(OTHERS_PEN[0])
+
     def emis(t, b, c, m):
         # distance from the interval to the baseline (0 if the segment crosses it)
         dm = max(0.0, t - base, base - b) / R
@@ -811,10 +816,12 @@ def viterbi_track(runs, base, R, w_base=0.004, c_gap=1.0, others=(), lw=None, w_
         e = min(w_base * dm * dm, 0.1)
         # flat stretch on top of ANOTHER lead's baseline = neighbouring trace.
         # (a tall R crosses the neighbouring row vertically: tall segment, no penalty)
-        if others and (b - t) <= flat_h and dm > 6:
+        if others and (b - t) <= flat_h and (dm > 6 or _near):
             for ob in others:
-                if abs(c - ob) < 4 * R:
-                    e += 0.5
+                # (rows packed 3-8 mm apart: the neighbour's baseline is under 6 mm away; a
+                # flat stretch nearer to it than to the own baseline is the neighbour's)
+                if abs(c - ob) < 4 * R and (dm > 6 or abs(c - ob) < abs(c - base) - R):
+                    e += 0.5 if dm > 6 else _pen
                     break
         if (b - t) / R > 30:
             e += 5.0
