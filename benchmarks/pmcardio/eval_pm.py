@@ -71,7 +71,8 @@ def _diag(r):
                 rotation=r.get("rotation"), pulses=r.get("pulses_found"), pulses_right=r.get("pulses_right"),
                 speed=r.get("speed_mm_per_s"), speed_src=r.get("speed_source"), duration=f(r.get("duration_s")),
                 gain=f(r.get("gain_mm_per_mv")), ppmm=f(r.get("ppmm")), angle=f(r.get("angle")),
-                pulses_ratio=f(q.get("pulses_ratio")))
+                pulses_ratio=f(q.get("pulses_ratio")),
+                hybrid={k: v for k, v in (r.get("hybrid") or {}).items() if k != "errors"} or None)
 
 
 def _digitize(job):
