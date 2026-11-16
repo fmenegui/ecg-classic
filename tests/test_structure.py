@@ -53,7 +53,11 @@ def test_col_align_realinha_sem_sobrepor():
     D = B.astype(np.float32)
     rect = np.full(B.shape + (3,), 255, np.uint8)
     pap = np.ones(B.shape, np.uint8)
-    _, _, _, B2, info = colalign.col_align(rect, pap, D, B, R)
+    colalign.STRUCT_FIRST[0] = True       # o caminho dos trilhos (por padrão vem depois das larguras iguais)
+    try:
+        _, _, _, B2, info = colalign.col_align(rect, pap, D, B, R)
+    finally:
+        colalign.STRUCT_FIRST[0] = False
     assert info is not None and info["how"] == "trilhos"
     ref = np.array(info["ref"])
     assert np.diff(ref).min() >= 240                   # intervalo = o maior entre as colunas

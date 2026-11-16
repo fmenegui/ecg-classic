@@ -37,6 +37,7 @@ DROP_LIMB_GAIN = [0.25]
 DROP_NEAR = [0.88]
 if STRIPS3[0]:
     FAMILIES += ["3x1-limb", "3x1-aug", "3x1-v13", "3x1-v46"]
+OCR_QRS_BARS = [True]
 FRACS = {1: [], 2: [0.5], 3: [1 / 3, 2 / 3], 4: [0.25, 0.5, 0.75]}
 W_OCR, W_BND, W_LIMB, W_DUP = 4.0, 1.5, 15.0, 3.0
 _UNEXPLAINED = [True]
@@ -182,6 +183,10 @@ class Ctx:
         # texto = componentes pequenas e isoladas (não encostam no traço) + tinta fora do
         # caminho do traço (rótulo que encosta num QRS).
         Bt = self.B
+        from .extract import GRID_SEGS, clean_grid_segments
+        if GRID_SEGS[0]:
+            # pedaços de grade monocromática grudados nas letras desfazem a componente isolada
+            Bt = clean_grid_segments(Bt, R)
         n_, lab, st, _ = cv2.connectedComponentsWithStats(Bt.astype(np.uint8), connectivity=8)
         small = (st[:, cv2.CC_STAT_WIDTH] < 25 * R) & (st[:, cv2.CC_STAT_HEIGHT] < 9 * R)
         small[0] = False
@@ -193,6 +198,13 @@ class Ctx:
                 pulse_m[max(0, int(top) - 3):int(p["foot"]) + 4, max(0, p["x_start"] - 3):p["x_end"] + 4] = True
         iso = small[lab] & ~pulse_m
         txt = (iso | (Bt & ~tm)) & ~pulse_m
+        if OCR_QRS_BARS[0]:
+            # linha vertical longa (separador de coluna tracejado, borda) colada ao rótulo faz a
+            # palavra passar da altura máxima e sumir: traços verticais > 6 mm não são letra
+            lv = cv2.morphologyEx(txt.astype(np.uint8), cv2.MORPH_OPEN,
+                                  np.ones((max(3, int(6 * R)), 1), np.uint8)) > 0
+            if lv.any():
+                txt = txt & ~cv2.dilate(lv.astype(np.uint8), np.ones((1, 3), np.uint8)).astype(bool)
         words = []
         for w in ocr.find_words(txt, R):
             x0, y0, x1, y1 = w
@@ -256,6 +268,16 @@ class Ctx:
                 dk = float(np.percentile(self.D[box[1]:box[3], box[0]:box[2]][win[y0:y1, x0:x1]], 90))
                 words.append(dict(box=box, row=r, x=box[0], dist=d, best=max(d.values()), h=y1 - y0,
                                   single=False, dark=dk))
+        if OCR_QRS_BARS[0]:
+            # barras soltas lidas como "I" repetidas ao longo de uma linha são QRS finos (pico
+            # isolado do traço partido), não rótulos: um rótulo aparece uma vez por segmento.
+            # Com >= 3 numa linha, ficam só as do começo da linha.
+            for r in range(self.n):
+                sg = [w for w in words if w["row"] == r and w.get("single")]
+                if len(sg) >= 3:
+                    xs = float(self.x_of(r, 0.0))
+                    drop = {id(w) for w in sg if w["box"][0] > xs + 3 * R}
+                    words = [w for w in words if id(w) not in drop]
         return words
 
     def label_near(self, r, x_mm_lo, x_mm_hi, x_ref_mm=None):

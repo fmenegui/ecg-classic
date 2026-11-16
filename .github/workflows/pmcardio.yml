@@ -12,6 +12,11 @@ on:
         required: false
         default: 'run'
         type: string
+      flags:
+        description: 'Chaves de ablação, ex.: "digitize.GAP_IGNORE_TEXT=False;geometry.PAPER_QUAD=False" (opcional)'
+        required: false
+        default: ''
+        type: string
       per_scenario:
         description: 'ECGs por cenário (0 = base inteira)'
         required: false
@@ -36,6 +41,8 @@ jobs:
       - name: Baixar a fatia (Zenodo, por faixas)
         run: python benchmarks/pmcardio/fetch.py --out data/pm --shard ${{ matrix.part }} --nshards 20 --per-scenario ${{ inputs.per_scenario }}
       - name: Avaliar
+        env:
+          ECGDIG_FLAGS: ${{ inputs.flags }}
         run: |
           ARGS=""
           for kv in ${{ inputs.config }}; do ARGS="$ARGS --config $kv"; done

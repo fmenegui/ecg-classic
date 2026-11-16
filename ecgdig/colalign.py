@@ -19,6 +19,7 @@ from scipy.signal import find_peaks
 
 ENABLED = [True]
 STRUCT = [True]     # estrutura por trilhos quando não há vãos em branco entre as colunas
+STRUCT_FIRST = [False]   # trilhos antes da hipótese de colunas de mesma largura
 
 
 def _gaps(B, R, ya, yb):
@@ -62,6 +63,33 @@ def _col_rows(B, R, xa, xb):
         return np.array([], int)
     pk, _ = find_peaks(cov, distance=int(8 * R), height=0.35 * cov.max(), prominence=0.15 * cov.max())
     return pk
+
+
+EQUAL_SPLIT = [True]
+
+
+def _equal_split(B, R, ya, yb, lr):
+    L, Rr = lr
+    P = B[ya:yb].sum(0).astype(np.float64)
+    for k in (4, 2):
+        w = (Rr - L) / k
+        if w < 40 * R:
+            continue
+        cuts = [0]
+        for i in range(1, k):
+            x = L + i * w
+            a, b = int(x - 4 * R), int(x + 4 * R)
+            cuts.append(a + int(np.argmin(P[a:b])))
+        cuts.append(B.shape[1])
+        cols = [(cuts[i], cuts[i + 1]) for i in range(k)]
+        pks = [_col_rows(B, R, a, b) for a, b in cols]
+        n = len(pks[0])
+        if n >= 2 and all(len(p) == n for p in pks):
+            P_ = np.array(pks, float)
+            dl = np.median(P_, 0)[None, :] - P_
+            if np.abs(dl).max() >= 3 * R:
+                return cols
+    return None
 
 
 def _win_peaks(B, R, xa, xb, ya, yb, dist_mm=3.5, with_height=False):
@@ -245,7 +273,12 @@ def col_struct(B, R, win_mm=20.0, step_mm=5.0, link_mm=1.5, min_len_mm=30.0):
 
 
 def col_align(rect, pap, D, B, R):
-    """Devolve (rect, pap, D, B, info) realinhados, ou as entradas e None."""
+    """Devolve (rect, pap, D, B, info) realinhados, ou as entradas e None.
+
+    Três jeitos de achar as colunas, nesta ordem: vãos em branco em toda a altura ("vaos"),
+    hipótese de 4 ou 2 colunas de mesma largura ("iguais") e trilhos de linha de base que
+    começam e acabam nas trocas de coluna ("trilhos", `col_struct`). STRUCT_FIRST põe os
+    trilhos antes das larguras iguais."""
     if not ENABLED[0]:
         return rect, pap, D, B, None
     H, W = B.shape
@@ -255,31 +288,46 @@ def col_align(rect, pap, D, B, R):
         return rect, pap, D, B, None
     ya, yb = int(ys[0]), int(ys[-1]) + 1
     gaps, lr = _gaps(B, R, ya, yb)
-    if gaps and _equal_columns(gaps, lr[0], lr[1], R):
-        cuts = [0] + [int(0.5 * (a + b)) for a, b in gaps] + [W]
-        cols = [(cuts[i], cuts[i + 1]) for i in range(len(cuts) - 1)]
-        inner = cols
-    else:
-        cols = None
-    P = None
-    if cols is not None:
-        pks = [_col_rows(B, R, a, b) for a, b in inner]
-        n = len(pks[0])
-        if n >= 2 and all(len(p) == n for p in pks):
-            P = np.array(pks, float)              # (colunas, linhas)
-            ref = np.median(P, 0)
-            dl = ref[None, :] - P
-            sp = float(np.median(np.diff(ref)))
-            if np.abs(dl).max() < 3 * R or sp < 8 * R or np.abs(dl).max() > 1.5 * sp:
-                P = None                          # nada a fazer, ou casamento duvidoso
-    how = "vaos"
-    if P is None and STRUCT[0]:
-        # sem vãos em branco (grade escura, rótulo ou QRS no vão): estrutura pelos trilhos
+
+    def _plain():
+        """Vãos e larguras iguais: (cols, P, como) ou None."""
+        cols, how = None, "vaos"
+        if gaps and _equal_columns(gaps, lr[0], lr[1], R):
+            cuts = [0] + [int(0.5 * (a + b)) for a, b in gaps] + [W]
+            cols = [(cuts[i], cuts[i + 1]) for i in range(len(cuts) - 1)]
+            pks = [_col_rows(B, R, a, b) for a, b in cols]
+            n = len(pks[0])
+            if n < 2 or any(len(p) != n for p in pks):
+                cols = None
+        if cols is None and EQUAL_SPLIT[0] and lr is not None:
+            # sem vão em toda a altura (traço que emenda entre colunas, tira de ritmo embaixo):
+            # hipóteses de colunas de mesma largura (4 e 2), corte no mínimo de tinta perto da
+            # posição nominal; vale se todas as colunas tiverem o mesmo número de linhas
+            cols = _equal_split(B, R, ya, yb, lr)
+            how = "iguais"
+            if cols is None:
+                return None
+            pks = [_col_rows(B, R, a, b) for a, b in cols]
+        if cols is None:
+            return None
+        P = np.array(pks, float)              # (colunas, linhas)
+        ref = np.median(P, 0)
+        dl = ref[None, :] - P
+        sp = float(np.median(np.diff(ref)))
+        if np.abs(dl).max() < 3 * R or sp < 8 * R:
+            return None
+        if np.abs(dl).max() > 1.5 * sp:       # deslocamento maior que uma linha: casamento duvidoso
+            return None
+        return cols, P, how
+
+    def _tracks():
+        """Sem vãos em branco (grade escura, rótulo ou QRS no vão): estrutura pelos trilhos."""
+        if not STRUCT[0]:
+            return None
         st = col_struct(B, R)
         if st is None:
-            return rect, pap, D, B, None
+            return None
         cols, P = st
-        how = "trilhos"
         # diferença pequena entre as colunas (< 40% do passo) e as linhas de sempre já saem
         # certas: a extração dá conta sozinha (faixa larga + linha de base por trecho), e
         # realinhar só arriscaria fatiar um QRS grande na emenda das faixas
@@ -288,11 +336,19 @@ def col_align(rect, pap, D, B, R):
         if len(pk0) == P.shape[1] and len(pk0) >= 2:
             sp0 = float(np.median(np.diff(pk0)))
             if np.abs(P - pk0[None, :]).max() <= 0.4 * sp0:
-                return rect, pap, D, B, None
-    if P is None:
+                return None
+        return cols, P, "trilhos"
+
+    got = None
+    for f in ((_tracks, _plain) if STRUCT_FIRST[0] else (_plain, _tracks)):
+        got = f()
+        if got is not None:
+            break
+    if got is None:
         return rect, pap, D, B, None
+    cols, P, how = got
     n = P.shape[1]
-    if how == "vaos":
+    if how != "trilhos":
         ref = np.median(P, 0)
         H2 = H
     else:

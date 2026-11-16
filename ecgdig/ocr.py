@@ -256,16 +256,59 @@ def _trim_marks(mask: np.ndarray):
     return m[rr[0]:rr[-1] + 1]
 
 
+OCR_TRIM_BARS = [True]
+
+
+def _trim_bars(mask: np.ndarray):
+    """Variantes sem barras finas nas pontas: separador de coluna ('|V2'), marca de troca de
+    derivação ou linha tracejada vertical colada ao rótulo. Até 3 de cada lado."""
+    colp = mask.any(0)
+    nz = np.nonzero(colp)[0]
+    if len(nz) == 0:
+        return []
+    runs, a = [], nz[0]
+    for i in range(1, len(nz)):
+        if nz[i] != nz[i - 1] + 1:
+            runs.append((a, nz[i - 1])); a = nz[i]
+    runs.append((a, nz[-1]))
+    if len(runs) < 2:
+        return []
+    H = mask.shape[0]
+    thin = [(b - a + 1) <= max(2, 0.3 * H) for a, b in runs]
+    out = []
+    for i0 in range(0, min(3, len(runs) - 1) + 1):
+        if i0 and not thin[i0 - 1]:
+            break
+        for i1 in range(len(runs) - 1, max(i0, len(runs) - 4), -1):
+            if i1 < len(runs) - 1 and not thin[i1 + 1]:
+                break
+            if i0 == 0 and i1 == len(runs) - 1:
+                continue
+            m = mask[:, runs[i0][0]:runs[i1][1] + 1]
+            rr = np.nonzero(m.any(1))[0]
+            if len(rr) and m.sum() >= 10:
+                out.append(m[rr[0]:rr[-1] + 1])
+    return out
+
+
 def read_label(mask: np.ndarray) -> dict:
     """Palavra inteira + refinamento do último caractere para as famílias V* e aV*.
-    Se a leitura for fraca, tenta de novo sem marcas baixas nas pontas (setas, pontos)."""
+    Se a leitura for fraca, tenta de novo sem marcas baixas nas pontas (setas, pontos) e
+    sem barras finas nas pontas (separador de coluna, marca de troca de derivação)."""
     d = _read_label(mask)
     if not d or max(d.values()) < 0.5:
         t = _trim_marks(mask)
         if t is not None and t.sum() >= 10:
             d2 = _read_label(t)
             if d2 and (not d or max(d2.values()) > max(d.values())):
-                return d2
+                d = d2
+    if OCR_TRIM_BARS[0] and (not d or max(d.values()) < 0.5):
+        for t in _trim_bars(mask):
+            d2 = _read_label(t)
+            # exige leitura clara: a variante aparada não pode virar "I" (uma barra só)
+            if d2 and max(d2.values()) >= 0.5 and list(d2) != ["I"] and \
+                    (not d or max(d2.values()) > max(d.values())):
+                d = d2
     return d
 
 

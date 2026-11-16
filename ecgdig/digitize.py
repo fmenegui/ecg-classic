@@ -345,12 +345,25 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
     if Rr - L < 60 * R:
         return None
     occ = np.zeros(Rr - L, bool)
+    Bo = B
+    if GAP_IGNORE_TEXT[0]:
+        # rótulos ("V1".."V6") impressos dentro do vão: letras são componentes pequenas e
+        # soltas; o traço é uma componente longa. Só o traço ocupa o vão
+        n_, lab_, st_, _ = cv2.connectedComponentsWithStats(B.astype(np.uint8), connectivity=8)
+        small = (st_[:, cv2.CC_STAT_WIDTH] < 5 * R) & (st_[:, cv2.CC_STAT_HEIGHT] < 5 * R)
+        small[0] = False
+        if small.any():
+            Bo = B & ~small[lab_]
+    occ_raw = np.zeros(Rr - L, bool)
     for y in rows:
         a, b = max(0, int(y - half)), min(B.shape[0], int(y + half))
-        occ |= B[a:b, L:Rr].any(0)
+        occ |= Bo[a:b, L:Rr].any(0)
+        occ_raw |= B[a:b, L:Rr].any(0)
     d = np.diff(np.concatenate([[1], occ.astype(np.int8), [1]]))
     s_, e_ = np.nonzero(d == -1)[0], np.nonzero(d == 1)[0]
-    gaps = [(L + a, L + b) for a, b in zip(s_, e_) if min_mm * R <= b - a <= max_mm * R and a > 0 and b < len(occ)]
+    gaps = [(L + a, L + b) for a, b in zip(s_, e_) if min_mm * R <= b - a <= max_mm * R and a > 0 and b < len(occ)
+            # um rótulo ocupa uma parte do vão; traço partido em pedaços (contraste baixo) ocupa quase todo
+            and occ_raw[a:b].mean() <= 0.5]
     if not gaps or len(gaps) > 5:
         return None
     # colunas entre os vãos de mesma largura
@@ -366,7 +379,10 @@ def _column_gaps(B, rows, ext, half, R, min_mm=2.0, max_mm=15.0):
         if any(not (0.97 * w <= x <= w + 30 * R) for x in (widths[0], widths[-1])):
             return None
     elif (max(widths) - min(widths)) > 0.03 * np.median(widths):
-        return None
+        # 2 colunas: a primeira pode ter a sobra do pulso de calibração (como no caso de 3+)
+        if not (GAP_PULSE_SLACK[0] and 0 <= widths[0] - widths[1] <= 15 * R
+                and widths[0] - widths[1] - 0.03 * widths[1] <= 15 * R):
+            return None
     if min(widths) < 20 * R:
         return None
     return gaps
@@ -401,12 +417,17 @@ def _rows_pulses(B, pap, R, rows_hint=None):
     """Linhas de traçado candidatas (sem texto/bordas), extensões e pulsos."""
     H, W = B.shape
     _prow_set = [None]
-    peaks, cov = find_rows(B, R)
+    from .extract import GRID_SEGS, clean_grid_segments
+    # grade monocromática partida no binário: fora para achar linhas (horizontais) e para
+    # contar batimentos (verticais também); pulsos e extensões usam B
+    Br = clean_grid_segments(B, R, axes=(1,)) if GRID_SEGS[0] else B
+    Bb = clean_grid_segments(Br, R, axes=(0,)) if GRID_SEGS[0] else B
+    peaks, cov = find_rows(Br, R)
     if rows_hint is not None:
         return _rows_from_hint(B, R, rows_hint, cov)
     if len(peaks) == 0:
         return peaks, cov, [], [], 40 * R
-    tl, raw = trace_likeness(B, peaks, R, return_raw=True)
+    tl, raw = trace_likeness(Br, peaks, R, return_raw=True)
     if len(tl) and tl.max() > 0:
         # traçado: longo depois de juntar quebras (tl) OU com pedaços longos/altos sem juntar
         # (raw; traço fraco de scan pode ter tl baixo mas raw alto)
@@ -429,12 +450,12 @@ def _rows_pulses(B, pap, R, rows_hint=None):
         if ok.sum() >= 3 and (~ok).any():
             sp0 = float(np.median(np.diff(peaks[ok])))
             hb = 0.45 * sp0
-            bx_ok = [_beat_xs(B, y, hb, R) for y in peaks[ok]]
+            bx_ok = [_beat_xs(Bb, y, hb, R) for y in peaks[ok]]
             for i in np.nonzero(~ok)[0]:
                 dmin = np.min(np.abs(peaks[ok] - peaks[i]))
                 if not (0.8 * sp0 <= dmin <= 1.25 * sp0):
                     continue
-                bi = _beat_xs(B, peaks[i], hb, R)
+                bi = _beat_xs(Bb, peaks[i], hb, R)
                 if len(bi) < 2:
                     continue
                 f1s = []
@@ -515,7 +536,7 @@ def _rows_pulses(B, pap, R, rows_hint=None):
             sp_ = float(np.median(np.diff(peaks))) if len(peaks) > 2 else 40 * R
             for i in np.nonzero(near)[0]:
                 if peaks[i] > ys[0] + 1.5 * R and peaks[i] < ys[-1] - 1.5 * R and \
-                        len(_beat_xs(B, peaks[i], 0.45 * sp_, R)) >= 3:
+                        len(_beat_xs(Bb, peaks[i], 0.45 * sp_, R)) >= 3:
                     near[i] = False
             peaks = peaks[~near]
     spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else 40 * R
@@ -595,7 +616,7 @@ def _rows_pulses(B, pap, R, rows_hint=None):
             pulses = [p for p, k in zip(pulses, keep) if k]
             spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else spacing
     if _ROW_BEAT_RULE[0] and len(peaks) >= 4:
-        keep = _beat_coherence_drop(B, peaks, ext, half, R)
+        keep = _beat_coherence_drop(Bb, peaks, ext, half, R)
         # linha com pulso de calibração é linha de ECG, tenha ou não QRS visíveis
         if _prow_set[0] is not None:
             for i, y in enumerate(peaks):
@@ -1004,6 +1025,8 @@ def _vote_x0(xl, xe, rad, span_px, R, weak=()):
 
 
 BASELINE_GUARD = [True]
+GAP_IGNORE_TEXT = [True]
+GAP_PULSE_SLACK = [True]
 RPULSE_RARE = [True]
 
 
