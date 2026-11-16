@@ -17,6 +17,11 @@ on:
         required: false
         default: ''
         type: string
+      oracle:
+        description: 'Force the printed layout of each page (layout oracle)'
+        required: false
+        default: false
+        type: boolean
       per_scenario:
         description: 'ECGs per scenario (0 = whole database)'
         required: false
@@ -45,6 +50,7 @@ jobs:
           ECGDIG_FLAGS: ${{ inputs.flags }}
         run: |
           ARGS=""
+          if [ "${{ inputs.oracle }}" = "true" ]; then ARGS="--oracle-layout"; fi
           for kv in ${{ inputs.config }}; do ARGS="$ARGS --config $kv"; done
           python benchmarks/pmcardio/eval_pm.py --root data/pm/visual_data --gt data/pm/final_data/data \
             --meta data/pm/final_data/metadata.csv --list data/pm/sel.csv --out results/pm --jobs 4 $ARGS

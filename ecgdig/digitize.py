@@ -1871,7 +1871,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                horizontal_scale=speed / speed_nominal, ppmm=ginfo["ppmm"], angle=ginfo["angle"],
                grid_residual_mm=ginfo["residual_rms_mm"], grid_residual_cell_mm=ginfo.get("residual_cell_rms_mm"),
                grid_snap_mm=ginfo.get("major_snap_mm"), grid_fine_mm=ginfo.get("fine_snap_mm"), line_width_px=lw, line_width_h_px=2 * rad_h,
-               pulses_found=sum(p is not None for p in pulses),
+               rows_found=len(rows_all), pulses_found=sum(p is not None for p in pulses),
                pulses_right=sum(p is not None for p in rpulses), gain_rows_inferred=gain_flags,
                quality=quality, col_struct=(dict(cols=col_info["cols"], how=col_info.get("how")) if col_info else None))
     if return_debug:

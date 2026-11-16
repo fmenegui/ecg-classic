@@ -41,6 +41,39 @@ def _apply_flags(spec: str):
         getattr(importlib.import_module("ecgdig." + mod), var)[0] = ast.literal_eval(val)
 
 
+# printed format of each page (metadata columns) -> ecgdig library layout, for the layout oracle
+def oracle_layout(fmt, n_pages, page, n_cols, n_rows, n_rhythm):
+    if n_pages == 1:
+        return {"12x1": "12x1", "3x4": "3x4", "3x4+1R": "3x4+1", "3x4+3R": "3x4+3",
+                "6x2": "6x2", "6x2+1R": "6x2+1"}[fmt]
+    if fmt == "6x2":
+        return ["6x1-limb", "6x1-prec"][page]
+    if fmt == "3x4" and n_cols == 2:   # 3x2 per page: I-III + aVR-aVF, then V1-V3 + V4-V6
+        return [[["I", "aVR"], ["II", "aVL"], ["III", "aVF"]], [["V1", "V4"], ["V2", "V5"], ["V3", "V6"]]][page]
+    if fmt == "3x4" and n_cols == 1:
+        return ["3x1-limb", "3x1-aug", "3x1-v13", "3x1-v46"][page]
+    raise ValueError(f"no oracle layout for {fmt} on {n_pages} pages")
+
+
+def _diag(r):
+    """Per-page structure diagnosis kept in results.json (small, JSON-safe)."""
+    li = r.get("layout_info") or {}
+    it = r.get("internals") or {}
+    cs = r.get("col_struct") or {}
+    q = (r.get("quality") or {}).get("page") or {}
+    f = lambda v: None if v is None else round(float(v), 3)
+    return dict(rows_found=r.get("rows_found"), rows=len(it.get("rows", [])),
+                rows_y_mm=[round(y / max(r.get("ppmm") or 1, 1e-6), 1) for y in it.get("rows", [])],
+                layout_rows=[len(x) for x in r.get("layout_rows", [])],
+                ranking=li.get("ranking"), confidence=f(li.get("confidence")), warning=li.get("warning"),
+                parts={k: f(v) for k, v in (li.get("parts") or {}).items() if isinstance(v, (int, float))},
+                dropped=li.get("dropped"), col_how=cs.get("how"), n_cols=len(cs.get("cols") or []) or None,
+                rotation=r.get("rotation"), pulses=r.get("pulses_found"), pulses_right=r.get("pulses_right"),
+                speed=r.get("speed_mm_per_s"), speed_src=r.get("speed_source"), duration=f(r.get("duration_s")),
+                gain=f(r.get("gain_mm_per_mv")), ppmm=f(r.get("ppmm")), angle=f(r.get("angle")),
+                pulses_ratio=f(q.get("pulses_ratio")))
+
+
 def _digitize(job):
     path, cfg_kw = job
     import warnings
@@ -60,7 +93,8 @@ def _digitize(job):
         out = dict(ok=True, leads=r["leads"], signals=r["signals"].astype(np.float32),
                    seg={k: [np.nonzero(np.isfinite(m))[0][[0, -1]] if np.isfinite(m).any() else None for m in v]
                         for k, v in r.get("per_segment", {}).items()},
-                   layout=r.get("layout"), quality=r.get("quality"), sec=time.time() - t0)
+                   layout=r.get("layout"), quality=r.get("quality"), sec=time.time() - t0,
+                   diag=_diag(r))
     except Exception as e:  # noqa: BLE001
         out = dict(ok=False, err=f"{type(e).__name__}: {e}", sec=time.time() - t0)
     signal.alarm(0)
@@ -239,6 +273,8 @@ def main():
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--config", action="append", default=[])
     ap.add_argument("--rescore", action="store_true", help="only recompute the metrics from the cache")
+    ap.add_argument("--oracle-layout", action="store_true",
+                    help="force the printed layout of each page (ceiling of reading the format right)")
     a = ap.parse_args()
     import pandas as pd
     cfg = {}
@@ -257,7 +293,13 @@ def main():
     L = np.load(a.gt / "leads.npz"); RH = np.load(a.gt / "rhythms.npz")
     if a.rescore:
         cfg = json.loads((a.out / "results.json").read_text()).get("config", cfg) if (a.out / "results.json").exists() else cfg
-    jobs = [(str(a.root / p), cfg) for p in m["Image relative path"]]
+    if a.oracle_layout:
+        cols = ["ECG format", "ECG number of pages", "Image page", "ECG number of columns per page",
+                "ECG number of rows per page", "ECG number of rhythm leads"]
+        jobs = [(str(a.root / p), dict(cfg, layout=oracle_layout(*row)))
+                for p, row in zip(m["Image relative path"], m[cols].itertuples(index=False))]
+    else:
+        jobs = [(str(a.root / p), cfg) for p in m["Image relative path"]]
     res = _run_all(jobs, a.jobs, a.out / "cache", a.root)
     rows = []
     m["scen"] = m["Image relative path"].str.split("/").str[0]
@@ -267,7 +309,8 @@ def main():
         rows.append(dict(scenario=scen, ecg=ecg, image_id=int(iid), format=g["ECG format"].iloc[0],
                          pages=len(pages), ok=all(p.get("ok") for p in pages),
                          layout=[p.get("layout") for p in pages], sec=sum(p.get("sec", 0) for p in pages),
-                         leads=per, rhythms=rhy, err=[p.get("err") for p in pages if not p.get("ok")]))
+                         leads=per, rhythms=rhy, err=[p.get("err") for p in pages if not p.get("ok")],
+                         diag=[p.get("diag") for p in pages]))
     (a.out / "results.json").write_text(json.dumps(dict(config=cfg, rows=rows), default=float))
     summarize(rows, a.out)
 
