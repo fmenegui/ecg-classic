@@ -125,7 +125,7 @@ def _col_rows(B, R, xa, xb):
 
 EQUAL_SPLIT = [True]
 PAIR_MERGE = [True]
-ROW_STRAIGHT = [True]
+ROW_STRAIGHT = [False]
 # columns with rows at their own heights (each column with its own spacing): the
 # (column, row) bands move to stacked new rows instead of the median across columns
 RELAYOUT = [True]

@@ -622,6 +622,13 @@ def _rows_pulses(B, pap, R, rows_hint=None):
                 if e_ is not None and (e_[0] <= xp_ + 30 * R or (regular and e_[1] - e_[0] > 60 * R)):
                     # (or it continues the regular block step at an edge: that row's pulse was lost)
                     extra.append(p)
+            if PULSE_ROWS_SNAP[0] and len(peaks):
+                # the pulse sits on the nominal row; the trace may run a few mm off it (its DC
+                # level). The row is the trace: a projection line within a third of the step
+                # takes the pulse's place
+                pk_ = np.asarray(peaks, float)
+                prow = np.array([float(pk_[np.argmin(np.abs(pk_ - q))]) if np.min(np.abs(pk_ - q)) <= 0.35 * spp
+                                 else float(q) for q in prow])
             peaks = np.sort(np.concatenate([prow, np.array(extra, float)])).astype(int)
     ys = np.nonzero(pap.any(1))[0]
     if len(ys):  # sheet borders / frame are not trace rows
@@ -750,6 +757,8 @@ _ROW_BEAT_RULE = [True]
 EDGE_PULSE_HEIGHT = [True]
 PULSE_COL_LEFT = [True]
 TL_COVER = [True]
+PULSE_ROWS_SNAP = [True]
+TRACK_BASE_TRACE = [True]
 GAP_ROBUST_LR = [True]
 HALF_ALONE = [True]
 MID_PULSE_CUT = [True]
@@ -1715,6 +1724,16 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     seg_jobs = []
     for r, (y, spec) in enumerate(zip(rows, rows_spec)):
         base0 = base_q[r]
+        if TRACK_BASE_TRACE[0] and abs(base0 - y) > 2 * R:
+            # the pulse gives 0 mV, but the trace may run mm off it (its DC level): the
+            # tracker's baseline prior is the trace's own line, or it drifts to the neighbour
+            q_ = qfull[r]["cen"]; q_ = q_[~np.isnan(q_)]
+            if len(q_):
+                hist, edges = np.histogram(q_, bins=np.arange(q_.min() - 1, q_.max() + 2, 1.0))
+                hist = cv2.GaussianBlur(hist.astype(np.float32).reshape(-1, 1), (0, 0), 2).ravel()
+                base0 = float(edges[int(np.argmax(hist))] + 0.5)
+            else:
+                base0 = float(y)
         up = (y - rows[r - 1]) if r > 0 else spacing
         dn = (rows[r + 1] - y) if r + 1 < len(rows) else spacing
         # generous search band: large waves (R of 3-5 mV) invade the neighbouring row; the
