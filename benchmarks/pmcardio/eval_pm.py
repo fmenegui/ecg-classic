@@ -9,6 +9,10 @@ SNR = 0 and the RMSE of an all-zero signal, as in the paper for whole-database m
         --meta metadata.csv --list sel.csv --out results/pm --jobs 2 [--config k=v ...]
 
 Multi-page images of the same ECG are merged per lead before the comparison.
+
+The summary also reports the official Kaggle metric (benchmarks/metrics.py) per ECG image: the
+12 lead cuts, cross-correlation alignment of +-0.2 s, powers summed over the leads, linear mean
+over images, then dB; a lead not read is submitted as zeros.
 """
 from __future__ import annotations
 
@@ -218,13 +222,34 @@ def _best_shift(g, F, a, span=0):
     return best[2]
 
 
+def _kaggle_powers(g, F=None, a=0):
+    """Signal and noise power of one lead under the official Kaggle metric: the prediction cut
+    at the lead's window (start a in the page prediction F), NaN submitted as 0, aligned by
+    cross-correlation (+-0.2 s) and vertical offset (benchmarks/metrics.py)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import metrics as MT
+    n = len(g)
+    p = np.zeros(n)
+    if F is not None:
+        lo, hi = max(0, a), min(len(F), a + n)
+        if hi > lo:
+            p[lo - a:hi - a] = F[lo:hi]
+    p = np.nan_to_num(p, nan=0.0)
+    al = MT.align_signals(g, p, int(FS * MT.MAX_TIME_SHIFT))
+    ps, pn = MT.compute_power(g, al)
+    return float(ps), float(pn)
+
+
 def evaluate_ecg(gt, rh, pages):
-    """gt: (n, 12) cuts; rh: (5000, k) rhythms; pages: digitize outputs of the pages."""
+    """gt: (n, 12) cuts; rh: (5000, k) rhythms; pages: digitize outputs of the pages.
+    Each lead's metrics also carry its Kaggle-metric powers ("kp": [signal, noise])."""
     out = {}
     n = gt.shape[0]
+    kag = {}
     for j, name in enumerate(LEADS):
         g = gt[:, j].astype(float)
         best = None
+        best_src = None
         for pg in pages:
             if not pg.get("ok") or name not in pg["leads"]:
                 continue
@@ -242,7 +267,9 @@ def evaluate_ecg(gt, rh, pages):
             mt = _metrics(g, p)
             if mt and (best is None or mt["pcc"] > best["pcc"]):
                 best = mt
+                best_src = (F, int(seg[0]))
         out[name] = best
+        kag[name] = _kaggle_powers(g, *best_src) if best_src else _kaggle_powers(g)
     rhy = []
     for k in range(rh.shape[1]):
         g = rh[:, k].astype(float); best = None
@@ -261,6 +288,7 @@ def evaluate_ecg(gt, rh, pages):
                 if mt and (best is None or mt["pcc"] > best["pcc"]):
                     best = dict(mt, lead=name)
         rhy.append(best)
+    out["_kaggle"] = kag
     return out, rhy
 
 
@@ -318,8 +346,15 @@ def main():
 
 def summarize(rows, out: Path | None = None):
     """Means per scenario and overall (failure = 0 dB / PCC 0)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import metrics as MT
     agg = defaultdict(lambda: defaultdict(list))
     for r in rows:
+        kp = r["leads"].get("_kaggle")
+        if kp:   # Kaggle metric: powers summed over the 12 leads -> one linear SNR per ECG image
+            lin = MT.compute_snr(sum(v[0] for v in kp.values()), sum(v[1] for v in kp.values()))
+            for key in ("ALL", r["scenario"]):
+                agg[key]["kag"].append(lin)
         for name in LEADS:
             mt = r["leads"].get(name)
             for key in ("ALL", r["scenario"]):
@@ -328,16 +363,19 @@ def summarize(rows, out: Path | None = None):
                 agg[key]["fail"].append(mt is None)
                 if mt:
                     agg[key]["snr_ok"].append(mt["snr"]); agg[key]["rmse_ok"].append(mt["rmse"])
-    lines = ["| scenario | ECGs | SNR (dB) | PCC | failure | SNR without failures | RMSE without failures (mV) |", "|---|---|---|---|---|---|---|"]
+    lines = ["| scenario | ECGs | SNR (dB) | PCC | failure | SNR without failures | RMSE without failures (mV) | Kaggle score (dB) |",
+             "|---|---|---|---|---|---|---|---|"]
     keys = ["ALL"] + sorted(k for k in agg if k != "ALL")
     summ = {}
     for k in keys:
         d = agg[k]
         s = dict(n=len(d["snr"]) // 12, snr=float(np.mean(d["snr"])), pcc=float(np.mean(d["pcc"])),
                  fail=float(np.mean(d["fail"])), snr_ok=float(np.mean(d["snr_ok"])) if d["snr_ok"] else 0.0,
-                 rmse_ok=float(np.mean(d["rmse_ok"])) if d["rmse_ok"] else float("nan"))
+                 rmse_ok=float(np.mean(d["rmse_ok"])) if d["rmse_ok"] else float("nan"),
+                 kaggle=MT.kaggle_score(d["kag"]) if d["kag"] else float("nan"))
         summ[k] = s
-        lines.append(f"| {k} | {s['n']} | {s['snr']:.2f} | {s['pcc']:.3f} | {100 * s['fail']:.1f}% | {s['snr_ok']:.2f} | {s['rmse_ok']:.3f} |")
+        lines.append(f"| {k} | {s['n']} | {s['snr']:.2f} | {s['pcc']:.3f} | {100 * s['fail']:.1f}% | {s['snr_ok']:.2f} | "
+                     f"{s['rmse_ok']:.3f} | {s['kaggle']:.2f} |")
     txt = "\n".join(lines)
     print(txt)
     if out is not None:

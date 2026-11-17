@@ -19,12 +19,15 @@ import csv
 import json
 import os
 import random
+import sys
 import time
 import traceback
 from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # benchmarks/metrics.py
 
 LEADS = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
 
@@ -132,6 +135,11 @@ def _work(job):
         snr_raw, _ = _snr_record(G, P, fs, align=False)
         snr_al, per = _snr_record(G, P, fs, align=True)
         rec.update(snr_raw=snr_raw, snr=snr_al, per_lead=per)
+        # the two reported conventions (benchmarks/metrics.py): official Kaggle metric and PMcardio
+        import metrics as MT
+        klin, kper = MT.kaggle_image_snr(G, P, fs)
+        rec.update(kaggle_lin=float(klin), kaggle_db=float(10 * np.log10(max(klin, 1e-12))), kaggle_per_lead=kper,
+                   pm=MT.pm_image_metrics(G, P, fs))
         # signals at 250 Hz (float16) for diagnosis outside the runner
         step = max(1, int(round(fs / 250)))
         (out / "sig").mkdir(exist_ok=True)
@@ -157,6 +165,33 @@ def _work(job):
     print(rid, typ, rec.get("layout"), None if rec.get("snr") is None else round(rec["snr"], 2),
           rec.get("error", ""), flush=True)
     return rec
+
+
+def report_both(results):
+    """Markdown with the two reported conventions: official Kaggle score (per type and all) and
+    PMcardio-style SNR / PCC / failure / RMSE. An image that failed to digitize scores as all
+    leads missing (Kaggle: zeros submitted -> linear SNR ~1; PMcardio: every lead a failure)."""
+    import metrics as MT
+    by = defaultdict(list)
+    for r in results:
+        by[r.get("type", "?")].append(r)
+    L = ["### Kaggle metric (official) and PMcardio-style metrics", "",
+         "| Type | n | Kaggle score (dB) | PM SNR (dB) | PM PCC | PM failed leads | PM SNR w/o failures | PM RMSE w/o failures (mV) |",
+         "|---|---|---|---|---|---|---|---|"]
+
+    def row(name, rs):
+        kl = [r["kaggle_lin"] if r.get("ok") and "kaggle_lin" in r else 1.0 for r in rs]
+        pm = [r["pm"] if r.get("ok") and r.get("pm") else {l: None for l in MT.LEADS} for r in rs]
+        s = MT.pm_summary(pm)
+        return (f"| {name} | {len(rs)} | {MT.kaggle_score(kl):.2f} | {s['snr']:.2f} | {s['pcc']:.3f} | "
+                f"{100 * s['failure']:.1f}% | {s['snr_ok']:.2f} | {s['rmse_ok']:.3f} |")
+    for t in sorted(by):
+        L.append(row(t, by[t]))
+    L.append(row("**all**", results))
+    L += ["", "Kaggle: 10·log10 of the mean LINEAR image SNR (official metric code, `benchmarks/metrics.py`). "
+          "PMcardio: per lead ±0.5 s Pearson alignment, median offset; failure = missing or < 50% covered "
+          "(PCC 0, SNR 0 dB)."]
+    return "\n".join(L)
 
 
 def evaluate(a):
@@ -224,11 +259,9 @@ def _report(out, results, cfg_kw):
     allv = [r["snr"] for r in ok if np.isfinite(r["snr"])]
     if allv:
         wl = allv + [0.0] * (len(results) - len(ok))
-        kag = 10 * np.log10(np.mean(10 ** (np.array(wl) / 10)))
         L += ["", f"**All: {np.mean(allv):.2f} dB (median {np.median(allv):.2f}).** Exceptions count as 0 dB "
-              f"in the competition mean; with them: {np.mean(wl):.2f} dB.",
-              "", f"**Kaggle score: {kag:.2f} dB** (the competition averages the per-image SNR in the LINEAR "
-              "domain and then converts to dB, which weighs good images more than the mean of dB above)."]
+              f"in the competition mean; with them: {np.mean(wl):.2f} dB."]
+    L += ["", report_both(results)]
     perl = defaultdict(list)
     for r in ok:
         for l, v in r.get("per_lead", {}).items():
