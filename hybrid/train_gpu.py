@@ -118,10 +118,10 @@ def dice_loss(logit, y):
     return (1 - num / den).mean()
 
 
-def build(encoder, weights):
+def build(encoder, weights, classes=1):
     import segmentation_models_pytorch as smp
     return smp.Unet(encoder_name=encoder, encoder_weights=None if weights in ("", "none") else weights,
-                    in_channels=3, classes=1)
+                    in_channels=3, classes=classes)
 
 
 def main():
@@ -134,9 +134,10 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--encoder", default="resnet34")
     ap.add_argument("--weights", default="imagenet")
-    ap.add_argument("--gen", default="gen", choices=sorted(GENS) + ["gridpts"],
+    ap.add_argument("--gen", default="gen", choices=sorted(GENS) + ["gridpts", "gridphase"],
                     help="gen: page ink map; rowgen: the centre row's trace in a strip (row network); "
-                         "gridpts: 5 mm grid intersections in rendered photos (GPU only)")
+                         "gridpts: 5 mm grid intersections in rendered photos (GPU only); "
+                         "gridphase: continuous 5 mm + 1 mm grid phase (cos/sin) per pixel (GPU only)")
     ap.add_argument("--init", type=Path, default=None, help="state_dict to start from (e.g. the ink model's unet.pt)")
     ap.add_argument("--render-frac", type=float, default=0.0,
                     help="rowgen only: share of each batch rendered on the GPU by ecg-torch-renderer (hybrid/rendergen.py)")
@@ -155,7 +156,8 @@ def main():
     if dev == "cpu" and os.environ.get("RUNPOD_POD_ID"):
         sys.exit("CUDA is not available on this GPU pod; refusing to train on the CPU")
     torch.backends.cudnn.benchmark = True
-    net = build(a.encoder, a.weights)
+    PHASE = a.gen == "gridphase"
+    net = build(a.encoder, a.weights, 9 if PHASE else 1)
     if not a.init and (a.out / "unet.pt").exists():   # pod restarted: resume from the last checkpoint
         a.init = a.out / "unet.pt"
         print("resuming after a restart", flush=True)
@@ -165,9 +167,10 @@ def main():
     n_par = sum(p.numel() for p in net.parameters())
     print(f"device {dev} encoder {a.encoder} parameters {n_par} workers {a.workers}", flush=True)
     gp = None
-    if a.gen == "gridpts":   # everything rendered on the GPU: no CPU data workers
-        from gridgen import GridPoints
-        gp = GridPoints(dev, size=a.size, pages=2)
+    if a.gen in ("gridpts", "gridphase"):   # everything rendered on the GPU: no CPU data workers
+        import gridgen
+        GG = gridgen.GridPhase if PHASE else gridgen.GridPoints
+        gp = GG(dev, size=a.size, pages=2)
 
         class _GPU:
             def __iter__(self):
@@ -181,7 +184,7 @@ def main():
     # fixed validation set (same crops every time)
     vr = np.random.default_rng(999)
     if gp is not None:
-        gv = __import__("gridgen").GridPoints(dev, size=a.size, pages=2, seed=999)
+        gv = GG(dev, size=a.size, pages=2, seed=999)
         vb = [gv.batch(16) for _ in range(max(1, a.val // 16))]
         vx = torch.cat([b[0] for b in vb]).cpu(); vy = torch.cat([b[1] for b in vb]).cpu()
         del gv
@@ -200,11 +203,18 @@ def main():
         return a.lr * 0.5 * (1 + math.cos(math.pi * min(1.0, (frac - 0.02) / 0.98))) + 1e-6
 
     def validate():
-        net.eval(); tot = 0.0; inter = 0.0; uni = 0.0; cerr = []
+        net.eval(); tot = 0.0; inter = 0.0; uni = 0.0; cerr = []; e5s = []
         with torch.no_grad(), torch.autocast(dev, enabled=dev == "cuda"):
             for i in range(0, len(vx), 16):
                 x, y = vx[i:i + 16].to(dev), vy[i:i + 16].to(dev)
                 lg = net(x).float()
+                if PHASE:   # position error in mm: 1 mm-refined and 5 mm-only
+                    tot += float(gridgen.phase_loss(lg, y)) * len(x)
+                    e1, e5 = gridgen.phase_error_mm(lg, y)
+                    cerr.append(e1.cpu()); e5s.append(e5.cpu())
+                    pc = (lg[:, 8:9] > 0).float(); yc_ = (y[:, 8:9] > 0.5).float()
+                    inter += float((pc * yc_).sum()); uni += float(((pc + yc_) > 0).float().sum())
+                    continue
                 tot += float(F.binary_cross_entropy_with_logits(lg, y, pos_weight=pos_w)) * len(x)
                 p = (torch.sigmoid(lg) > 0.5).float(); yb = (y > 0.5).float()
                 inter += float((p * yb).sum()); uni += float(((p + yb) > 0).float().sum())
@@ -230,8 +240,11 @@ def main():
                         d = torch.cdist(G_, P_).min(1).values
                         cerr.append(d.float().cpu())
         net.train()
-        validate.col_err = float(torch.cat(cerr).median()) if cerr else float("nan")
-        validate.col_err90 = float(torch.cat(cerr).quantile(0.9)) if cerr else float("nan")
+        ce = torch.cat(cerr) if cerr else torch.zeros(0)
+        e5_ = torch.cat(e5s) if e5s else torch.zeros(0)
+        validate.col_err = float(ce.median()) if ce.numel() else float("nan")
+        validate.col_err90 = float(ce.float().quantile(0.9)) if ce.numel() else float("nan")
+        validate.e5 = float(e5_.median()) if e5_.numel() else float("nan")
         return tot / len(vx), inter / max(uni, 1.0)
 
     def export(tag=""):
@@ -271,13 +284,22 @@ def main():
                     xb[:n_r] = render_aug(xr, g_aug); yb[:n_r] = yr
                 t_render += time.time() - tr
             x, y = xb, yb
+        elif PHASE:   # photometric changes only: the targets are paper coordinates
+            n_ = len(xb)
+            x = (xb * torch.empty(n_, 1, 1, 1, device=dev).uniform_(0.7, 1.2)
+                 + torch.empty(n_, 3, 1, 1, device=dev).uniform_(-0.1, 0.1)
+                 + torch.randn_like(xb) * 0.02).clamp(0, 1)
+            y = yb
         else:
             x, y = gpu_aug(xb, yb, g_aug, rot=a.gen != "rowgen")
         with torch.autocast(dev, enabled=dev == "cuda"):
             logit = net(x)
         logit = logit.float()
-        loss = F.binary_cross_entropy_with_logits(logit, y, pos_weight=pos_w)
-        if a.gen not in ("rowgen", "gridpts"):
+        if PHASE:
+            loss = gridgen.phase_loss(logit, y)
+        else:
+            loss = F.binary_cross_entropy_with_logits(logit, y, pos_weight=pos_w)
+        if not PHASE and a.gen not in ("rowgen", "gridpts"):
             loss = loss + dice_loss(logit, y)
         opt.zero_grad(set_to_none=True)
         scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
@@ -291,13 +313,15 @@ def main():
         if step % 2000 == 0 or frac >= 1.0:
             vl, iou = validate()
             log.append(dict(step=step, loss=float(loss), val_loss=vl, val_iou=iou, col_err=validate.col_err,
-                            col_err90=validate.col_err90, sec=round(time.time() - t0, 1)))
+                            col_err90=validate.col_err90, err5_mm=getattr(validate, "e5", None), sec=round(time.time() - t0, 1)))
             print(f"VAL step {step} val_loss {vl:.4f} IoU {iou:.4f} col_err median {validate.col_err:.2f} px "
-                  f"p90 {validate.col_err90:.2f} px", flush=True)
+                  f"p90 {validate.col_err90:.2f} px"
+                  + (f" (mm; 5 mm-only median {validate.e5:.3f} mm)" if PHASE else ""), flush=True)
             (a.out / "train_log.json").write_text(json.dumps(log))
             torch.save(net.state_dict(), a.out / "unet.pt")
-            if best is None or iou > best:
-                best = iou
+            score = -np.nan_to_num(validate.e5, nan=9.0) - np.nan_to_num(validate.col_err, nan=9.0) if PHASE else iou
+            if best is None or score > best:
+                best = score
                 torch.save(net.state_dict(), a.out / "unet_best.pt")
         if frac >= 1.0:
             print("time limit", flush=True)
