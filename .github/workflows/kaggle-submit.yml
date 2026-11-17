@@ -1,0 +1,83 @@
+name: Kaggle late submission (CPU)
+# Uploads the ecgdig source as a private Kaggle dataset, pushes kaggle/submission.py as a private
+# CPU script kernel (no internet) attached to the competition, waits for its run on the public test
+# images, submits that kernel version to "PhysioNet - Digitization of ECG Images" and waits for the
+# score. Needs the secret KAGGLE_API_TOKEN and the variable KAGGLE_USERNAME. 5 submissions per day.
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 'Submission message'
+        required: false
+        default: 'ecgdig classical (CPU)'
+        type: string
+      submit:
+        description: 'Submit after the kernel run (false = only check that the kernel runs)'
+        required: false
+        default: true
+        type: boolean
+permissions:
+  contents: read
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ vars.KAGGLE_USERNAME }}
+      COMP: physionet-ecg-image-digitization
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0
+      - name: Dataset with the ecgdig source (private)
+        run: |
+          U="$KAGGLE_USERNAME"; D=dist/ecgdig-src
+          mkdir -p $D && cp -r ecgdig $D/ && rm -rf $D/ecgdig/__pycache__ && cp LICENSE $D/ 2>/dev/null || true
+          cat > $D/dataset-metadata.json <<JSON
+          {"title": "ecgdig-src", "id": "$U/ecgdig-src", "licenses": [{"name": "apache-2.0"}]}
+          JSON
+          if kaggle datasets status "$U/ecgdig-src" >/dev/null 2>&1; then
+            kaggle datasets version -p $D -m "ecgdig ${GITHUB_SHA::7}" -r zip
+          else
+            kaggle datasets create -p $D -r zip
+          fi
+          for i in $(seq 1 60); do
+            s=$(kaggle datasets status "$U/ecgdig-src" 2>&1 || true); echo "dataset: $s"
+            echo "$s" | grep -qi ready && break; sleep 20
+          done
+      - name: Push the CPU script kernel and wait for its run
+        id: kernel
+        run: |
+          U="$KAGGLE_USERNAME"; K=dist/kernel; SLUG=ecgdig-classical-submission
+          mkdir -p $K && cp kaggle/submission.py $K/
+          cat > $K/kernel-metadata.json <<JSON
+          {"id": "$U/$SLUG", "title": "ecgdig classical submission", "code_file": "submission.py",
+           "language": "python", "kernel_type": "script", "is_private": true, "enable_gpu": false,
+           "enable_tpu": false, "enable_internet": false, "dataset_sources": ["$U/ecgdig-src"],
+           "competition_sources": ["$COMP"], "kernel_sources": [], "model_sources": []}
+          JSON
+          out=$(kaggle kernels push -p $K 2>&1); echo "$out"
+          V=$(echo "$out" | grep -oiE "version [0-9]+" | grep -oE "[0-9]+" | tail -1)
+          echo "version=$V" >> "$GITHUB_OUTPUT"; echo "slug=$U/$SLUG" >> "$GITHUB_OUTPUT"
+          for i in $(seq 1 120); do
+            s=$(kaggle kernels status "$U/$SLUG" 2>&1 || true); echo "$(date -u +%H:%M) $s"
+            echo "$s" | grep -qiE "complete|error|cancel" && break; sleep 60
+          done
+          mkdir -p kout && kaggle kernels output "$U/$SLUG" -p kout >/dev/null 2>&1 || true
+          ls -la kout; tail -30 kout/*.log 2>/dev/null || true
+          echo "$s" | grep -qi complete
+      - name: Submit and wait for the score
+        if: inputs.submit
+        run: |
+          kaggle competitions submit "$COMP" -k "${{ steps.kernel.outputs.slug }}" -v "${{ steps.kernel.outputs.version }}" \
+            -f submission.parquet -m "${{ inputs.message }} ${GITHUB_SHA::7}" --wait 19000 --poll-interval 120 || true
+          kaggle competitions submissions "$COMP" 2>&1 | head -8 | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kaggle-kernel-output
+          path: kout/
+          retention-days: 30

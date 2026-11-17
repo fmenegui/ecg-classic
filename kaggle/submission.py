@@ -1,0 +1,137 @@
+"""Kaggle "PhysioNet - Digitization of ECG Images": offline CPU submission of the classical ecgdig.
+
+Runs as a Kaggle script kernel with the competition data and a dataset holding the ecgdig source
+(kaggle/README.md). Reads test.csv (id, lead, fs, number_of_rows), digitizes every test image once
+and writes submission.parquet with one value per expected row:
+- lead II: the 10 s rhythm read by ecgdig, sampled at fs;
+- other leads: 2.5 s starting where ecgdig found that lead printed (its first finite sample);
+- unknown samples are filled from the nearest read sample, a lead not read is all zeros, and an
+  image that fails or exceeds the time limit is all zeros (the metric needs a number per row).
+"""
+import glob
+import os
+import signal
+import sys
+import time
+import zipfile
+from concurrent.futures import ProcessPoolExecutor
+
+import numpy as np
+import pandas as pd
+
+COMP = os.environ.get("ECG_COMP_DIR", "/kaggle/input/physionet-ecg-image-digitization")
+OUT = os.environ.get("ECG_OUT", "/kaggle/working/submission.parquet")
+PER_IMAGE_S = int(os.environ.get("ECG_IMAGE_TIMEOUT", "300"))
+FS_ME = 500.0
+
+
+def _find_ecgdig():
+    """The ecgdig package from the attached dataset (folder or zip), or already importable."""
+    try:
+        import ecgdig  # noqa: F401
+        return
+    except ImportError:
+        pass
+    for root in ["/kaggle/input", os.path.dirname(os.path.abspath(__file__))]:
+        hits = sorted(glob.glob(f"{root}/**/ecgdig/__init__.py", recursive=True))
+        if hits:
+            sys.path.insert(0, os.path.dirname(os.path.dirname(hits[0])))
+            return
+        for z in sorted(glob.glob(f"{root}/**/*.zip", recursive=True)):
+            with zipfile.ZipFile(z) as zf:
+                if any(n.endswith("ecgdig/__init__.py") for n in zf.namelist()):
+                    zf.extractall("/kaggle/working/src")
+                    sys.path.insert(0, os.path.dirname(os.path.dirname(
+                        glob.glob("/kaggle/working/src/**/ecgdig/__init__.py", recursive=True)[0])))
+                    return
+    raise ImportError("ecgdig source not found in /kaggle/input")
+
+
+def _fill(v):
+    """Unknown samples from the nearest known ones (linear inside, constant at the ends)."""
+    m = np.isfinite(v)
+    if not m.any():
+        return np.zeros_like(v)
+    i = np.arange(len(v))
+    return np.interp(i, i[m], v[m])
+
+
+def _lead_values(sig500, fs, n, long_lead):
+    """n samples at fs from one ecgdig lead (500 Hz, 10 s, NaN where not printed)."""
+    m = np.isfinite(sig500)
+    if m.sum() < 2:
+        return np.zeros(n)
+    t_me = np.arange(len(sig500)) / FS_ME
+    total = int(round(10 * fs))
+    t = np.arange(total) / fs
+    v = np.interp(t, t_me[m], sig500[m], left=np.nan, right=np.nan)
+    holes = ~np.isfinite(np.interp(t, t_me, np.where(m, 0.0, np.nan)))
+    v[holes] = np.nan
+    if long_lead or n >= total:
+        out = v[:n]
+    else:
+        fin = np.flatnonzero(np.isfinite(v))
+        a = int(fin[0]) if len(fin) else 0
+        a = min(a, max(0, total - n))
+        out = v[a:a + n]
+    if len(out) < n:
+        out = np.concatenate([out, np.full(n - len(out), np.nan)])
+    return _fill(out)
+
+
+def _one(job):
+    image_id, leads = job       # leads: list of (lead, fs, n)
+    import warnings
+    warnings.filterwarnings("ignore")
+
+    def _alarm(*_):
+        raise TimeoutError("timed out")
+    res = {lead: np.zeros(n) for lead, fs, n in leads}
+    t0 = time.time()
+    try:
+        _find_ecgdig()
+        from ecgdig import Config, digitize
+        signal.signal(signal.SIGALRM, _alarm)
+        signal.alarm(PER_IMAGE_S)
+        r = digitize(os.path.join(COMP, "test", f"{image_id}.png"), Config())
+        signal.alarm(0)
+        names = list(r["leads"])
+        for lead, fs, n in leads:
+            if lead in names:
+                res[lead] = _lead_values(np.asarray(r["signals"][names.index(lead)], float), fs, n,
+                                         long_lead=(lead == "II"))
+        status = r.get("layout", "")
+    except Exception as e:  # noqa: BLE001
+        signal.alarm(0)
+        status = f"failed: {type(e).__name__}: {str(e)[:80]}"
+    print(image_id, status, f"{time.time() - t0:.1f}s", flush=True)
+    return image_id, res
+
+
+def main():
+    _find_ecgdig()
+    test = pd.read_csv(os.path.join(COMP, "test.csv"))
+    jobs = []
+    for image_id, g in test.groupby("id", sort=False):
+        jobs.append((str(image_id), [(str(l), float(f), int(n)) for l, f, n in
+                                     zip(g["lead"], g["fs"], g["number_of_rows"])]))
+    print(len(jobs), "images,", os.cpu_count(), "CPUs", flush=True)
+    ids, vals = [], []
+    with ProcessPoolExecutor(max_workers=max(1, os.cpu_count() or 1)) as ex:
+        for image_id, res in ex.map(_one, jobs, chunksize=1):
+            for lead, v in res.items():
+                v = np.nan_to_num(np.asarray(v, np.float64), nan=0.0, posinf=0.0, neginf=0.0)
+                ids.extend(f"{image_id}_{i}_{lead}" for i in range(len(v)))
+                vals.append(v)
+    sub = pd.DataFrame({"id": ids, "value": np.concatenate(vals) if vals else np.zeros(0)})
+    try:
+        sub.to_parquet(OUT, index=False)
+        out = OUT
+    except ImportError:   # no parquet engine: the competition also accepts submission.csv
+        out = os.path.join(os.path.dirname(OUT), "submission.csv")
+        sub.to_csv(out, index=False)
+    print("wrote", out, len(sub), "rows", flush=True)
+
+
+if __name__ == "__main__":
+    main()
