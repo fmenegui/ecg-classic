@@ -141,6 +141,9 @@ def main():
     ap.add_argument("--init", type=Path, default=None, help="state_dict to start from (e.g. the ink model's unet.pt)")
     ap.add_argument("--render-frac", type=float, default=0.0,
                     help="rowgen only: share of each batch rendered on the GPU by ecg-torch-renderer (hybrid/rendergen.py)")
+    ap.add_argument("--render-photo", type=float, default=0.0,
+                    help="rowgen + render-frac: share of the rendered pages that are photos brought back "
+                         "onto the flat page with their exact geometry (capture appearance, stage oracle)")
     ap.add_argument("--reuse", type=int, default=1,
                     help="steps per generated batch (> 1: the extra steps see GPU-augmented copies)")
     ap.add_argument("--val", type=int, default=256, help="fixed validation crops")
@@ -260,8 +263,16 @@ def main():
     if a.render_frac > 0 and a.gen == "rowgen":
         try:
             from rendergen import TorchStrips
-            rs = TorchStrips(dev, size=a.size, pages=2)
-            print("GPU-rendered strips:", a.render_frac, "of each batch", flush=True)
+            rs = TorchStrips(dev, size=a.size, pages=2, photo_frac=a.render_photo)
+            print("GPU-rendered strips:", a.render_frac, "of each batch,", a.render_photo, "of them photos", flush=True)
+            if a.render_photo > 0:   # validation also on rectified photos (fixed seed): half of the set
+                tv = TorchStrips(dev, size=a.size, pages=2, seed=999, photo_frac=1.0)
+                got = [tv.batch(16) for _ in range(max(1, len(vx) // 32))]
+                got = [g for g in got if g is not None]
+                if got:
+                    vx = torch.cat([vx] + [g[0].cpu() for g in got]); vy = torch.cat([vy] + [g[1].cpu() for g in got])
+                    print("validation:", len(vx), "strips, of them rendered photos", sum(len(g[0]) for g in got), flush=True)
+                del tv
         except Exception as e:  # noqa: BLE001
             print("ecg-torch-renderer not available, CPU strips only:", e, flush=True)
     t_render = 0.0
