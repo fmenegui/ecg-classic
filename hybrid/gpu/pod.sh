@@ -22,6 +22,8 @@ echo "setup" > "$OUT/status.txt"
   # GPU strip renderer (hybrid/rendergen.py): public install, or a read-only token for the private repo
   pip install -q "git+https://${RENDERER_TOKEN:+x-access-token:${RENDERER_TOKEN}@}github.com/fmenegui/ecg-torch-renderer" \
     && echo "ecg-torch-renderer installed" || echo "ecg-torch-renderer not installed (CPU strips only)"
+  # the renderer needs torch >= 2.6 and may upgrade it: torchvision (used by timm) must follow
+  pip install -q -U torchvision && python -c "import torch, torchvision; print('torch', torch.__version__, 'torchvision', torchvision.__version__)"
   # some hosts expose the GPU to nvidia-smi but fail CUDA initialization ("CUDA unknown error");
   # training would then silently run on the CPU, so stop here and let the workflow try another pod
   if ! python -c "import torch; assert torch.cuda.is_available(); print('cuda ok', torch.cuda.get_device_name(0), (torch.ones(1, device='cuda') * 2).item())"; then
