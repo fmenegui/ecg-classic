@@ -27,7 +27,8 @@ IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 # 4090 mostly waits for data: 16/11, A5000 0.27 USD/h vs 4090 0.89). A card outside this list is used
 # only when asked for by name (workflow input "gpu").
 FALLBACK_GPUS = ["NVIDIA RTX A5000", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A4500", "NVIDIA RTX 4000 Ada Generation",
-                 "NVIDIA RTX A4000"]
+                 "NVIDIA RTX A4000", "NVIDIA L4", "NVIDIA RTX 2000 Ada Generation", "NVIDIA GeForce RTX 3080"]
+WAIT_MIN = float(os.environ.get("WAIT_MIN", "45"))   # no cheap card free: retry every 3 min for this long
 MAX_USD_H = float(os.environ.get("MAX_USD_H", "0.5"))   # never start a pod above this price (unless GPU asks)
 # one name per workflow run: "stop" must only terminate this run's pods, never a parallel training
 NAME = "ecgdig-train-" + os.environ.get("GITHUB_RUN_ID", "local")
@@ -94,6 +95,21 @@ def start(exclude=(), cloud="ALL"):
     q = """mutation($input: PodFindAndDeployOnDemandInput) {
              podFindAndDeployOnDemand(input: $input) { id machineId costPerHr gpuCount } }"""
     last = None
+    t_end = time.time() + 60 * WAIT_MIN
+    while True:
+        got = _try_cards(gpus, asked, q, cloud, env, cmd)
+        if isinstance(got, tuple):
+            return got
+        last = got
+        if time.time() > t_end:
+            break
+        print(f"no cheap card free, retrying in 3 min (until {WAIT_MIN:.0f} min)", file=sys.stderr, flush=True)
+        time.sleep(180)
+    sys.exit(f"no GPU available: {last}")
+
+
+def _try_cards(gpus, asked, q, cloud, env, cmd):
+    last = None
     # preferred GPU first, with as many vCPU as possible (the crops are generated on the CPU)
     # a cheap card with 8 vCPU beats an expensive one with more: every card at 16 vCPU first, then at 8
     for vcpu, g in [(16, g) for g in gpus] + [(8, g) for g in gpus]:
@@ -115,7 +131,7 @@ def start(exclude=(), cloud="ALL"):
             print(f"pod_id={d['id']}")
             print(f"gpu={g}")
             return d["id"], g
-    sys.exit(f"no GPU available: {last}")
+    return last
 
 
 def _get(url, timeout=30):
