@@ -1,0 +1,38 @@
+name: Kaggle leaderboard position
+# Downloads the competition leaderboard and prints where given scores would rank.
+on:
+  workflow_dispatch:
+    inputs:
+      scores:
+        description: 'Scores to place, comma separated'
+        required: false
+        default: '13.03,12.67,17.58,18.7'
+        type: string
+permissions:
+  contents: read
+jobs:
+  lb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ vars.KAGGLE_USERNAME }}
+    steps:
+      - run: python -m pip install -q kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0 pandas
+      - run: |
+          kaggle competitions leaderboard physionet-ecg-image-digitization --download -p lb
+          cd lb && (unzip -o -q *.zip || true) && ls -la
+          python - <<'PY'
+          import glob, pandas as pd
+          f = [p for p in glob.glob("*.csv")][0]
+          d = pd.read_csv(f); print(d.columns.tolist(), len(d)); print(d.head(30).to_string())
+          sc = [c for c in d.columns if "core" in c][0]
+          s = d[sc].astype(float).sort_values(ascending=False).reset_index(drop=True)
+          for q in [5, 10, 20, 24, 50, 100, 200, 300, 500, 700, 1000]:
+              if q <= len(s): print("rank", q, "score", s[q-1])
+          import os
+          for v in [float(x) for x in os.environ["SC"].split(",")]:
+              print(f"score {v}: rank {(s > v).sum() + 1} of {len(s)} (top {100*((s > v).sum()+1)/len(s):.1f}%)")
+          PY
+        env:
+          SC: ${{ inputs.scores }}
