@@ -59,7 +59,8 @@ def grid_map_from_phase(P: np.ndarray, paper: np.ndarray | None = None) -> np.nd
     return G
 
 
-MIN_GAIN = [0.3]   # line contrast the snapped network grid must reach on both axes to be used
+MIN_GAIN = [0.3]
+MAX_SIDE = [1600]   # line contrast the snapped network grid must reach on both axes to be used
 
 
 def grid_map(img_bgr: np.ndarray, paper: np.ndarray | None, model_path: str):
@@ -69,13 +70,25 @@ def grid_map(img_bgr: np.ndarray, paper: np.ndarray | None, model_path: str):
     if key not in _CACHE:
         if len(_CACHE) > 6:
             _CACHE.clear()
-        P = predict_phase(img_bgr, model_path)
+        # network, fit and snap at <= MAX_SIDE px (memory and time; the map is smooth), then the
+        # coordinates are resized to the image and the lines drawn at full resolution
+        import cv2
+        H, W = img_bgr.shape[:2]
+        sc = min(1.0, MAX_SIDE[0] / max(H, W))
+        small = cv2.resize(img_bgr, (max(32, round(W * sc)), max(32, round(H * sc))),
+                           interpolation=cv2.INTER_AREA) if sc < 1 else img_bgr
+        P = predict_phase(small, model_path)
         G = None
         if float(P[8].mean()) > 0.1:
             U, V, pap = fit_smooth(P)
-            U, V, gains = snap_offsets(img_bgr, U, V, pap)
+            U, V, gains = snap_offsets(small, U, V, pap)
+            del P
             if min(gains) >= MIN_GAIN[0]:
-                G = draw_grid(U, V, pap)
+                if sc < 1:
+                    U = cv2.resize(U.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+                    V = cv2.resize(V.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+                    pap = cv2.resize(pap.astype(np.uint8), (W, H), interpolation=cv2.INTER_NEAREST) > 0
+                G = draw_grid(U.astype(np.float32), V.astype(np.float32), pap)
         _CACHE[key] = G
     G = _CACHE[key]
     if G is None:
@@ -156,12 +169,15 @@ def fit_smooth(P: np.ndarray, deg: int = 4, step: int = 4):
         coef, off, _ = _fit_axis(*(Ps[i].astype(np.float64) for i in c), wgt, xs, ys, step / sc, deg)
         out.append((coef, off))
     # full resolution: evaluate the polynomials, then the same 1 mm offset refinement
-    yf, xf = np.mgrid[0:H, 0:W].astype(np.float64)
-    xf = (xf - W / 2) / sc; yf = (yf - H / 2) / sc
-    Bf, _, _ = _basis(xf.ravel(), yf.ravel(), deg)
+    xf1 = (np.arange(W) - W / 2) / sc
     maps = []
     for (coef, off), c in zip(out, ((0, 1, 4, 5), (2, 3, 6, 7))):
-        u = (Bf @ coef).reshape(H, W) + off
+        u = np.empty((H, W), np.float64)
+        for y0 in range(0, H, 256):                                 # in row blocks (memory)
+            yy, xx = np.meshgrid((np.arange(y0, min(H, y0 + 256)) - H / 2) / sc, xf1, indexing="ij")
+            Bf, _, _ = _basis(xx.ravel(), yy.ravel(), deg)
+            u[y0:y0 + len(yy)] = (Bf @ coef).reshape(yy.shape)
+        u += off
         z1 = (P[c[2]] + 1j * P[c[3]]); z1 = z1 / (np.abs(z1) + 1e-6)
         c1 = np.sum(P[8] * np.exp(1j * np.angle(z1 * np.exp(-2j * np.pi * u))))
         if np.abs(c1) > 0.3 * P[8].sum():
