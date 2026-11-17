@@ -53,7 +53,7 @@ Sources: [5th place code](https://github.com/dangnh0611/kaggle_ecg_digitization)
 
 ## GPU choice
 
-The default pod is a mid-range 24 GB card (RTX A5000, then RTX 3090, A6000, A40, 4090, L40S). The
+The default pod is a cheap card only (RTX A5000, RTX 3090, RTX A4500, RTX 4000 Ada, RTX A4000) at no more than 0.5 USD/h; a more expensive card runs only when asked for by name. `gpu-stop-all.yml` terminates every training pod. The
 training crops come from a CPU generator, so on a 4090 the GPU waited for data 23-37% of the time;
 what sets the cost is the cost per training step, not per hour. The 4090 is for larger models,
 higher resolution or pre-generated data, when the GPU becomes the bottleneck.

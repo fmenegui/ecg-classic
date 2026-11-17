@@ -23,10 +23,12 @@ from pathlib import Path
 
 API = "https://api.runpod.io/graphql"
 IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
-# best cost per training step first: the crops come from the CPU generator, so a mid-range 24 GB card
-# is not slower in practice than a 4090 and costs a fraction (16/11: A5000 0.27 USD/h vs 4090 0.89)
-FALLBACK_GPUS = ["NVIDIA RTX A5000", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A6000", "NVIDIA A40",
-                 "NVIDIA GeForce RTX 4090", "NVIDIA L40S"]
+# cheap cards only, best cost per training step first (the crops come from the CPU generator, so a
+# 4090 mostly waits for data: 16/11, A5000 0.27 USD/h vs 4090 0.89). A card outside this list is used
+# only when asked for by name (workflow input "gpu").
+FALLBACK_GPUS = ["NVIDIA RTX A5000", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A4500", "NVIDIA RTX 4000 Ada Generation",
+                 "NVIDIA RTX A4000"]
+MAX_USD_H = float(os.environ.get("MAX_USD_H", "0.5"))   # never start a pod above this price (unless GPU asks)
 # one name per workflow run: "stop" must only terminate this run's pods, never a parallel training
 NAME = "ecgdig-train-" + os.environ.get("GITHUB_RUN_ID", "local")
 
@@ -84,13 +86,15 @@ def start(exclude=(), cloud="ALL"):
            {"key": "MAX_HOURS", "value": os.environ.get("MAX_HOURS", "1")}]
     cmd = ("bash -c 'curl -fsSL https://raw.githubusercontent.com/fmenegui/ecg-digitalization-classic/"
            "${REF}/hybrid/gpu/pod.sh -o /pod.sh && bash /pod.sh'")
-    gpus = [os.environ.get("GPU") or FALLBACK_GPUS[0]] + [g for g in FALLBACK_GPUS if g != os.environ.get("GPU")]
+    asked = os.environ.get("GPU") or ""
+    gpus = ([asked] if asked else []) + [g for g in FALLBACK_GPUS if g != asked]
     gpus = [g for g in gpus if g not in exclude] + [g for g in gpus if g in exclude]
     q = """mutation($input: PodFindAndDeployOnDemandInput) {
              podFindAndDeployOnDemand(input: $input) { id machineId costPerHr gpuCount } }"""
     last = None
     # preferred GPU first, with as many vCPU as possible (the crops are generated on the CPU)
-    for vcpu, g in [(v, g) for g in gpus for v in (24, 16)] + [(8, g) for g in gpus]:
+    # a cheap card with 8 vCPU beats an expensive one with more: every card at 16 vCPU first, then at 8
+    for vcpu, g in [(16, g) for g in gpus] + [(8, g) for g in gpus]:
         inp = dict(cloudType=cloud, gpuCount=1, volumeInGb=0, containerDiskInGb=60, minVcpuCount=vcpu,
                    minMemoryInGb=30, gpuTypeId=g, name=NAME, imageName=IMAGE, dockerArgs=cmd,
                    ports="8000/http", volumeMountPath="/workspace", env=env)
@@ -99,6 +103,10 @@ def start(exclude=(), cloud="ALL"):
         except Exception as e:  # noqa: BLE001
             last = e
             print(f"{g} ({vcpu} vCPU): {e}", file=sys.stderr)
+            continue
+        if d and d.get("id") and g != asked and float(d.get("costPerHr") or 0) > MAX_USD_H:
+            print(f"{g}: {d.get('costPerHr')} USD/h is above MAX_USD_H={MAX_USD_H}, terminating it", file=sys.stderr)
+            gql("mutation($input: PodTerminateInput!) { podTerminate(input: $input) }", {"input": {"podId": d["id"]}})
             continue
         if d and d.get("id"):
             print(f"started {d['id']} on {g} (>= {vcpu} vCPU, {cloud} cloud), {d.get('costPerHr')} USD/h", file=sys.stderr)
@@ -166,6 +174,19 @@ def run(out: Path, tries=3):
     sys.exit("no pod with a working GPU")
 
 
+def stop_all():
+    """Terminates every training pod of this account (names starting with ecgdig-train) and reports
+    what is left running."""
+    mine = gql("query { myself { clientBalance pods { id name costPerHr desiredStatus } } }")["myself"]
+    for p in mine["pods"] or []:
+        if (p.get("name") or "").startswith("ecgdig-train"):
+            gql("mutation($input: PodTerminateInput!) { podTerminate(input: $input) }", {"input": {"podId": p["id"]}})
+            print(f"terminated {p['id']} {p['name']} ({p.get('costPerHr')} USD/h)")
+        else:
+            print(f"left running (not ours): {p['id']} {p.get('name')}")
+    print(f"balance {mine.get('clientBalance')} USD")
+
+
 def stop():
     pods = []
     if os.environ.get("POD_ID"):
@@ -185,7 +206,8 @@ def stop():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["start", "follow", "stop", "run"])
+    ap.add_argument("cmd", choices=["start", "follow", "stop", "run", "stop-all"])
     ap.add_argument("--out", type=Path, default=Path("result"))
     a = ap.parse_args()
-    {"start": start, "follow": lambda: follow(a.out), "stop": stop, "run": lambda: run(a.out)}[a.cmd]()
+    {"start": start, "follow": lambda: follow(a.out), "stop": stop, "run": lambda: run(a.out),
+     "stop-all": stop_all}[a.cmd]()

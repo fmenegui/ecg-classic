@@ -1,0 +1,16 @@
+name: Stop all GPU pods
+# Terminates every RunPod training pod of this account (names starting with ecgdig-train) and shows
+# the balance. Use it to make sure nothing is left running.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python hybrid/gpu/runpod_ctl.py stop-all | tee -a "$GITHUB_STEP_SUMMARY"
