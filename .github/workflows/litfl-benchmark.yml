@@ -7,6 +7,11 @@ on:
         required: false
         default: '0'
         type: string
+      config:
+        description: 'Config fields, space separated (optional)'
+        required: false
+        default: ''
+        type: string
   pull_request:
     paths:
       - 'ecgdig/**'
@@ -26,7 +31,10 @@ jobs:
           path: benchmarks/litfl/cache
           key: litfl-images-v1
       - name: Benchmark
-        run: python benchmarks/litfl/run.py --limit "${{ inputs.limit || '0' }}" --jobs 2 --compare benchmarks/litfl/baseline.json
+        run: |
+          ARGS=""
+          for kv in ${{ inputs.config }}; do ARGS="$ARGS --config $kv"; done
+          python benchmarks/litfl/run.py --limit "${{ inputs.limit || '0' }}" --jobs 4 --compare benchmarks/litfl/baseline.json $ARGS
       - name: Report in the job summary
         if: always()
         run: cat results/litfl/report.md >> "$GITHUB_STEP_SUMMARY"
