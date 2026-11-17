@@ -42,6 +42,7 @@ import metrics as MT  # noqa: E402
 
 LEADS = MT.LEADS
 FS = 500
+LAYOUT_CLASSES = ['unknown', '3x4', '6x2', '12x1', '2x6', '3x4+r1']   # ecg_gpu.schema_v05.LAYOUTS (prefix)
 READINGS = ["photo", "photo+cal", "rectified", "rectified+cal", "document", "document+cal"]
 
 
@@ -171,6 +172,9 @@ def main():
     ap.add_argument("--nparts", type=int, default=1)
     ap.add_argument("--pages", type=int, default=10, help="pages of this shard")
     ap.add_argument("--page", default="1700x2200", help="HxW of the rendered photo")
+    ap.add_argument("--styles", default="standard,generic",
+                    help="standard: 3x4 + rhythm strip at 25 mm/s and 10 mm/mV (the common clinical page, as in "
+                         "Kaggle); generic: every renderer layout, speed and gain")
     ap.add_argument("--readings", default=",".join(READINGS))
     ap.add_argument("--config", default="", help='extra Config fields for every reading, e.g. "R=15"')
     ap.add_argument("--out", type=Path, required=True)
@@ -192,14 +196,21 @@ def main():
     want = [x for x in a.readings.split(",") if x]
     (a.out / "img").mkdir(parents=True, exist_ok=True)
     results = []
-    for i in range(a.pages):
-        page = a.part * a.pages + i
+    styles = [x for x in a.styles.split(",") if x]
+    ct = layer.renderer.class_table
+    std = {"layout": torch.tensor([int((ct == LAYOUT_CLASSES.index("3x4+r1")).nonzero()[0, 0])]),
+           "speed_index": torch.tensor([1]), "gain_index": torch.tensor([1])}   # 3x4 + rhythm, 25 mm/s, 10 mm/mV
+    full = {"lead_present": torch.ones(1, 15)}   # no lead left out: a blank cell would shift the given layout
+    jobs = [(a.part * a.pages + i, st) for i in range(a.pages) for st in styles]
+    for page, style in jobs:
         rid = page % len(bank)
-        rec = dict(page=page, record=int(rid))
+        rec = dict(page=page, record=int(rid), style=style)
         try:
-            torch.manual_seed(1000 + page)
+            # one generator per page and style: the module's own stream repeats in every shard
+            gen = torch.Generator().manual_seed(100003 * (1 + styles.index(style)) + page)
             sig = np.nan_to_num(np.asarray(bank[rid], np.float32))[:, :5000]
-            r = layer.render_batch(torch.from_numpy(sig)[None], FS, stage="image", photo=True,
+            r = layer.render_batch(torch.from_numpy(sig)[None], FS, stage="image", photo=True, generator=gen,
+                                   parameters=dict(std, **full) if style == "standard" else dict(full),
                                    return_field=True, return_canonical=True)
             m = r.metadata
             ref = r.reference[0].cpu().numpy() if torch.is_tensor(r.reference) else sig
@@ -217,7 +228,7 @@ def main():
             import cv2
             for nm, im in imgs.items():
                 sc = min(1.0, 900 / im.shape[1])
-                cv2.imwrite(str(a.out / "img" / f"{page:05d}-{nm}.jpg"),
+                cv2.imwrite(str(a.out / "img" / f"{page:05d}-{style}-{nm}.jpg"),
                             cv2.resize(im, None, fx=sc, fy=sc, interpolation=cv2.INTER_AREA), [cv2.IMWRITE_JPEG_QUALITY, 70])
             for nm in want:
                 base = nm.split("+")[0]
@@ -231,7 +242,7 @@ def main():
                 if Gp is not None:
                     s["kaggle_db_printed"] = float(10 * np.log10(max(MT.kaggle_image_snr(Gp, P, FS)[0], 1e-12)))
                 rec[nm] = dict(info, **s)
-                print(f"page {page} {nm:14s} kaggle {s['kaggle_db']:6.2f} dB  {info.get('error', '')}", flush=True)
+                print(f"page {page} {style:8s} {nm:14s} kaggle {s['kaggle_db']:6.2f} dB  {info.get('error', '')}", flush=True)
         except Exception as e:  # noqa: BLE001
             rec["error"] = f"{type(e).__name__}: {e}"
             traceback.print_exc()

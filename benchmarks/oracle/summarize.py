@@ -67,6 +67,11 @@ def main():
           "truth (see `benchmarks/oracle/run.py`). Kaggle = official metric (mean of linear image SNRs); "
           "PM = PMcardio style (failure counts as 0 dB / PCC 0).", ""]
     md += table(recs, "All pages")
+    st = defaultdict(list)
+    for r in recs:
+        st[r.get("style", "generic")].append(r)
+    for k in sorted(st):
+        md += table(st[k], f"Style: {k}")
     by = defaultdict(list)
     for r in recs:
         by[r.get("capture", "?")].append(r)

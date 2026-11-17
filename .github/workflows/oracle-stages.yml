@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       pages:
-        description: 'Pages per shard (20 shards)'
+        description: 'Pages per shard (20 shards); each page is rendered in both styles (standard, generic)'
         required: false
-        default: '10'
+        default: '5'
         type: string
       page:
         description: 'Rendered photo size HxW'
