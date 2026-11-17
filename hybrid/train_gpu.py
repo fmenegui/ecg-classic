@@ -134,8 +134,9 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--encoder", default="resnet34")
     ap.add_argument("--weights", default="imagenet")
-    ap.add_argument("--gen", default="gen", choices=sorted(GENS),
-                    help="gen: page ink map; rowgen: the centre row's trace in a strip (row network)")
+    ap.add_argument("--gen", default="gen", choices=sorted(GENS) + ["gridpts"],
+                    help="gen: page ink map; rowgen: the centre row's trace in a strip (row network); "
+                         "gridpts: 5 mm grid intersections in rendered photos (GPU only)")
     ap.add_argument("--init", type=Path, default=None, help="state_dict to start from (e.g. the ink model's unet.pt)")
     ap.add_argument("--render-frac", type=float, default=0.0,
                     help="rowgen only: share of each batch rendered on the GPU by ecg-torch-renderer (hybrid/rendergen.py)")
@@ -163,18 +164,35 @@ def main():
     net = net.to(dev)
     n_par = sum(p.numel() for p in net.parameters())
     print(f"device {dev} encoder {a.encoder} parameters {n_par} workers {a.workers}", flush=True)
-    dl = torch.utils.data.DataLoader(Stream(a.size, 1234, a.gen), batch_size=a.batch, num_workers=a.workers,
+    gp = None
+    if a.gen == "gridpts":   # everything rendered on the GPU: no CPU data workers
+        from gridgen import GridPoints
+        gp = GridPoints(dev, size=a.size, pages=2)
+
+        class _GPU:
+            def __iter__(self):
+                while True:
+                    yield gp.batch(a.batch)
+        dl = _GPU()
+    else:
+      dl = torch.utils.data.DataLoader(Stream(a.size, 1234, a.gen), batch_size=a.batch, num_workers=a.workers,
                                      persistent_workers=True, pin_memory=dev == "cuda", prefetch_factor=4,
                                      worker_init_fn=_worker_init, multiprocessing_context="spawn")
     # fixed validation set (same crops every time)
     vr = np.random.default_rng(999)
-    val = [GENS[a.gen](vr, a.size) for _ in range(a.val)]
-    vx = torch.stack([torch.from_numpy(im[..., ::-1].copy()).permute(2, 0, 1).float() / 255.0 for im, _ in val])
-    vy = torch.stack([torch.from_numpy(lb)[None] for _, lb in val])
+    if gp is not None:
+        gv = __import__("gridgen").GridPoints(dev, size=a.size, pages=2, seed=999)
+        vb = [gv.batch(16) for _ in range(max(1, a.val // 16))]
+        vx = torch.cat([b[0] for b in vb]).cpu(); vy = torch.cat([b[1] for b in vb]).cpu()
+        del gv
+    else:
+        val = [GENS[a.gen](vr, a.size) for _ in range(a.val)]
+        vx = torch.stack([torch.from_numpy(im[..., ::-1].copy()).permute(2, 0, 1).float() / 255.0 for im, _ in val])
+        vy = torch.stack([torch.from_numpy(lb)[None] for _, lb in val])
     opt = torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=1e-4)
     scaler = torch.amp.GradScaler(enabled=dev == "cuda")
     # row network: sparse signal label (<= 2 px per column) -> heavy positive weight, no Dice
-    pos_w = torch.tensor(20.0 if a.gen == "rowgen" else 3.0, device=dev)
+    pos_w = torch.tensor(20.0 if a.gen in ("rowgen", "gridpts") else 3.0, device=dev)
 
     def lr_at(frac):
         if frac < 0.02:
@@ -200,6 +218,17 @@ def main():
                     cy = (yy * hh).sum(1) / yy.sum(1).clamp_min(1e-6)
                     ok = (yy.sum(1) > 0.5) & (pr.amax(1) >= 0.3)
                     cerr.append((cp - cy).abs()[ok].float().cpu())
+                if a.gen == "gridpts":   # node detection: matched within 2 px, sub-pixel error
+                    from gridgen import peaks
+                    pr = torch.sigmoid(lg)[:, 0]
+                    for b in range(len(pr)):
+                        P_ = peaks(pr[b]); G_ = peaks(y[b, 0], thr=0.5)
+                        if len(G_) == 0:
+                            continue
+                        if len(P_) == 0:
+                            cerr.append(torch.full((len(G_),), 99.0)); continue
+                        d = torch.cdist(G_, P_).min(1).values
+                        cerr.append(d.float().cpu())
         net.train()
         validate.col_err = float(torch.cat(cerr).median()) if cerr else float("nan")
         validate.col_err90 = float(torch.cat(cerr).quantile(0.9)) if cerr else float("nan")
@@ -248,7 +277,7 @@ def main():
             logit = net(x)
         logit = logit.float()
         loss = F.binary_cross_entropy_with_logits(logit, y, pos_weight=pos_w)
-        if a.gen != "rowgen":
+        if a.gen not in ("rowgen", "gridpts"):
             loss = loss + dice_loss(logit, y)
         opt.zero_grad(set_to_none=True)
         scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
