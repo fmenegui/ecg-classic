@@ -199,7 +199,8 @@ def main():
     styles = [x for x in a.styles.split(",") if x]
     ct = layer.renderer.class_table
     std = {"layout": torch.tensor([int((ct == LAYOUT_CLASSES.index("3x4+r1")).nonzero()[0, 0])]),
-           "speed_index": torch.tensor([1]), "gain_index": torch.tensor([1])}   # 3x4 + rhythm, 25 mm/s, 10 mm/mV
+           "speed_index": torch.tensor([1]), "gain_index": torch.tensor([1]),     # 3x4 + rhythm, 25 mm/s, 10 mm/mV
+           "sequential": torch.tensor([True])}   # columns follow in time (0-2.5, 2.5-5 s, ...), as printers do
     full = {"lead_present": torch.ones(1, 15)}   # no lead left out: a blank cell would shift the given layout
     jobs = [(a.part * a.pages + i, st) for i in range(a.pages) for st in styles]
     for page, style in jobs:
