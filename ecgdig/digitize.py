@@ -61,6 +61,7 @@ class Config:
     hybrid_margin: float = 0.2  # the network's reading must beat the classical one by this much
     # path of the row-network ONNX: each row's trace is read from the network's map of THAT row
     # (neighbours, grid, text removed); rows, layout, time axis and gain stay classical
+    grid_model: str = ""        # ONNX of the grid-phase network: grid map seen by the network (hybrid geometry)
     row_model: str = ""
     row_mode: str = "fuse"      # "fuse": network only where the classical reading fails; "replace": everywhere
     prewarp: bool = False          # coarse perspective from the outline of the gridded area
@@ -1410,6 +1411,8 @@ def _digitize_once(image, cfg: Config | None = None, return_debug: bool = False)
     _le.LIMB_LOG[0] = cfg.limb_log
     from . import extract as _ex
     _ex.ROW_CHAIN[0] = cfg.row_chain
+    from . import geometry as _geo
+    _geo.GRID_MODEL[0] = cfg.grid_model
     rect, pap, ginfo = rectify(img, R, cfg.ppmm, cfg.nonrigid, major_snap=cfg.major_snap,
                                fine_snap=cfg.fine_snap)
     D, glev = ink_map(rect, pap, R, return_grid_level=True)

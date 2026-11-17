@@ -202,8 +202,15 @@ def paper_mask(img: np.ndarray) -> np.ndarray:
     return cv2.resize(mm, (W, H), interpolation=cv2.INTER_NEAREST)
 
 
+GRID_MODEL = [""]   # ONNX of the grid-phase network (Config.grid_model); "" = classical grid map
+
+
 def grid_map(img: np.ndarray, paper: np.ndarray, clamp_ink: bool = True) -> np.ndarray:
-    """Map of 'dark structure' normalized by illumination, with the ink attenuated."""
+    """Map of 'dark structure' normalized by illumination, with the ink attenuated.
+    With GRID_MODEL set, the map is drawn from the network's grid phase (ecgdig/gridmodel.py)."""
+    if GRID_MODEL[0] and clamp_ink and img.ndim == 3:
+        from .gridmodel import grid_map as _net_grid_map
+        return _net_grid_map(img, paper, GRID_MODEL[0])
     f = img.astype(np.float32)
     # mean and max of the 3 channels channel by channel (same result as f.mean(2) / f.max(2);
     # a NumPy reduction over an axis of size 3 is several times slower)
