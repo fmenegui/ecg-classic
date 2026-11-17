@@ -32,7 +32,46 @@ permissions:
 env:
   IDS: '119693645,1257259783,1280609341,1449491391,1962423499,2295597388,235672018,2587667307,2841936136,3042142152,322694441,3275080079,3574249147,3646789790,3879757040,4050029009,426433979,644026427,994226251,996604037'
 jobs:
+  models:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Models
+        run: |
+          mkdir -p model
+          get() {   # run id, output name
+            [ -z "$1" ] && return 0
+            gh run download "$1" -D "dl_$2"
+            f=$(find "dl_$2" -name trace_seg.onnx | head -1)
+            if [ -n "$f" ]; then cp "$f" "model/$2.onnx"; return 0; fi
+            p=$(find "dl_$2" -name unet_best.pt | head -1)
+            python -m pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
+            python -m pip install -q segmentation-models-pytorch==0.3.4 timm onnx
+            python - "$p" "model/$2.onnx" <<'PY'
+          import sys, torch, segmentation_models_pytorch as smp
+          m = smp.Unet(encoder_name="resnet34", encoder_weights=None, in_channels=3, classes=1)
+          m.load_state_dict(torch.load(sys.argv[1], map_location="cpu")); m.eval()
+          torch.onnx.export(m, torch.zeros(1, 3, 256, 256), sys.argv[2], input_names=["x"], output_names=["logit"],
+                            dynamic_axes={"x": {0: "n", 2: "h", 3: "w"}, "logit": {0: "n", 2: "h", 3: "w"}}, opset_version=17)
+          PY
+          }
+          get "${{ inputs.ink_model_run }}" ink
+          get "${{ inputs.row_model_run }}" row
+          ls -la model
+      - uses: actions/upload-artifact@v4
+        if: inputs.ink_model_run != '' || inputs.row_model_run != ''
+        with:
+          name: keval-${{ inputs.tag }}-models
+          path: model/
+          retention-days: 30
   shard:
+    needs: models
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
@@ -55,28 +94,12 @@ jobs:
           path: results/physionet/data
           key: physionet-all20-v1
           restore-keys: physionet-p20-
-      - name: Models
-        run: |
-          mkdir -p model
-          get() {   # run id, output name
-            [ -z "$1" ] && return 0
-            gh run download "$1" -D "dl_$2"
-            f=$(find "dl_$2" -name trace_seg.onnx | head -1)
-            if [ -n "$f" ]; then cp "$f" "model/$2.onnx"; return 0; fi
-            p=$(find "dl_$2" -name unet_best.pt | head -1)
-            python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
-            python -m pip install -q segmentation-models-pytorch==0.3.4 timm onnx
-            python - "$p" "model/$2.onnx" <<'PY'
-          import sys, torch, segmentation_models_pytorch as smp
-          m = smp.Unet(encoder_name="resnet34", encoder_weights=None, in_channels=3, classes=1)
-          m.load_state_dict(torch.load(sys.argv[1], map_location="cpu")); m.eval()
-          torch.onnx.export(m, torch.zeros(1, 3, 256, 256), sys.argv[2], input_names=["x"], output_names=["logit"],
-                            dynamic_axes={"x": {0: "n", 2: "h", 3: "w"}, "logit": {0: "n", 2: "h", 3: "w"}}, opset_version=17)
-          PY
-          }
-          get "${{ inputs.ink_model_run }}" ink
-          get "${{ inputs.row_model_run }}" row
-          ls -la model
+      - uses: actions/download-artifact@v4
+        if: inputs.ink_model_run != '' || inputs.row_model_run != ''
+        with:
+          name: keval-${{ inputs.tag }}-models
+          path: model
+      - run: ls -la model || true
       - name: Evaluate one record
         env:
           PHYSIONET_KEEP_DATA: '1'
