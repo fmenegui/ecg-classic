@@ -1,8 +1,8 @@
 name: GPU training on RunPod
 # Starts a RunPod GPU pod, runs a training command there (hybrid/gpu/pod.sh), follows its log,
 # brings the result back as an artifact and ALWAYS terminates the pod at the end (also on error,
-# cancellation or time limit). Needs the repository secret RUNPOD_API_KEY; the pod itself gets
-# no secret.
+# cancellation or time limit). Needs the repository secret RUNPOD_API_KEY. The pod only gets the
+# optional RENDERER_TOKEN (read-only, to install the private ecg-torch-renderer).
 on:
   workflow_dispatch:
     inputs:
@@ -34,6 +34,7 @@ jobs:
     timeout-minutes: 355
     env:
       RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+      RENDERER_TOKEN: ${{ secrets.RENDERER_TOKEN }}   # optional, read-only, for the private ecg-torch-renderer
     steps:
       - uses: actions/checkout@v4
       - name: Train on a pod (a pod whose CUDA fails is replaced)

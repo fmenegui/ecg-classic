@@ -90,6 +90,27 @@ def gpu_aug(x, y, g, rot=True):
     return x.clamp(0, 1), y
 
 
+def render_aug(x, g):
+    """Capture degradations for the clean rendered documents: blur, colour/contrast, noise."""
+    n = x.shape[0]
+    dev = x.device
+    out = []
+    for i in range(n):
+        xi = x[i:i + 1]
+        s = float(torch.rand(1, generator=g)) * 1.6
+        if s > 0.3:
+            k = int(2 * round(3 * s) + 1)
+            ax = torch.arange(k, device=dev, dtype=xi.dtype) - k // 2
+            w = torch.exp(-ax ** 2 / (2 * s * s)); w = w / w.sum()
+            xi = F.conv2d(F.pad(xi, (k // 2,) * 4, mode="replicate"), w.view(1, 1, 1, k).repeat(3, 1, 1, 1), groups=3)
+            xi = F.conv2d(xi, w.view(1, 1, k, 1).repeat(3, 1, 1, 1), groups=3)
+        out.append(xi)
+    x = torch.cat(out)
+    x = x * torch.empty(n, 3, 1, 1, device=dev).uniform_(0.8, 1.1) + torch.empty(n, 1, 1, 1, device=dev).uniform_(-0.1, 0.05)
+    x = x + torch.randn_like(x) * torch.empty(n, 1, 1, 1, device=dev).uniform_(0, 0.05)
+    return x.clamp(0, 1)
+
+
 def dice_loss(logit, y):
     p = torch.sigmoid(logit)
     num = 2 * (p * y).sum((1, 2, 3)) + 1
@@ -116,6 +137,8 @@ def main():
     ap.add_argument("--gen", default="gen", choices=sorted(GENS),
                     help="gen: page ink map; rowgen: the centre row's trace in a strip (row network)")
     ap.add_argument("--init", type=Path, default=None, help="state_dict to start from (e.g. the ink model's unet.pt)")
+    ap.add_argument("--render-frac", type=float, default=0.0,
+                    help="rowgen only: share of each batch rendered on the GPU by ecg-torch-renderer (hybrid/rendergen.py)")
     ap.add_argument("--reuse", type=int, default=1,
                     help="steps per generated batch (> 1: the extra steps see GPU-augmented copies)")
     ap.add_argument("--val", type=int, default=256, help="fixed validation crops")
@@ -191,6 +214,15 @@ def main():
                           opset_version=17, dynamo=False)
         net.to(dev).train()
 
+    rs = None
+    if a.render_frac > 0 and a.gen == "rowgen":
+        try:
+            from rendergen import TorchStrips
+            rs = TorchStrips(dev, size=a.size, pages=2)
+            print("GPU-rendered strips:", a.render_frac, "of each batch", flush=True)
+        except Exception as e:  # noqa: BLE001
+            print("ecg-torch-renderer not available, CPU strips only:", e, flush=True)
+    t_render = 0.0
     t0 = time.time(); log = []; it = iter(dl); best = None; t_wait = 0.0
     g_aug = torch.Generator().manual_seed(7)
     for step in range(1, a.steps + 1):
@@ -200,6 +232,15 @@ def main():
         if (step - 1) % a.reuse == 0:
             tw = time.time(); xb, yb = next(it); t_wait += time.time() - tw
             xb, yb = xb.to(dev, non_blocking=True), yb.to(dev, non_blocking=True)
+            if rs is not None:   # replace part of the batch with GPU-rendered pages' strips
+                tr = time.time()
+                n_r = int(round(a.render_frac * len(xb)))
+                got = rs.batch(n_r) if n_r else None
+                if got is not None:
+                    xr, yr = got
+                    xb = xb.clone(); yb = yb.clone()
+                    xb[:n_r] = render_aug(xr, g_aug); yb[:n_r] = yr
+                t_render += time.time() - tr
             x, y = xb, yb
         else:
             x, y = gpu_aug(xb, yb, g_aug, rot=a.gen != "rowgen")
@@ -216,7 +257,8 @@ def main():
             mem = torch.cuda.max_memory_allocated() / 2 ** 30 if dev == "cuda" else 0.0
             # data wait share: near 100% means the GPU is starved by the CPU crop generator
             print(f"step {step} loss {float(loss):.4f} lr {lr_at(frac):.2e} {el / step:.3f} s/step "
-                  f"data wait {100 * t_wait / el:.0f}% gpu mem {mem:.1f} GB cpus {_cpus()}", flush=True)
+                  f"data wait {100 * t_wait / el:.0f}% render {100 * t_render / el:.0f}% gpu mem {mem:.1f} GB "
+                  f"cpus {_cpus()}", flush=True)
         if step % 2000 == 0 or frac >= 1.0:
             vl, iou = validate()
             log.append(dict(step=step, loss=float(loss), val_loss=vl, val_iou=iou, col_err=validate.col_err,

@@ -84,6 +84,8 @@ def start(exclude=(), cloud="ALL"):
     ref = os.environ["REF"]
     env = [{"key": "REF", "value": ref}, {"key": "JOB", "value": os.environ["JOB"]},
            {"key": "MAX_HOURS", "value": os.environ.get("MAX_HOURS", "1")}]
+    if os.environ.get("RENDERER_TOKEN"):   # read-only token for the private ecg-torch-renderer repo, if set
+        env.append({"key": "RENDERER_TOKEN", "value": os.environ["RENDERER_TOKEN"]})
     cmd = ("bash -c 'curl -fsSL https://raw.githubusercontent.com/fmenegui/ecg-digitalization-classic/"
            "${REF}/hybrid/gpu/pod.sh -o /pod.sh && bash /pod.sh'")
     asked = os.environ.get("GPU") or ""

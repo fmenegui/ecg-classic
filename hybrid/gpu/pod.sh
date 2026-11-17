@@ -19,6 +19,9 @@ echo "setup" > "$OUT/status.txt"
   cd repo
   git log --oneline -1
   pip install -q -e . onnx onnxruntime segmentation-models-pytorch==0.3.4 timm wfdb
+  # GPU strip renderer (hybrid/rendergen.py): public install, or a read-only token for the private repo
+  pip install -q "git+https://${RENDERER_TOKEN:+x-access-token:${RENDERER_TOKEN}@}github.com/fmenegui/ecg-torch-renderer" \
+    && echo "ecg-torch-renderer installed" || echo "ecg-torch-renderer not installed (CPU strips only)"
   # some hosts expose the GPU to nvidia-smi but fail CUDA initialization ("CUDA unknown error");
   # training would then silently run on the CPU, so stop here and let the workflow try another pod
   if ! python -c "import torch; assert torch.cuda.is_available(); print('cuda ok', torch.cuda.get_device_name(0), (torch.ones(1, device='cuda') * 2).item())"; then
