@@ -35,6 +35,7 @@ res["hybrid"]   # {"chosen": "model" | "classical", "score_classical": ..., "sco
 |---|---|---|---|
 | 14/11 | 4,700 CPU steps (loss 0.42, still falling) | classical 14.57 → network only 13.69 dB; best of the two per image 15.49 dB | wins on screens and crumpled photos, loses on renders and phone photos |
 | 16/11 | same model, current classical pipeline | classical 14.70, network only 12.16, best of the two per image 15.37 dB; automatic choice (page score + 1.0 × limb closure, margin 0.2) 14.80 dB | the internal score finds only a fraction of the oracle gain; the downstream rules (row filters) were tuned on the classical map and drop rows the network draws well (12x1 photo, ECG 70) |
+| 17/11 | row network v2 (rendered photos rectified with their exact geometry), fuse mode | PM-ECG-ID 6000/6000: PM SNR 8.52 -> 9.41 dB, PCC 0.687 -> 0.705, failed leads 13.4% -> 12.9%, Kaggle 11.66 -> 12.56 dB | first network that helps on real photos and scans; see `docs/results/pm-ecg-id-rownet-v2.md` |
 
 ## Comparison with the Kaggle leaders
 
