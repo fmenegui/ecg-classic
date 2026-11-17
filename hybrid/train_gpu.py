@@ -132,6 +132,9 @@ def main():
         sys.exit("CUDA is not available on this GPU pod; refusing to train on the CPU")
     torch.backends.cudnn.benchmark = True
     net = build(a.encoder, a.weights)
+    if not a.init and (a.out / "unet.pt").exists():   # pod restarted: resume from the last checkpoint
+        a.init = a.out / "unet.pt"
+        print("resuming after a restart", flush=True)
     if a.init and a.init.exists():
         print("init from", a.init, net.load_state_dict(torch.load(a.init, map_location="cpu"), strict=False), flush=True)
     net = net.to(dev)

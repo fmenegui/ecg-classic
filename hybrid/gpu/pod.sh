@@ -8,11 +8,14 @@ OUT=/workspace/out
 mkdir -p "$OUT"
 cd /workspace
 (python -m http.server 8000 --directory "$OUT" > /dev/null 2>&1 &)
+# a RunPod container restart (host hiccup, out of memory) runs this script again: keep the
+# code and the checkpoints, and let train_gpu.py resume from $OUT/unet.pt
+if [ -f "$OUT/status.txt" ]; then echo "POD RESTART detected $(date -u) (was: $(cat "$OUT/status.txt"))" >> "$OUT/log.txt"; fi
 echo "setup" > "$OUT/status.txt"
 {
   echo "pod start $(date -u)"
   nvidia-smi || true
-  git clone --depth 1 -b "$REF" https://github.com/fmenegui/ecg-digitalization-classic repo
+  [ -d repo ] || git clone --depth 1 -b "$REF" https://github.com/fmenegui/ecg-digitalization-classic repo
   cd repo
   git log --oneline -1
   pip install -q -e . onnx onnxruntime segmentation-models-pytorch==0.3.4 timm wfdb

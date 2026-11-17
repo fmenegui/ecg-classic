@@ -1,0 +1,34 @@
+name: Fetch files from a running GPU pod
+# Copies files that a running training pod serves on its HTTP port (hybrid/gpu/pod.sh), e.g. the
+# last checkpoints, into an artifact. Does not stop or change the pod.
+on:
+  workflow_dispatch:
+    inputs:
+      pod_id:
+        description: 'RunPod pod id (from the "started <id> on ..." line of the training log)'
+        required: true
+        type: string
+      files:
+        description: 'Space-separated file names in /workspace/out'
+        required: false
+        default: 'unet_best.pt unet.pt train_log.json log.txt status.txt'
+        type: string
+permissions:
+  contents: read
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download
+        run: |
+          mkdir -p out
+          for f in ${{ inputs.files }}; do
+            curl -fsS --retry 5 --retry-delay 10 -m 600 -o "out/$f" "https://${{ inputs.pod_id }}-8000.proxy.runpod.net/$f" && echo "ok $f" || echo "missing $f"
+          done
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pod-${{ inputs.pod_id }}
+          path: out/
+          retention-days: 30
