@@ -16,6 +16,11 @@ on:
         required: false
         default: true
         type: boolean
+      kernel_version:
+        description: 'Only submit this already-run kernel version (skips upload and run)'
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
 jobs:
@@ -33,6 +38,7 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0
       - name: Dataset with the ecgdig source (private)
+        if: inputs.kernel_version == ''
         run: |
           U="$KAGGLE_USERNAME"; D=dist/ecgdig-src
           mkdir -p $D && cp -r ecgdig $D/ && rm -rf $D/ecgdig/__pycache__ && cp LICENSE $D/ 2>/dev/null || true
@@ -50,6 +56,7 @@ jobs:
           done
       - name: Push the CPU script kernel and wait for its run
         id: kernel
+        if: inputs.kernel_version == ''
         run: |
           U="$KAGGLE_USERNAME"; K=dist/kernel; SLUG=ecgdig-classical-submission
           mkdir -p $K && cp kaggle/submission.py $K/
@@ -71,10 +78,31 @@ jobs:
           echo "$s" | grep -qi complete
       - name: Submit and wait for the score
         if: inputs.submit
+        env:
+          SLUG: ${{ steps.kernel.outputs.slug }}
+          VER: ${{ inputs.kernel_version || steps.kernel.outputs.version }}
+          MSG: ${{ inputs.message }}
         run: |
-          kaggle competitions submit "$COMP" -k "${{ steps.kernel.outputs.slug }}" -v "${{ steps.kernel.outputs.version }}" \
-            -f submission.parquet -m "${{ inputs.message }} ${GITHUB_SHA::7}" --wait 19000 --poll-interval 120 || true
-          kaggle competitions submissions "$COMP" 2>&1 | head -8 | tee -a "$GITHUB_STEP_SUMMARY"
+          python - <<'PY'
+          import os, time
+          from kaggle.api.kaggle_api_extended import KaggleApi
+          api = KaggleApi(); api.authenticate()
+          slug = os.environ.get("SLUG") or f"{os.environ['KAGGLE_USERNAME']}/ecgdig-classical-submission"
+          ver = int(os.environ["VER"]); comp = os.environ["COMP"]
+          for fn in ["submission.parquet", "/kaggle/working/submission.parquet"]:
+              try:
+                  r = api.competition_submit_code(fn, f"{os.environ['MSG']} {os.environ['GITHUB_SHA'][:7]}", comp,
+                                                  kernel=slug, kernel_version=ver)
+                  print("submitted", fn, r); break
+              except Exception as e:  # show the server's reason (the CLI hides it)
+                  resp = getattr(e, "response", None)
+                  print("submit failed with", fn, e, resp.text[:1000] if resp is not None else "")
+          PY
+          for i in $(seq 1 150); do
+            out=$(kaggle competitions submissions "$COMP" 2>&1 | head -4); echo "$(date -u +%H:%M)"; echo "$out"
+            echo "$out" | grep -qiE "complete|error" && break; sleep 120
+          done
+          echo "$out" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
