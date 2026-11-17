@@ -147,7 +147,8 @@ def main():
     vy = torch.stack([torch.from_numpy(lb)[None] for _, lb in val])
     opt = torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=1e-4)
     scaler = torch.amp.GradScaler(enabled=dev == "cuda")
-    pos_w = torch.tensor(3.0, device=dev)
+    # row network: sparse signal label (<= 2 px per column) -> heavy positive weight, no Dice
+    pos_w = torch.tensor(20.0 if a.gen == "rowgen" else 3.0, device=dev)
 
     def lr_at(frac):
         if frac < 0.02:
@@ -166,9 +167,12 @@ def main():
                 if a.gen == "rowgen":   # height error per column (px, 10 px = 1 mm = 0.1 mV at 10 mm/mV)
                     pr = torch.sigmoid(lg)[:, 0]; yy = y[:, 0]
                     hh = torch.arange(pr.shape[1], device=pr.device, dtype=pr.dtype)[None, :, None]
-                    cp = (pr * hh).sum(1) / pr.sum(1).clamp_min(1e-6)
+                    # decode as at inference: centroid within +-3 px of each column's peak
+                    k = pr.argmax(1, keepdim=True)
+                    win = ((hh - k).abs() <= 3).to(pr.dtype)
+                    cp = (pr * win * hh).sum(1) / (pr * win).sum(1).clamp_min(1e-6)
                     cy = (yy * hh).sum(1) / yy.sum(1).clamp_min(1e-6)
-                    ok = yy.sum(1) > 0.5
+                    ok = (yy.sum(1) > 0.5) & (pr.amax(1) >= 0.3)
                     cerr.append((cp - cy).abs()[ok].float().cpu())
         net.train()
         validate.col_err = float(torch.cat(cerr).median()) if cerr else float("nan")
@@ -199,7 +203,9 @@ def main():
         with torch.autocast(dev, enabled=dev == "cuda"):
             logit = net(x)
         logit = logit.float()
-        loss = F.binary_cross_entropy_with_logits(logit, y, pos_weight=pos_w) + dice_loss(logit, y)
+        loss = F.binary_cross_entropy_with_logits(logit, y, pos_weight=pos_w)
+        if a.gen != "rowgen":
+            loss = loss + dice_loss(logit, y)
         opt.zero_grad(set_to_none=True)
         scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
         if step % 100 == 0:

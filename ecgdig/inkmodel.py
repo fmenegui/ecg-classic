@@ -55,3 +55,18 @@ def predict_row(rect_bgr: np.ndarray, yc: float, model_path: str, h: int = 512):
     x = strip[..., ::-1].astype(np.float32).transpose(2, 0, 1)[None] / 255.0
     lg = sess.run(None, {"x": x})[0][0, 0][:, :W]
     return y0, (1.0 / (1.0 + np.exp(-lg))).astype(np.float32)
+
+
+def decode_columns(P: np.ndarray, y0: int = 0, half: int = 3):
+    """Per-column signal height from a row-network map trained on a sparse signal label (the
+    signal's height split over 2 pixels): sub-pixel centroid within +-half px of the column's
+    peak. Returns (y, conf) over the strip's columns; y in image rows (strip offset y0 added)."""
+    H, W = P.shape
+    k = np.argmax(P, axis=0)
+    conf = P[k, np.arange(W)]
+    rows = k[None, :] + np.arange(-half, half + 1)[:, None]
+    ok = (rows >= 0) & (rows < H)
+    w = np.where(ok, P[np.clip(rows, 0, H - 1), np.arange(W)[None, :]], 0.0)
+    y = (w * rows).sum(0) / np.maximum(w.sum(0), 1e-9)
+    # pixel-centre convention (row i is at y = i), as the classical centreline
+    return y + y0, conf

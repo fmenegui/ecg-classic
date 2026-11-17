@@ -828,6 +828,7 @@ TL_COVER = [True]
 PULSE_ROWS_SNAP = [True]
 TRACK_BASE_TRACE = [True]
 LABEL_GAPS = [True]
+ROW_CONF = [0.3]     # row network: minimum peak probability for a column to count
 HYB_W_LIMB = [1.0]   # weight of the limb closure in the hybrid reading score (PhysioNet 135, 16/11)
 GAP_ROBUST_LR = [True]
 HALF_ALONE = [True]
@@ -1838,16 +1839,13 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     seg_jobs = []
     _row_maps = {}
 
-    def _row_map(r_, yc_):
-        """Full-size map of row r_'s trace from the row network (zero outside its strip)."""
+    def _row_signal(r_, yc_):
+        """Row network: per-column height (image y) of row r_'s signal and its confidence."""
         if r_ not in _row_maps:
-            from .inkmodel import predict_row
+            from .inkmodel import predict_row, decode_columns
             y0_, P_ = predict_row(rect, yc_, cfg.row_model)
-            M_ = np.zeros((H, W), np.float32)
-            a_, b_ = max(0, y0_), min(H, y0_ + P_.shape[0])
-            M_[a_:b_] = P_[a_ - y0_:b_ - y0_, :W]
             _row_maps.clear()        # one row at a time (memory)
-            _row_maps[r_] = M_
+            _row_maps[r_] = decode_columns(P_, y0_)
         return _row_maps[r_]
     for r, (y, spec) in enumerate(zip(rows, rows_spec)):
         base0 = base_q[r]
@@ -1876,12 +1874,8 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             xa, xb = max(0, xa), min(W, xb)
             if xb - xa < 10:
                 continue
-            if cfg.row_model:
-                Pr = _row_map(r, base0)
-                runs = column_runs(Pr >= 0.5, Pr, ya, yb, xa, xb)
-            else:
-                runs = column_runs(B, D, ya, yb, xa, xb)
-                _drop_label_runs(runs, xa, label_boxes)
+            runs = column_runs(B, D, ya, yb, xa, xb)
+            _drop_label_runs(runs, xa, label_boxes)
             others = [float(v) for i2, v in enumerate(rows) if i2 != r]
             # in the final extraction, edge continuity (label letters stuck to the trace); the
             # quick traces used for the layout stay as before
@@ -1912,8 +1906,10 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                         runs[i] = [rr_ for rr_ in runs[i] if abs(rr_[2] - base0) <= 4 * R]
                 sel = viterbi_track(runs, base0, R, others=others, lw=lw0, w_edge=0.3, **br_kw(xa))
             seg_jobs.append(dict(lead=lead, row=r, n0=n0, n1=n1, xa=xa, runs=runs, sel=sel))
-            if cfg.row_model:   # envelopes on the row map (coverage 1 = full pen)
-                seg_jobs[-1]["top"], seg_jobs[-1]["bot"] = envelope_edges(Pr, runs, sel, xa, 1.0)
+            if cfg.row_model:   # the row network's signal height replaces the classical centreline
+                ym_, cf_ = _row_signal(r, base0)
+                seg_jobs[-1]["yc_model"] = ym_[xa:xa + len(sel)].copy()
+                seg_jobs[-1]["cf_model"] = cf_[xa:xa + len(sel)].copy()
 
     # "full ink" level and trace radius (half thickness) on flat stretches
     pks = []
@@ -1926,10 +1922,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     dfull = float(np.nanpercentile(pks, 75)) if pks.size else 0.8
     th = []
     for j in seg_jobs:
-        if "top" in j:   # row network: already on the row map
-            top, bot = j["top"], j["bot"]
-        else:
-            top, bot = envelope_edges(D, j["runs"], j["sel"], j["xa"], dfull)
+        top, bot = envelope_edges(D, j["runs"], j["sel"], j["xa"], dfull)
         j["top"], j["bot"] = top, bot
         dt = np.abs(np.gradient(top)) + np.abs(np.gradient(bot))
         th.append((bot - top)[dt < 0.3])
@@ -2004,6 +1997,10 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     tick_r = float(np.percentile(ext_r, 25)) + 1.0 if len(ext_r) >= 3 else 0.0
     for j in seg_jobs:
         yc, valid = centerline_from_envelopes(j["top"], j["bot"], rad, rh=rad_h)
+        if "yc_model" in j and np.sum(j["cf_model"] >= ROW_CONF[0]) >= 0.5 * len(yc):
+            yc = j["yc_model"].astype(np.float64)
+            valid = np.isfinite(yc) & (j["cf_model"] >= ROW_CONF[0])
+            j["model_used"] = True   # no refinement on the classical ink map (it holds the neighbours)
         if valid.sum() < 5:
             continue
         p = pulses_base[j["row"]]
@@ -2051,12 +2048,12 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         if good.sum() < 10:
             good = valid
         xg, yg = xs[good], yc[good]
-        if cfg.steep_subpx and len(xg) > 4:
+        if cfg.steep_subpx and len(xg) > 4 and not j.get("model_used"):
             xg, yg = refine_steep(D, xg, yg, rad_h)
-        if cfg.synth and len(xg) > 20:
+        if cfg.synth and len(xg) > 20 and not j.get("model_used"):
             from .synthesis import synth_refine
             xg, yg = synth_refine(D, xg, yg, rad, max_shift=cfg.synth_max_shift, order=cfg.synth_order)
-        if cfg.fit == "lsf" and len(xg) > 30:
+        if cfg.fit == "lsf" and len(xg) > 30 and not j.get("model_used"):
             from .fit import lsf_refine
             xg, yg = lsf_refine(D, xg, yg, **(cfg.fit_kw or {}))
         if len(xg) < 2:   # the refinements left nothing of this segment: a missing lead, not a crash

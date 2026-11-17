@@ -1,10 +1,12 @@
-"""Training strips for the row network: "which pixels are THIS row's ECG trace".
+"""Training strips for the row network: "where is THIS row's signal, column by column".
 
 The classical pipeline finds the rows, their baselines, the time axis and the layout on any page.
 What it reads badly is the trace itself inside a row: crossings with the neighbouring rows, faint
 or broken ink, grids as dark as the pen, text glued to the trace. The row network takes a strip
-of the rectified page (10 px/mm) centred on the row's estimated baseline and returns the
-coverage of that row's trace only: neighbours, grid, pulses, separators and text are background.
+of the rectified page (10 px/mm) centred on the row's estimated baseline. The label is SPARSE:
+in each column, the height of that row's signal split over the two nearest pixels by its
+fractional part (sub-pixel), as the best Kaggle solutions found (a dense ink mask caps the
+reconstruction SNR). Neighbours, grid, pulses, separators and text are background.
 
 Each strip draws real 12-lead signals (a PTB-XL bank built by hybrid/data/ptbxl_bank.py, set by
 ECG_BANK; the ecgdig dipole synthesizer when there is none), a random row structure (lead
@@ -112,8 +114,33 @@ def _warp(rng, H, W):
     return (xx + dx).astype(np.float32), (yy + dy).astype(np.float32)
 
 
+def _sparse_label(xs, ys, mx, my, yc, H, W, S, gap):
+    """Signal height per output column after the residual warp, split over 2 pixels.
+
+    Coordinates use the pixel-centre convention (row i at y = i). The polyline was drawn at
+    supersampled integer positions, i.e. at (v * S) // 1 -> centre (v + 0.5 / S - 0.5)."""
+    xc = xs + 0.5 / S - 0.5
+    yv = ys + 0.5 / S - 0.5
+    cols = np.arange(W, dtype=np.float64)
+    dy = my[0, :].astype(np.float64)                                  # my = y + dy(x)
+    dx = float(mx[int(np.clip(yc, 0, H - 1)), 0])                     # mx = x + dx(y), at the row
+    sc = cols + dx
+    ok = (sc >= xc[0]) & (sc <= xc[-1])
+    if gap is not None:
+        ok &= ~((sc >= gap[0]) & (sc <= gap[1]))
+    y = np.interp(sc, xc, yv) - dy
+    i = np.floor(y).astype(np.int64)
+    f = (y - i).astype(np.float32)
+    lab = np.zeros((H, W), np.float32)
+    c = np.flatnonzero(ok & (i >= 0) & (i + 1 < H))
+    lab[i[c], c] = 1.0 - f[c]
+    lab[i[c] + 1, c] = f[c]
+    return lab
+
+
 def sample(rng, size=512, width=None):
-    """One strip: BGR uint8 (H, W, 3), label float32 (H, W) = coverage of the centre row's trace."""
+    """One strip: BGR uint8 (H, W, 3), label float32 (H, W): the centre row's signal height per
+    column (sparse, sub-pixel over 2 pixels)."""
     H, W = size, width or size
     S = 4
     paper = np.array(_rand_color(rng, dark=False), np.float32)
@@ -139,8 +166,8 @@ def sample(rng, size=512, width=None):
 
     tgt = np.zeros((H * S, W * S), np.uint8)
     oth = np.zeros((H * S, W * S), np.uint8)
-    _, _, extra = _draw_row(tgt, rng, yc, x0, xs_per_s, gain_px, n, seg_len, th, S,
-                            pulse=x0 > 8 * R and rng.random() < 0.5, sep=rng.random() < 0.4)
+    xs_t, ys_t, extra = _draw_row(tgt, rng, yc, x0, xs_per_s, gain_px, n, seg_len, th, S,
+                                  pulse=x0 > 8 * R and rng.random() < 0.5, sep=rng.random() < 0.4)
     # neighbouring rows: same pen, gain and speed, random spacing; large waves reach the target
     for side in (-1, 1):
         y = yc
@@ -156,9 +183,11 @@ def sample(rng, size=512, width=None):
             cv2.polylines(oth, [g], False, 255, th, cv2.LINE_AA)
         else:
             cv2.line(oth, g[:2], g[2:], 255, max(th, int(rng.uniform(1, 2.5) * th)), cv2.LINE_AA)
+    gap = None
     if rng.random() < 0.08:   # gap in the target (faded, folded, occluded): no label there either
         xa = rng.uniform(0, W) * S; xb = xa + rng.uniform(5, 60) * R * S
         tgt[:, int(xa):int(xb)] = 0
+        gap = (xa / S, xb / S)
 
     lab = cv2.resize(tgt.astype(np.float32) / 255.0, (W, H), interpolation=cv2.INTER_AREA)
     oth_ = cv2.resize(oth.astype(np.float32) / 255.0, (W, H), interpolation=cv2.INTER_AREA)
@@ -178,9 +207,9 @@ def sample(rng, size=512, width=None):
     img = _distractors(rng, img, H, W, ink)
     mx, my = _warp(rng, H, W)
     img = cv2.remap(img, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-    lab = cv2.remap(lab, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    lab = _sparse_label(xs_t, ys_t, mx, my, yc, H, W, S, gap)
     img = _degrade(rng, img)
-    return img, lab.astype(np.float32)
+    return img, lab
 
 
 if __name__ == "__main__":
@@ -190,6 +219,6 @@ if __name__ == "__main__":
     for i in range(8):
         im, lb = sample(rng, 384)
         ov = im.copy()
-        ov[lb > 0.3] = (0, 200, 0)
+        ov[cv2.dilate((lb > 0.2).astype(np.uint8), np.ones((3, 3), np.uint8)) > 0] = (0, 200, 0)
         tiles.append(np.hstack([im, ov]))
     cv2.imwrite(sys.argv[1], np.vstack([np.hstack(tiles[i:i + 2]) for i in range(0, 8, 2)]))
