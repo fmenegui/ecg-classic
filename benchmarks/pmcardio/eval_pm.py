@@ -234,8 +234,13 @@ def _kaggle_powers(g, F=None, a=0):
         lo, hi = max(0, a), min(len(F), a + n)
         if hi > lo:
             p[lo - a:hi - a] = F[lo:hi]
-    p = np.nan_to_num(p, nan=0.0)
-    al = MT.align_signals(g, p, int(FS * MT.MAX_TIME_SHIFT))
+    p = np.nan_to_num(p, nan=0.0, posinf=0.0, neginf=0.0)
+    p[np.abs(p) > 1e3] = 0.0            # a runaway value (no ECG has 1 V) would overflow the correlation
+    g = np.nan_to_num(np.asarray(g, np.float64), nan=0.0)
+    try:
+        al = MT.align_signals(g, p, int(FS * MT.MAX_TIME_SHIFT))
+    except ValueError:                  # degenerate correlation: score as a missing lead
+        al = np.zeros(n)
     ps, pn = MT.compute_power(g, al)
     return float(ps), float(pn)
 
