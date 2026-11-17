@@ -25,6 +25,11 @@ jobs:
           rm ptbxl.zip
           mv ptbxl_raw/* ptbxl
           ls ptbxl | head
+      - name: Cache of the Kaggle signals (977 CSVs take ~2.5 h through the request limit)
+        uses: actions/cache@v4
+        with:
+          path: kaggle
+          key: kaggle-train-signals-v1
       - name: Kaggle signals (one file per record, slowly)
         run: |
           python - <<'PY'
