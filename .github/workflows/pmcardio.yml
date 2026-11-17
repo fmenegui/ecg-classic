@@ -27,6 +27,11 @@ on:
         required: false
         default: ''
         type: string
+      grid_model_run:
+        description: 'Hybrid geometry: run id of a gpu-train run (gen gridphase) whose trace_seg.onnx is the grid-phase model (optional)'
+        required: false
+        default: ''
+        type: string
       per_scenario:
         description: 'ECGs per scenario (0 = whole database)'
         required: false
@@ -58,12 +63,20 @@ jobs:
         run: |
           gh run download ${{ inputs.ink_model_run }} -D model_dl
           f=$(find model_dl -name trace_seg.onnx | head -1); mkdir -p model; cp "$f" model/trace_seg.onnx; ls -la model
+      - name: Grid-phase model (hybrid geometry)
+        if: ${{ inputs.grid_model_run != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download ${{ inputs.grid_model_run }} -D grid_dl
+          f=$(find grid_dl -name trace_seg.onnx | head -1); mkdir -p model; cp "$f" model/grid_phase.onnx; ls -la model
       - name: Evaluate
         env:
           ECGDIG_FLAGS: ${{ inputs.flags }}
         run: |
           ARGS=""
           if [ -f model/trace_seg.onnx ]; then ARGS="--config ink_model=$PWD/model/trace_seg.onnx"; fi
+          if [ -f model/grid_phase.onnx ]; then ARGS="$ARGS --config grid_model=$PWD/model/grid_phase.onnx"; fi
           if [ "${{ inputs.oracle }}" = "true" ]; then ARGS="$ARGS --oracle-layout"; fi
           for kv in ${{ inputs.config }}; do ARGS="$ARGS --config $kv"; done
           python benchmarks/pmcardio/eval_pm.py --root data/pm/visual_data --gt data/pm/final_data/data \
