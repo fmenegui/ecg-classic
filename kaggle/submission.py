@@ -19,7 +19,18 @@ from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 import pandas as pd
 
-COMP = os.environ.get("ECG_COMP_DIR", "/kaggle/input/physionet-ecg-image-digitization")
+def _comp_dir():
+    if os.environ.get("ECG_COMP_DIR"):
+        return os.environ["ECG_COMP_DIR"]
+    for d in ["/kaggle/input/physionet-ecg-image-digitization",
+              "/kaggle/input/competitions/physionet-ecg-image-digitization"]:
+        if os.path.exists(os.path.join(d, "test.csv")):
+            return d
+    hits = glob.glob("/kaggle/input/**/test.csv", recursive=True)
+    return os.path.dirname(hits[0]) if hits else "/kaggle/input/physionet-ecg-image-digitization"
+
+
+COMP = _comp_dir()
 OUT = os.environ.get("ECG_OUT", "/kaggle/working/submission.parquet")
 PER_IMAGE_S = int(os.environ.get("ECG_IMAGE_TIMEOUT", "300"))
 FS_ME = 500.0
