@@ -34,8 +34,12 @@ def signed_url():
     if os.environ.get("KAGGLE_USERNAME"):
         tries.append(dict(auth=(os.environ["KAGGLE_USERNAME"], tok)))
     last = None
+    # diagnosis without revealing the token: its kind and length, and the answer to each attempt
+    print(f"token: length {len(tok)}, new-style KGAT {tok.startswith('KGAT_')}, "
+          f"username set {bool(os.environ.get('KAGGLE_USERNAME'))}", flush=True)
     for kw in tries:
         r = requests.get(url, allow_redirects=False, timeout=60, **kw)
+        print("  attempt", "bearer" if "headers" in kw else "basic", "-> HTTP", r.status_code, flush=True)
         last = r
         if r.status_code in (301, 302, 303, 307, 308) and r.headers.get("Location"):
             return r.headers["Location"]
