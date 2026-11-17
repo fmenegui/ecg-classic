@@ -1,0 +1,16 @@
+name: Kaggle submission status
+# Lists the latest submissions to the competition with their status and public/private scores.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ vars.KAGGLE_USERNAME }}
+    steps:
+      - run: python -m pip install -q kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0
+      - run: kaggle competitions submissions physionet-ecg-image-digitization 2>&1 | head -12 | tee -a "$GITHUB_STEP_SUMMARY"
