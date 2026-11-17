@@ -51,14 +51,18 @@ def signed_url():
     raise RuntimeError(f"no signed URL: HTTP {last.status_code} {last.text[:300]}")
 
 
-def open_zip(retries=3):
+def open_zip(retries=8, part=0):
+    """Kaggle limits the download-all endpoint (HTTP 429 when 20 runners ask at once): the shards
+    start staggered and back off with jitter up to ~15 min in all."""
+    import random
     from remotezip import RemoteZip
+    time.sleep(12 * part)
     for i in range(retries):
         try:
             return RemoteZip(signed_url(), timeout=120)
         except Exception as e:  # noqa: BLE001
             print("open failed:", e, flush=True)
-            time.sleep(10 * (i + 1))
+            time.sleep(min(240, 15 * 2 ** i) * random.uniform(0.6, 1.0))
     raise RuntimeError("could not open the remote archive")
 
 
@@ -115,7 +119,7 @@ def main():
         for p in sorted((a.out / ids[0]).iterdir()):
             print(" ", p.name, p.stat().st_size, flush=True)
         return
-    z = open_zip()
+    z = open_zip(part=a.part)
     if a.cmd == "fetch":
         ids = [x for x in a.ids.split(",") if x]
     else:
