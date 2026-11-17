@@ -62,6 +62,7 @@ class Config:
     # path of the row-network ONNX: each row's trace is read from the network's map of THAT row
     # (neighbours, grid, text removed); rows, layout, time axis and gain stay classical
     row_model: str = ""
+    row_mode: str = "fuse"      # "fuse": network only where the classical reading fails; "replace": everywhere
     prewarp: bool = False          # coarse perspective from the outline of the gridded area
     adaptive_threshold: bool = True  # light trace: redo the binarization with a lower threshold
     pulse_rows: bool = True       # baselines from the calibration pulses when there are >= 3
@@ -829,6 +830,7 @@ PULSE_ROWS_SNAP = [True]
 TRACK_BASE_TRACE = [True]
 LABEL_GAPS = [True]
 ROW_CONF = [0.3]     # row network: minimum peak probability for a column to count
+ROW_FUSE_PX = [3.0]  # row network, fuse mode: classical/network disagreement that hands the column over
 HYB_W_LIMB = [1.0]   # weight of the limb closure in the hybrid reading score (PhysioNet 135, 16/11)
 GAP_ROBUST_LR = [True]
 HALF_ALONE = [True]
@@ -1998,9 +2000,26 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     for j in seg_jobs:
         yc, valid = centerline_from_envelopes(j["top"], j["bot"], rad, rh=rad_h)
         if "yc_model" in j and np.sum(j["cf_model"] >= ROW_CONF[0]) >= 0.5 * len(yc):
-            yc = j["yc_model"].astype(np.float64)
-            valid = np.isfinite(yc) & (j["cf_model"] >= ROW_CONF[0])
-            j["model_used"] = True   # no refinement on the classical ink map (it holds the neighbours)
+            ym = j["yc_model"].astype(np.float64)
+            okm = np.isfinite(ym) & (j["cf_model"] >= ROW_CONF[0])
+            if cfg.row_mode == "replace":
+                yc, valid = ym, okm
+                j["model_used"] = True   # no refinement on the classical ink map (it holds the neighbours)
+            else:
+                # "fuse": the classical centreline is the more precise one on clean ink (pen
+                # radius, steep-stroke and synthesis refinements); the network takes over only
+                # where the classical reading is missing, shares its ink with another row
+                # (crossing), or followed something else (> ROW_FUSE_PX away from the network)
+                sh = j.get("shared")
+                sh = sh if sh is not None and len(sh) == len(yc) else np.zeros(len(yc), bool)
+                with np.errstate(invalid="ignore"):
+                    far = np.abs(yc - ym) > ROW_FUSE_PX[0]
+                take = okm & (~valid | sh | far)
+                yc = np.where(take, ym, yc)
+                valid = valid | take
+                j["model_cols"] = int(take.sum())
+                if take.mean() > 0.2:
+                    j["model_used"] = True
         if valid.sum() < 5:
             continue
         p = pulses_base[j["row"]]
