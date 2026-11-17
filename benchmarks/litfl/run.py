@@ -40,6 +40,9 @@ UA = {"User-Agent": "Mozilla/5.0 (ECG digitization research benchmark)"}
 def fetch(entry, cache: Path):
     url = entry["url"]
     ext = os.path.splitext(url.split("?")[0])[1] or ".jpg"
+    kept = HERE / "images" / f"{entry['file']}{ext}"   # copies kept in the repository (see images/README.md)
+    if kept.exists():
+        return kept
     p = cache / f"{entry['file']}{ext}"
     if not p.exists():
         req = urllib.request.Request(url, headers=UA)
