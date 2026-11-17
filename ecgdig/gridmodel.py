@@ -60,7 +60,8 @@ def grid_map_from_phase(P: np.ndarray, paper: np.ndarray | None = None) -> np.nd
 
 
 MIN_GAIN = [0.3]
-MAX_SIDE = [1600]   # line contrast the snapped network grid must reach on both axes to be used
+MAX_SIDE = [1600]
+MIN_COH = [0.9]    # agreement of the network's 5 mm phase with the fitted smooth grid, both axes   # line contrast the snapped network grid must reach on both axes to be used
 
 
 def grid_map(img_bgr: np.ndarray, paper: np.ndarray | None, model_path: str):
@@ -81,9 +82,15 @@ def grid_map(img_bgr: np.ndarray, paper: np.ndarray | None, model_path: str):
         G = None
         if float(P[8].mean()) > 0.1:
             U, V, pap = fit_smooth(P)
-            U, V, gains = snap_offsets(small, U, V, pap)
+            coh = coherence(P, U, V)
+            U2, V2, gains = snap_offsets(small, U, V, pap)
+            # the image moves an axis only when its own lines clearly agree (faint grids: keep the
+            # network's offset); the network is used only when its phase is a smooth grid (a domain
+            # gap shows as an incoherent phase, measured on real photos: > 0.95 good, < 0.3 bad)
+            U = U2 if gains[0] >= MIN_GAIN[0] else U
+            V = V2 if gains[1] >= MIN_GAIN[0] else V
             del P
-            if min(gains) >= MIN_GAIN[0]:
+            if min(coh) >= MIN_COH[0]:
                 if sc < 1:
                     U = cv2.resize(U.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
                     V = cv2.resize(V.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
@@ -232,3 +239,15 @@ def snap_offsets(img_bgr: np.ndarray, U: np.ndarray, V: np.ndarray, paper: np.nd
 def cv2_gray(img_bgr):
     f = img_bgr.astype(np.float32) / 255.0
     return f.mean(2)
+
+
+def coherence(P, U, V):
+    """Per axis, |weighted mean of exp(i (network 5 mm phase - fitted phase))|: 1 when the network's
+    phase is exactly a smooth grid, ~0 when it is noise."""
+    w = P[8]
+    out = []
+    for A, c, s_ in ((U, 0, 1), (V, 2, 3)):
+        z = P[c] + 1j * P[s_]
+        z = z / (np.abs(z) + 1e-6)
+        out.append(float(np.abs(np.sum(w * z * np.exp(-2j * np.pi * A / 5))) / (w.sum() + 1e-6)))
+    return out
