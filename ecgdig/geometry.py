@@ -210,7 +210,9 @@ def grid_map(img: np.ndarray, paper: np.ndarray, clamp_ink: bool = True) -> np.n
     With GRID_MODEL set, the map is drawn from the network's grid phase (ecgdig/gridmodel.py)."""
     if GRID_MODEL[0] and clamp_ink and img.ndim == 3:
         from .gridmodel import grid_map as _net_grid_map
-        return _net_grid_map(img, paper, GRID_MODEL[0])
+        G = _net_grid_map(img, paper, GRID_MODEL[0])
+        if G is not None:          # None: the network's grid does not match the image -> classical
+            return G
     f = img.astype(np.float32)
     # mean and max of the 3 channels channel by channel (same result as f.mean(2) / f.max(2);
     # a NumPy reduction over an axis of size 3 is several times slower)
