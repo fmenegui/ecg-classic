@@ -89,7 +89,7 @@ jobs:
           api = KaggleApi(); api.authenticate()
           slug = os.environ.get("SLUG") or f"{os.environ['KAGGLE_USERNAME']}/ecgdig-classical-submission"
           ver = int(os.environ["VER"]); comp = os.environ["COMP"]
-          for fn in ["submission.parquet", "/kaggle/working/submission.parquet"]:
+          for fn in ["submission.csv"]:   # the competition only accepts this name
               try:
                   r = api.competition_submit_code(fn, f"{os.environ['MSG']} {os.environ['GITHUB_SHA'][:7]}", comp,
                                                   kernel=slug, kernel_version=ver)

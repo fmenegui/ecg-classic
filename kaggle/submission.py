@@ -2,7 +2,7 @@
 
 Runs as a Kaggle script kernel with the competition data and a dataset holding the ecgdig source
 (kaggle/README.md). Reads test.csv (id, lead, fs, number_of_rows), digitizes every test image once
-and writes submission.parquet with one value per expected row:
+and writes submission.csv (the only name the competition accepts) with one value per expected row:
 - lead II: the 10 s rhythm read by ecgdig, sampled at fs;
 - other leads: 2.5 s starting where ecgdig found that lead printed (its first finite sample);
 - unknown samples are filled from the nearest read sample, a lead not read is all zeros, and an
@@ -31,7 +31,7 @@ def _comp_dir():
 
 
 COMP = _comp_dir()
-OUT = os.environ.get("ECG_OUT", "/kaggle/working/submission.parquet")
+OUT = os.environ.get("ECG_OUT", "/kaggle/working/submission.csv")   # the competition requires this name
 PER_IMAGE_S = int(os.environ.get("ECG_IMAGE_TIMEOUT", "300"))
 FS_ME = 500.0
 
@@ -135,12 +135,8 @@ def main():
                 ids.extend(f"{image_id}_{i}_{lead}" for i in range(len(v)))
                 vals.append(v)
     sub = pd.DataFrame({"id": ids, "value": np.concatenate(vals) if vals else np.zeros(0)})
-    try:
-        sub.to_parquet(OUT, index=False)
-        out = OUT
-    except ImportError:   # no parquet engine: the competition also accepts submission.csv
-        out = os.path.join(os.path.dirname(OUT), "submission.csv")
-        sub.to_csv(out, index=False)
+    sub.to_csv(OUT, index=False, float_format="%.5f")
+    out = OUT
     print("wrote", out, len(sub), "rows", flush=True)
 
 
