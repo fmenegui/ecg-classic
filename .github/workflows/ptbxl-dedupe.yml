@@ -48,7 +48,7 @@ jobs:
                   print(i, "done", flush=True)
           print("missing", miss)
           PY
-      - run: python hybrid/data/dedupe.py --ptbxl ptbxl --kaggle kaggle --out exclude_ptbxl.txt
+      - run: python hybrid/ptbxl/dedupe.py --ptbxl ptbxl --kaggle kaggle --out exclude_ptbxl.txt
       - uses: actions/upload-artifact@v4
         with:
           name: ptbxl-dedupe

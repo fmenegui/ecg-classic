@@ -8,7 +8,7 @@ in each column, the height of that row's signal split over the two nearest pixel
 fractional part (sub-pixel), as the best Kaggle solutions found (a dense ink mask caps the
 reconstruction SNR). Neighbours, grid, pulses, separators and text are background.
 
-Each strip draws real 12-lead signals (a PTB-XL bank built by hybrid/data/ptbxl_bank.py, set by
+Each strip draws real 12-lead signals (a PTB-XL bank built by hybrid/ptbxl/ptbxl_bank.py, set by
 ECG_BANK; the ecgdig dipole synthesizer when there is none), a random row structure (lead
 changes, neighbours at random spacing that overlap the target, calibration pulses, separators,
 labels), the paper/grid/degradation generator of hybrid/gen.py and a small residual warp
