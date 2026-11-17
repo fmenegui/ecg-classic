@@ -55,6 +55,55 @@ def _worker_init(_):
     cv2.setNumThreads(1)
 
 
+class RealPool:
+    """Real strips written by realstrips_build.py (chunk_*.npz in a directory, appearing while we
+    train). Keeps the most recent `cap` strips in memory; empty until the first chunk lands."""
+
+    def __init__(self, d, cap=20000, seed=0, holdout_every=10):
+        self.d, self.cap = Path(d), cap
+        self.seen, self.jpg, self.h = set(), [], []
+        self.rng = np.random.default_rng(seed)
+        self.val_jpg, self.val_h = [], []          # every 10th chunk: validation of real strips
+        self.holdout_every = holdout_every
+
+    def refresh(self):
+        import cv2  # noqa: F401
+        for f in sorted(self.d.glob("chunk_*.npz")):
+            if f.name in self.seen:
+                continue
+            self.seen.add(f.name)
+            z = np.load(f, allow_pickle=True)
+            k = int(f.stem.split("_")[1])
+            if k % self.holdout_every == self.holdout_every - 1 and len(self.val_jpg) < 512:
+                self.val_jpg += list(z["jpg"]); self.val_h += list(z["h"])
+                continue
+            self.jpg += list(z["jpg"]); self.h += list(z["h"])
+        if len(self.jpg) > self.cap:
+            self.jpg, self.h = self.jpg[-self.cap:], self.h[-self.cap:]
+        return len(self.jpg)
+
+    @staticmethod
+    def decode(jpg, h):
+        import cv2
+        im = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+        S = im.shape[0]
+        lab = np.zeros((S, S), np.float32)
+        hh = np.asarray(h, np.float32)
+        c = np.flatnonzero(np.isfinite(hh))
+        i = np.floor(hh[c]).astype(int); f = hh[c] - i
+        ok = (i >= 0) & (i + 1 < S)
+        lab[i[ok], c[ok]] = 1 - f[ok]; lab[i[ok] + 1, c[ok]] = f[ok]
+        x = torch.from_numpy(im[..., ::-1].copy()).permute(2, 0, 1).float() / 255.0
+        return x, torch.from_numpy(lab)[None]
+
+    def batch(self, n):
+        if not self.jpg or n <= 0:
+            return None
+        idx = self.rng.integers(0, len(self.jpg), n)
+        got = [self.decode(self.jpg[i], self.h[i]) for i in idx]
+        return torch.stack([g[0] for g in got]), torch.stack([g[1] for g in got])
+
+
 class Stream(torch.utils.data.IterableDataset):
     def __init__(self, size, seed, gen_name="gen"):
         self.size, self.seed, self.gen_name = size, seed, gen_name
@@ -141,6 +190,8 @@ def main():
     ap.add_argument("--init", type=Path, default=None, help="state_dict to start from (e.g. the ink model's unet.pt)")
     ap.add_argument("--render-frac", type=float, default=0.0,
                     help="rowgen only: share of each batch rendered on the GPU by ecg-torch-renderer (hybrid/rendergen.py)")
+    ap.add_argument("--real-dir", default="", help="rowgen: directory where realstrips_build.py writes real strips")
+    ap.add_argument("--real-frac", type=float, default=0.0, help="share of each batch from real strips (once available)")
     ap.add_argument("--render-photo", type=float, default=0.0,
                     help="rowgen + render-frac: share of the rendered pages that are photos brought back "
                          "onto the flat page with their exact geometry (capture appearance, stage oracle)")
@@ -242,6 +293,27 @@ def main():
                             cerr.append(torch.full((len(G_),), 99.0)); continue
                         d = torch.cdist(G_, P_).min(1).values
                         cerr.append(d.float().cpu())
+        # real strips (Kaggle training pages, held-out chunks): the same column error, separately
+        validate.real_err = validate.real_err90 = float("nan")
+        if a.gen == "rowgen" and real is not None and real.val_jpg:
+            rerr = []
+            with torch.no_grad():
+                for i in range(0, min(256, len(real.val_jpg)), 16):
+                    got = [RealPool.decode(j, h) for j, h in zip(real.val_jpg[i:i + 16], real.val_h[i:i + 16])]
+                    xr = torch.stack([g[0] for g in got]).to(dev); yr = torch.stack([g[1] for g in got]).to(dev)
+                    with torch.autocast(dev, enabled=dev == "cuda"):
+                        pr = torch.sigmoid(net(xr).float())[:, 0]
+                    yy = yr[:, 0]
+                    hh = torch.arange(pr.shape[1], device=pr.device, dtype=pr.dtype)[None, :, None]
+                    k = pr.argmax(1, keepdim=True)
+                    win = ((hh - k).abs() <= 3).to(pr.dtype)
+                    cp = (pr * win * hh).sum(1) / (pr * win).sum(1).clamp_min(1e-6)
+                    cy = (yy * hh).sum(1) / yy.sum(1).clamp_min(1e-6)
+                    ok = (yy.sum(1) > 0.5) & (pr.amax(1) >= 0.3)
+                    rerr.append((cp - cy).abs()[ok].float().cpu())
+            re_ = torch.cat(rerr) if rerr else torch.zeros(0)
+            if re_.numel():
+                validate.real_err, validate.real_err90 = float(re_.median()), float(re_.quantile(0.9))
         net.train()
         ce = torch.cat(cerr) if cerr else torch.zeros(0)
         e5_ = torch.cat(e5s) if e5s else torch.zeros(0)
@@ -276,6 +348,7 @@ def main():
         except Exception as e:  # noqa: BLE001
             print("ecg-torch-renderer not available, CPU strips only:", e, flush=True)
     t_render = 0.0
+    real = RealPool(a.real_dir) if (a.real_dir and a.real_frac > 0) else None
     t0 = time.time(); log = []; it = iter(dl); best = None; t_wait = 0.0
     g_aug = torch.Generator().manual_seed(7)
     for step in range(1, a.steps + 1):
@@ -294,6 +367,17 @@ def main():
                     xb = xb.clone(); yb = yb.clone()
                     xb[:n_r] = render_aug(xr, g_aug); yb[:n_r] = yr
                 t_render += time.time() - tr
+            if real is not None:   # replace the end of the batch with real strips (Kaggle training pages)
+                if step % 200 == 1:
+                    nr = real.refresh()
+                    if step % 2000 == 1:
+                        print(f"real strips in memory: {nr} (validation {len(real.val_jpg)})", flush=True)
+                n_q = int(round(a.real_frac * len(xb)))
+                got = real.batch(n_q)
+                if got is not None:
+                    xq, yq = got
+                    xb = xb.clone(); yb = yb.clone()
+                    xb[-n_q:] = xq.to(dev); yb[-n_q:] = yq.to(dev)
             x, y = xb, yb
         elif PHASE:   # photometric changes only: the targets are paper coordinates
             n_ = len(xb)
@@ -327,7 +411,9 @@ def main():
                             col_err90=validate.col_err90, err5_mm=getattr(validate, "e5", None), sec=round(time.time() - t0, 1)))
             print(f"VAL step {step} val_loss {vl:.4f} IoU {iou:.4f} col_err median {validate.col_err:.2f} px "
                   f"p90 {validate.col_err90:.2f} px"
-                  + (f" (mm; 5 mm-only median {validate.e5:.3f} mm)" if PHASE else ""), flush=True)
+                  + (f" (mm; 5 mm-only median {validate.e5:.3f} mm)" if PHASE else "")
+                  + (f" | real strips median {validate.real_err:.2f} px p90 {validate.real_err90:.2f} px"
+                     if np.isfinite(getattr(validate, "real_err", float("nan"))) else ""), flush=True)
             (a.out / "train_log.json").write_text(json.dumps(log))
             torch.save(net.state_dict(), a.out / "unet.pt")
             score = -np.nan_to_num(validate.e5, nan=9.0) - np.nan_to_num(validate.col_err, nan=9.0) if PHASE else iou

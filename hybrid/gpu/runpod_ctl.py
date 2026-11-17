@@ -85,6 +85,9 @@ def start(exclude=(), cloud="ALL"):
     ref = os.environ["REF"]
     env = [{"key": "REF", "value": ref}, {"key": "JOB", "value": os.environ["JOB"]},
            {"key": "MAX_HOURS", "value": os.environ.get("MAX_HOURS", "1")}]
+    for k in ("KAGGLE_API_TOKEN", "KAGGLE_USERNAME"):   # only when the run asks for it (input kaggle)
+        if os.environ.get(k):
+            env.append({"key": k, "value": os.environ[k]})
     if os.environ.get("RENDERER_TOKEN"):   # read-only token for the private ecg-torch-renderer repo, if set
         env.append({"key": "RENDERER_TOKEN", "value": os.environ["RENDERER_TOKEN"]})
     cmd = ("bash -c 'curl -fsSL https://raw.githubusercontent.com/fmenegui/ecg-digitalization-classic/"

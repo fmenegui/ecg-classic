@@ -1,0 +1,148 @@
+"""Build real row strips on the training pod while the GPU trains (streaming).
+
+Reads Kaggle training pages straight out of the competition archive by HTTP ranges (one API
+request for the signed URL, then storage ranges: no per-file API calls), labels them with
+realstrips.page_labels in a process pool, and writes chunks that train_gpu.py --real-dir picks
+up as they appear. The competition data stays on the pod: nothing is uploaded or published.
+
+Split by record: HOLDOUT records (every id % 5 == 0, plus the 15 local and the evaluation
+subsets) are never read here; they remain for evaluation only.
+
+    python hybrid/realstrips_build.py --out /workspace/real --max-pages 3000 --workers 10
+"""
+from __future__ import annotations
+
+import argparse
+import io
+import os
+import sys
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from pathlib import Path
+
+import numpy as np
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent)); sys.path.insert(0, str(HERE.parent / "benchmarks" / "physionet"))
+
+LOCAL15 = set(("1257259783,2587667307,3042142152,426433979,994226251,119693645,1449491391,1962423499,"
+               ).strip(",").split(","))
+
+
+def is_holdout(rid: str) -> bool:
+    return int(rid) % 5 == 0 or rid in LOCAL15
+
+
+def _work(args):
+    rid, typ, png, csv_bytes, seed = args
+    import cv2
+    import realstrips as RS
+    try:
+        img = cv2.imdecode(np.frombuffer(png, np.uint8), cv2.IMREAD_COLOR)
+        G = RS.load_gt(io.BytesIO(csv_bytes))
+        rect, segs, info = RS.page_labels(img, G)
+        if info["n_jobs"] == 0 or info["kept"] < 0.6 * info["n_jobs"]:
+            return rid, typ, None, info
+        X, Y = RS.strips(rect, segs, np.random.default_rng(seed), per_row=2)
+        if not len(X):
+            return rid, typ, None, info
+        # compact: JPEG strips (q 92) and the label as one height per column (NaN = none)
+        jp = [cv2.imencode(".jpg", x, [cv2.IMWRITE_JPEG_QUALITY, 92])[1].tobytes() for x in X]
+        S = Y.shape[1]
+        rows = np.arange(S, dtype=np.float32)[:, None]
+        w = Y.sum(1)
+        h = np.where(w > 0.5, (Y * rows[None]).sum(1) / np.maximum(w, 1e-6), np.nan).astype(np.float16)
+        return rid, typ, (jp, h), info
+    except Exception as e:  # noqa: BLE001
+        return rid, typ, None, dict(error=f"{type(e).__name__}: {e}"[:200])
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--max-pages", type=int, default=3000)
+    ap.add_argument("--workers", type=int, default=max(2, (os.cpu_count() or 4) // 2))
+    ap.add_argument("--chunk", type=int, default=400, help="strips per chunk file")
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--wait-hours", type=float, default=2.0, help="keep retrying the archive this long")
+    a = ap.parse_args()
+    import kaggle_zip as KZ
+    a.out.mkdir(parents=True, exist_ok=True)
+    t_end = time.time() + 3600 * a.wait_hours
+    while True:   # Kaggle may answer 429 for hours after heavy use: keep trying, training goes on meanwhile
+        try:
+            z = KZ.open_zip()
+            break
+        except Exception as e:  # noqa: BLE001
+            if time.time() > t_end:
+                raise
+            print("archive not available yet:", e, "- retrying in 10 min", flush=True)
+            time.sleep(600)
+    names = set(z.namelist())
+    ids = sorted({n.split("/")[1] for n in names if n.startswith("train/") and n.count("/") == 2})
+    ids = [i for i in ids if i.isdigit() and not is_holdout(i)]
+    rng = np.random.default_rng(a.seed)
+    rng.shuffle(ids)
+    jobs = []
+    for rid in ids:
+        for t in KZ.TYPES:
+            if f"train/{rid}/{rid}-{t}.png" in names:
+                jobs.append((rid, t))
+    rng.shuffle(jobs)
+    jobs = jobs[:a.max_pages]
+    print(f"real strips: {len(ids)} training records (holdout excluded), {len(jobs)} pages", flush=True)
+    buf_x, buf_h, k, done, kept = [], [], 0, 0, 0
+    csv_cache = {}
+
+    def flush():
+        nonlocal buf_x, buf_h, k
+        if not buf_x:
+            return
+        tmp = a.out / f".chunk_{k:04d}.npz"
+        np.savez(tmp, jpg=np.array(buf_x, dtype=object), h=np.stack(buf_h))
+        os.replace(tmp, a.out / f"chunk_{k:04d}.npz")          # atomic: the trainer never sees half a file
+        print(f"real strips: chunk {k} ({len(buf_x)} strips), pages {done}/{len(jobs)}, kept {kept}", flush=True)
+        buf_x, buf_h, k = [], [], k + 1
+
+    with ProcessPoolExecutor(a.workers) as ex:
+        pending = set()
+        it = iter(jobs)
+        t0 = time.time()
+        while True:
+            while len(pending) < 2 * a.workers:
+                try:
+                    rid, t = next(it)
+                except StopIteration:
+                    break
+                for attempt in range(3):
+                    try:
+                        if rid not in csv_cache:
+                            csv_cache[rid] = z.read(f"train/{rid}/{rid}.csv")
+                        png = z.read(f"train/{rid}/{rid}-{t}.png")
+                        break
+                    except Exception as e:  # noqa: BLE001  (signed URL expired, network): reopen
+                        print("archive read failed, reopening:", e, flush=True)
+                        time.sleep(30)
+                        z = KZ.open_zip()
+                else:
+                    continue
+                pending.add(ex.submit(_work, (rid, t, png, csv_cache[rid], int(rng.integers(1 << 30)))))
+            if not pending:
+                break
+            fut = next(as_completed(pending))
+            pending.discard(fut)
+            rid, t, got, info = fut.result()
+            done += 1
+            if got is not None:
+                kept += 1
+                buf_x += got[0]; buf_h += list(got[1])
+                if len(buf_x) >= a.chunk:
+                    flush()
+            if done % 50 == 0:
+                print(f"real strips: {done} pages in {time.time() - t0:.0f} s, kept {kept}", flush=True)
+    flush()
+    (a.out / "DONE").write_text(str(done))
+
+
+if __name__ == "__main__":
+    main()

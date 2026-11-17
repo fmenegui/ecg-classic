@@ -6,6 +6,11 @@ name: GPU training on RunPod
 on:
   workflow_dispatch:
     inputs:
+      kaggle:
+        description: 'Pass the Kaggle token to the pod (real training pages for hybrid/realstrips_build.py)'
+        required: false
+        default: false
+        type: boolean
       gpu:
         description: 'RunPod GPU type id; empty = cheap cards only (A5000, 3090, A4500, 4000 Ada, A4000), at most 0.5 USD/h'
         required: false
@@ -35,6 +40,9 @@ jobs:
     env:
       RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
       RENDERER_TOKEN: ${{ secrets.RENDERER_TOKEN }}   # optional, read-only, for the private ecg-torch-renderer
+      # the Kaggle token goes to the pod only when asked (real training pages read on the pod, never published)
+      KAGGLE_API_TOKEN: ${{ inputs.kaggle && secrets.KAGGLE_API_TOKEN || '' }}
+      KAGGLE_USERNAME: ${{ inputs.kaggle && vars.KAGGLE_USERNAME || '' }}
     steps:
       - uses: actions/checkout@v4
       - name: Train on a pod (a pod whose CUDA fails is replaced)
