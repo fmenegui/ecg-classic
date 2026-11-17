@@ -223,8 +223,12 @@ def _report(out, results, cfg_kw):
                  f"{np.mean([r['seconds'] for r in by[t]]):.1f} |")
     allv = [r["snr"] for r in ok if np.isfinite(r["snr"])]
     if allv:
+        wl = allv + [0.0] * (len(results) - len(ok))
+        kag = 10 * np.log10(np.mean(10 ** (np.array(wl) / 10)))
         L += ["", f"**All: {np.mean(allv):.2f} dB (median {np.median(allv):.2f}).** Exceptions count as 0 dB "
-              f"in the competition mean; with them: {np.mean(allv + [0.0] * (len(results) - len(ok))):.2f} dB."]
+              f"in the competition mean; with them: {np.mean(wl):.2f} dB.",
+              "", f"**Kaggle score: {kag:.2f} dB** (the competition averages the per-image SNR in the LINEAR "
+              "domain and then converts to dB, which weighs good images more than the mean of dB above)."]
     perl = defaultdict(list)
     for r in ok:
         for l, v in r.get("per_lead", {}).items():
