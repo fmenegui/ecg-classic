@@ -1,8 +1,15 @@
 name: Stop all GPU pods
 # Terminates every RunPod training pod of this account (names starting with ecgdig-train) and shows
-# the balance. Use it to make sure nothing is left running.
+# the balance. Use it to make sure nothing is left running. With pod_ids, terminates only those pods
+# (any name) and leaves every other pod running.
 on:
   workflow_dispatch:
+    inputs:
+      pod_ids:
+        description: 'Comma-separated pod ids to terminate instead (empty = all ecgdig-train pods)'
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
 jobs:
@@ -11,6 +18,7 @@ jobs:
     timeout-minutes: 5
     env:
       RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+      POD_IDS: ${{ inputs.pod_ids }}
     steps:
       - uses: actions/checkout@v4
       - run: python hybrid/gpu/runpod_ctl.py stop-all | tee -a "$GITHUB_STEP_SUMMARY"

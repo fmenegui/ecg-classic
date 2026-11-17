@@ -180,12 +180,13 @@ def stop_all():
     """Terminates every training pod of this account (names starting with ecgdig-train) and reports
     what is left running."""
     mine = gql("query { myself { clientBalance pods { id name costPerHr desiredStatus } } }")["myself"]
+    only = [x.strip() for x in os.environ.get("POD_IDS", "").split(",") if x.strip()]
     for p in mine["pods"] or []:
-        if (p.get("name") or "").startswith("ecgdig-train"):
+        if (p["id"] in only) if only else (p.get("name") or "").startswith("ecgdig-train"):
             gql("mutation($input: PodTerminateInput!) { podTerminate(input: $input) }", {"input": {"podId": p["id"]}})
             print(f"terminated {p['id']} {p['name']} ({p.get('costPerHr')} USD/h)")
         else:
-            print(f"left running (not ours): {p['id']} {p.get('name')}")
+            print(f"left running: {p['id']} {p.get('name')} ({p.get('costPerHr')} USD/h)")
     print(f"balance {mine.get('clientBalance')} USD")
 
 
