@@ -2,7 +2,7 @@
 
     python hybrid/gpu/runpod_ctl.py start            # prints pod_id=... (GitHub step output)
     python hybrid/gpu/runpod_ctl.py follow --out DIR  # streams the pod log, fetches the result
-    python hybrid/gpu/runpod_ctl.py stop             # terminates $POD_ID (and stray ecgdig-* pods)
+    python hybrid/gpu/runpod_ctl.py stop             # terminates $POD_ID and this run's other pods
     python hybrid/gpu/runpod_ctl.py run --out DIR    # start + follow, replacing pods whose CUDA fails
 
 Environment: RUNPOD_API_KEY; start: GPU, MAX_HOURS, JOB, REF; follow/stop: POD_ID.
@@ -27,7 +27,8 @@ IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 # is not slower in practice than a 4090 and costs a fraction (16/11: A5000 0.27 USD/h vs 4090 0.89)
 FALLBACK_GPUS = ["NVIDIA RTX A5000", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A6000", "NVIDIA A40",
                  "NVIDIA GeForce RTX 4090", "NVIDIA L40S"]
-NAME = "ecgdig-train"
+# one name per workflow run: "stop" must only terminate this run's pods, never a parallel training
+NAME = "ecgdig-train-" + os.environ.get("GITHUB_RUN_ID", "local")
 
 
 def gql(query, variables=None):
