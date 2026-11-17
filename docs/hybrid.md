@@ -51,6 +51,13 @@ The leaders' gain comes from two things: a network that outputs the signal heigh
 
 Sources: [5th place code](https://github.com/dangnh0611/kaggle_ecg_digitization), [McIntosh et al., CinC 2026 preprint](https://cinc.org/2026/Program/accepted/550_Preprint.pdf).
 
+## GPU choice
+
+The default pod is a mid-range 24 GB card (RTX A5000, then RTX 3090, A6000, A40, 4090, L40S). The
+training crops come from a CPU generator, so on a 4090 the GPU waited for data 23-37% of the time;
+what sets the cost is the cost per training step, not per hour. The 4090 is for larger models,
+higher resolution or pre-generated data, when the GPU becomes the bottleneck.
+
 ## Plan
 
 1. **Train on a GPU.** The first model is tiny and stopped at a loss still falling. `.github/workflows/gpu-train.yml` starts a RunPod pod (secret `RUNPOD_API_KEY`), trains a U-Net with a pretrained encoder (`hybrid/train_gpu.py`), returns the ONNX and always terminates the pod; chained CPU runs (`init_run`) remain as a fallback.

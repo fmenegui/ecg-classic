@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       gpu:
-        description: 'RunPod GPU type id'
+        description: 'RunPod GPU type id (default: best cost per step; others are tried if it is not available)'
         required: false
-        default: 'NVIDIA GeForce RTX 4090'
+        default: 'NVIDIA RTX A5000'
         type: string
       max_hours:
         description: 'Hard limit for the training command (hours); the pod is terminated after it'

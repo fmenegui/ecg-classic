@@ -23,8 +23,10 @@ from pathlib import Path
 
 API = "https://api.runpod.io/graphql"
 IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
-FALLBACK_GPUS = ["NVIDIA GeForce RTX 4090", "NVIDIA RTX A6000", "NVIDIA A40", "NVIDIA RTX A5000",
-                 "NVIDIA L40S", "NVIDIA GeForce RTX 3090"]
+# best cost per training step first: the crops come from the CPU generator, so a mid-range 24 GB card
+# is not slower in practice than a 4090 and costs a fraction (16/11: A5000 0.27 USD/h vs 4090 0.89)
+FALLBACK_GPUS = ["NVIDIA RTX A5000", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A6000", "NVIDIA A40",
+                 "NVIDIA GeForce RTX 4090", "NVIDIA L40S"]
 NAME = "ecgdig-train"
 
 
