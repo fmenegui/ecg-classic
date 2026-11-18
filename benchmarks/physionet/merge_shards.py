@@ -27,11 +27,24 @@ def main():
     ap.add_argument("out", type=Path)
     ap.add_argument("--subset", default=LOCAL15)
     a = ap.parse_args()
-    res, cfg = [], None
+    # A re-run of failed shards downloads every artifact matching the tag again, including the
+    # merged artifact of the earlier attempt: skip merged artifacts and keep one result per image.
+    by_img, cfg, n_dup, n_conflict = {}, None, 0, 0
     for f in sorted(a.art.rglob("results.json")):
+        if any(p.name.endswith("-merged") for p in f.relative_to(a.art).parents):
+            print(f"skipping earlier merged artifact {f.parent.name}", file=sys.stderr)
+            continue
         d = json.loads(f.read_text())
         cfg = d.get("config", cfg)
-        res += d.get("results", [])
+        for r in d.get("results", []):
+            k = (str(r.get("id")), str(r.get("type")))
+            if k in by_img:
+                n_dup += 1
+                n_conflict += by_img[k].get("kaggle_lin") != r.get("kaggle_lin")
+            by_img[k] = r
+    if n_dup:
+        print(f"{n_dup} duplicate images dropped ({n_conflict} with different scores)", file=sys.stderr)
+    res = list(by_img.values())
     a.out.mkdir(parents=True, exist_ok=True)
     (a.out / "results.json").write_text(json.dumps(dict(config=cfg, results=res), default=str))
     sub = set(a.subset.split(","))
