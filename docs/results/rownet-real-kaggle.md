@@ -46,3 +46,25 @@ photos_screens         n= 100 SNR   7.89 ->   8.58 | PCC 0.712 -> 0.736 | fail  
 ALL                    n=5990 SNR   9.41 ->   9.46 | PCC 0.705 -> 0.706 | fail  12.9% ->  12.7% | Kaggle  12.57 ->  12.78
 
 ```
+
+## Row network v2 (no Kaggle data) on the same Kaggle set, run 44238421549
+
+How much of the Kaggle gain comes from the real strips? Row v2 was trained on rendered and synthetic strips only.
+
+```
+all: 8793 images, 977 records | Kaggle 17.58 -> 17.97      (classical -> row v2, 100%)
+holdout: 1854 images, 206 records | Kaggle 17.42 -> 17.83  (classical -> row v2, 21%)
+
+holdout, row v2 -> rowreal: 17.83 -> 17.88
+  0001  206   25.06 ->  24.96
+  0003  206   16.22 ->  16.51
+  0004  206   14.41 ->  14.74
+  0005  206   13.26 ->  13.51
+  0006  206   12.08 ->  12.27
+  0009  206   12.21 ->  12.49
+  0010  206   15.14 ->  15.39
+  0011  206   16.22 ->  16.43
+  0012  206   14.37 ->  14.71
+```
+
+Most of the Kaggle gain (+0.41 of +0.46 dB) already comes from the network trained without any Kaggle page. The real strips add +0.2 to +0.3 dB on every degraded type, but lose 0.1 dB on the clean render 0001, which dominates the metric. Next lever: the clean-render precision, not more degraded-image robustness.
