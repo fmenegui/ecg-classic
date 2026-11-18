@@ -878,6 +878,8 @@ HALF_ALONE = [True]
 # a gain other than 10 mm/mV read on a single row needs a pulse within 10% of the standard value
 # (a pulse half-found on a blurred or rescaled photo measures 5.5-6 mm and gave 5 mm/mV)
 LONE_PULSE = [0.10]  # tolerance; 0 = never on a single row
+# pulses printed apart from the trace measured as a column when <= 1 row found its pulse
+PCOL_GAIN = [True]
 MID_PULSE_CUT = [True]
 # row extents measured without the straight grid pieces left in the binary map
 EXT_GRIDCLEAN = [False]
@@ -1783,6 +1785,18 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                     and sum(1 for k, v in enumerate(sn) if v == sn[r_] and k != r_) < 2:
                 lv1[r_] = None; lv2[r_] = None; src[r_] = None
     reliable = [_snap(g) for g in lv1 if _std_ok(g)]
+    if PCOL_GAIN[0] and pcol is None and len(rows) >= 3 and sum(g is not None for g in lv1) <= 1:
+        # one row pulse or none on a page of >= 3 rows: pulses printed apart from the trace
+        # (feet below the trace's line) are measured as a column, for the gain only
+        from .extract import pulse_column
+        pc2 = pulse_column(B, R)
+        if pc2 is not None and abs(float(np.median(np.diff(pc2["feet"]))) - spacing) <= 0.15 * spacing \
+                and _std_ok((pc2["height"] + 1 - lw0) / R, 0.1):
+            gpc = _snap((pc2["height"] + 1 - lw0) / R)
+            for r_, g in enumerate(lv1):
+                if g is not None and (not _std_ok(g) or _snap(g) != gpc):
+                    lv1[r_] = None; lv2[r_] = None; src[r_] = None
+            reliable = [gpc]
     if LONE_PULSE[0] is not None and len(reliable) == 1 and reliable[0] != 10.0:
         g_ = next(g for g in lv1 if _std_ok(g))
         if abs(g_ - reliable[0]) / reliable[0] >= LONE_PULSE[0]:
