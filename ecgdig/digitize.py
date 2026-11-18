@@ -1877,6 +1877,8 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     else:
         ctx = _LayoutCtx(B, D, rows, pulses, R, x0_r, sc_r, speed, duration, qfull, base_q, levels)
         ctx.col_hint = col_hint
+        if page_net:
+            ctx.use_net(page_net)
         if col_cut:
             # the gap removed from the image was the strongest column boundary there is
             for r_ in range(len(rows)):

@@ -54,6 +54,11 @@ BND_OTHER_ROWS = [True]
 BND_OWN_QRS = [False]
 BND_COHERENT = [True]
 LIMB_LOG = [True]
+# page-structure network (ecgdig/pagemodel.py), when Config.page_model is set: its lead changes
+# replace the boundary evidence of the rows it found, and its lead names enter as a log-likelihood
+NET_BND = [True]
+W_NET = [1.0]
+_NET_LEADS = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
 
 
 def _canon(name):
@@ -123,6 +128,41 @@ class Ctx:
                 for r in range(self.n):
                     self.bnd[r][q] *= f
         self._hp = {}
+
+    def use_net(self, net_rows):
+        """Rows of the page-structure network (rectified-image pixels): for every row of the
+        context, the network row on the same baseline (within 40% of the row step)."""
+        ys = np.asarray(self.rows, float)
+        step = float(np.median(np.diff(ys))) if len(ys) > 1 else 40 * self.R
+        self.net = {}
+        for r, y in enumerate(ys):
+            cand = [nr for nr in net_rows if abs(nr["y"] - y) <= 0.4 * step]
+            if cand:
+                self.net[r] = min(cand, key=lambda nr: abs(nr["y"] - y))
+        if NET_BND[0]:
+            for r, nr in self.net.items():
+                for q in self.bnd[r]:
+                    x = float(self.x_of(r, q * self.duration))
+                    self.bnd[r][q] = 1.0 if any(abs(c - x) <= 2.5 * self.R for c in nr["changes"]) else 0.0
+
+    def net_name_lr(self, r, k, c, name):
+        """log P(name | network) - log(1/12) for segment c of k in row r; 0 without the network."""
+        nr = getattr(self, "net", {}).get(r)
+        if nr is None:
+            return 0.0
+        x = float(self.x_of(r, (c + 0.5) / k * self.duration))
+        edges = [nr["x0"]] + list(nr["changes"]) + [nr["x1"]]
+        j = None
+        for i in range(len(edges) - 1):
+            if edges[i] <= x <= edges[i + 1]:
+                j = i
+                break
+        if j is None or j >= len(nr["names"]):
+            return 0.0
+        pv = np.asarray(nr["names"][j], float)[1:]
+        pv = pv / max(pv.sum(), 1e-9)
+        p = float(pv[_NET_LEADS.index(_canon(name))]) if _canon(name) in _NET_LEADS else 1 / 12
+        return float(np.log(p + 0.02) - np.log(1 / 12 + 0.02))
 
     # ------------------------------------------------------------------ signals
     def x_of(self, r, t):
@@ -366,7 +406,7 @@ class Ctx:
     def score(self, spec):
         """spec = list of rows (each a list of printed names). Returns (total, parts)."""
         R = self.R
-        parts = dict(ocr=0.0, bnd=0.0, limb=0.0, dup=0.0)
+        parts = dict(ocr=0.0, bnd=0.0, limb=0.0, dup=0.0, net=0.0)
         segs = []
         for r, row in enumerate(spec):
             k = len(row)
@@ -488,7 +528,10 @@ class Ctx:
         rhythm = [_canon(row[0]) for row in spec if len(row) == 1]
         if any(len(row) > 1 for row in spec) and len(rhythm) > len(set(rhythm)):
             parts["rep"] = -(len(rhythm) - len(set(rhythm)))
+        if getattr(self, "net", None):
+            parts["net"] = float(sum(self.net_name_lr(r, k, c, name) for (r, k, c, name) in segs))
         total = W_OCR * parts["ocr"] + W_BND * parts["bnd"] + W_LIMB * parts["limb"] + W_DUP * parts["dup"] \
+            + W_NET[0] * parts["net"] \
             + 3.0 * parts.get("rep", 0.0)
         return total, parts
 
