@@ -45,6 +45,7 @@ class Config:
     major_snap: bool = True   # fit on the major lines (5 mm)
     fine_snap: bool = True    # fit on the minor lines (1 mm)
     steep_subpx: bool = False  # sub-pixel instant on steep stretches (experimental)
+    edge_stroke: bool = False  # follow a steep stroke into the lead-switch mark (QRS at the boundary)
     synth: bool = True         # analysis-by-synthesis fit: Gaussian pen + blur (thin trace)
     bridge: bool = True        # Viterbi: a vertical jump linked by weak ink costs little
     synth_max_shift: float = 1.5
@@ -166,6 +167,45 @@ def _tick_span(xs, top, bot, xb, R):
     if xs[b_] - xs[a_] > 1.2 * R:
         return None
     return float(xs[a_]), float(xs[b_])
+
+
+def _edge_stroke(xs, top, bot, x_from, x_to, rv, R, side):
+    """A QRS stroke that runs into the lead switch: the clean trace stops at the cut before
+    the separator mark, but the steep stroke goes on to the boundary and beyond the mark's
+    height. In those columns the far edge of the ink (bottom of a falling stroke, top of a
+    rising one) minus the pen radius is the trace, as long as it keeps moving the same way
+    by >= 0.3 mm per column (the mark itself has a flat edge and stops the run).
+    side "end": columns from x_from rightwards to x_to; "start": from x_from leftwards.
+    Returns (x, y) points in time order, or empty arrays."""
+    if not len(xs):
+        return np.zeros(0), np.zeros(0)
+    step = 1 if side == "end" else -1
+    q = int(round(x_from - xs[0]))
+    qend = int(round(x_to - xs[0]))
+    if not (0 <= q < len(xs)):
+        return np.zeros(0), np.zeros(0)
+    best = None
+    for d in (1, -1):                # +1 falling (y grows), -1 rising
+        e = (lambda k: bot[k] - rv) if d > 0 else (lambda k: top[k] + rv)
+        prev, pts, k, stop = e(q), [], q + step, None
+        while 0 <= k < len(xs) and (k - qend) * step <= 1:
+            v = e(k)
+            if not np.isfinite(v) or d * (v - prev) < 0.3 * R:
+                stop = v
+                break
+            pts.append((xs[k] + 0.5 * step, v))
+            prev, k = v, k + step
+        # the stroke must leave the mark: its tip beyond the edge where the run stopped
+        # (the mark's flat edge, or the trace turning) by >= 0.5 mm
+        if stop is None or not np.isfinite(stop) or not pts or d * (pts[-1][1] - stop) < 0.5 * R:
+            continue
+        if len(pts) >= 2 and (best is None or abs(pts[-1][1] - pts[0][1]) > abs(best[-1][1] - best[0][1])):
+            best = pts
+    if best is None:
+        return np.zeros(0), np.zeros(0)
+    if side == "start":
+        best = best[::-1]
+    return np.array([p[0] for p in best]), np.array([p[1] for p in best])
 
 
 def _cut_leading_pulse(v, fs):
@@ -2080,14 +2120,29 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             xg, yg = lsf_refine(D, xg, yg, **(cfg.fit_kw or {}))
         if len(xg) < 2:   # the refinements left nothing of this segment: a missing lead, not a crash
             continue
+        hold_l = hold_r = False
+        if cfg.edge_stroke:
+            top_, bot_ = np.asarray(j["top"], float), np.asarray(j["bot"], float)
+            if j["n1"] < N:
+                ex, ey = _edge_stroke(xs, top_, bot_, np.floor(xg[-1]) - 2, xs_e, rad_h, R, "end")
+                if len(ex):
+                    k_ = xg < ex[0] - 0.5
+                    xg, yg = np.r_[xg[k_], ex], np.r_[yg[k_], ey]
+                    hold_r = True
+            if j["n0"] > 0:
+                ex, ey = _edge_stroke(xs, top_, bot_, np.ceil(xg[0]) + 2, xs_s, rad_h, R, "start")
+                if len(ex):
+                    k_ = xg > ex[-1] + 0.5
+                    xg, yg = np.r_[ex, xg[k_]], np.r_[ey, yg[k_]]
+                    hold_l = True
         tn = np.arange(j["n0"], j["n1"]) / cfg.fs
         xn = x0_r[rr] + sc_r[rr] * tn * speed * R
         yn = np.interp(xn, xg, yg)
         # limited linear extrapolation (damped slope), otherwise keep the value
         K = min(6, len(xg))
         a0 = np.polyfit(xg[:K], yg[:K], 1); a1 = np.polyfit(xg[-K:], yg[-K:], 1)
-        yn = np.where(xn < xg[0], yg[0] + 0.5 * a0[0] * (xn - xg[0]), yn)
-        yn = np.where(xn > xg[-1], yg[-1] + 0.5 * a1[0] * (xn - xg[-1]), yn)
+        yn = np.where(xn < xg[0], yg[0] + (0.0 if hold_l else 0.5 * a0[0]) * (xn - xg[0]), yn)
+        yn = np.where(xn > xg[-1], yg[-1] + (0.0 if hold_r else 0.5 * a1[0]) * (xn - xg[-1]), yn)
         # extrapolate only what the separator mark hides (~1 pen radius); beyond that the
         # sample is unknown: an invented ramp spoils the first beat and Einthoven
         ext_max = 2.0 * tr
@@ -2100,11 +2155,11 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         # the ramp only counts near the last clean sample (2 mm); a trace lost far from the
         # boundary keeps the last value (a 0.5 s ramp would reach several mV)
         ramp = 2.0 * R if EXTRAP_CAP[0] else np.inf
-        if j["n0"] > 0 and K4 >= 2:
+        if j["n0"] > 0 and K4 >= 2 and not hold_l:
             sl = np.polyfit(xg[:K4], yg[:K4], 1)[0]
             yn = np.where((xn < xg[0]) & (xn >= xs_s - 1.0),
                           yg[0] + 0.5 * sl * np.maximum(xn - xg[0], -ramp), yn)
-        if j["n1"] < N and K4 >= 2:
+        if j["n1"] < N and K4 >= 2 and not hold_r:
             sl = np.polyfit(xg[-K4:], yg[-K4:], 1)[0]
             yn = np.where((xn > xg[-1]) & (xn <= xs_e + 1.0),
                           yg[-1] + 0.5 * sl * np.minimum(xn - xg[-1], ramp), yn)

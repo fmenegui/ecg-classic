@@ -89,6 +89,21 @@ def _to_gt_grid(sig500, fs, n):
     return out
 
 
+def _fill_windows(G, P):
+    """Unknown predicted samples inside each ground-truth lead window: linear between known
+    ones, constant at the ends (what kaggle/submission.py submits)."""
+    Q = P.copy()
+    for i in range(len(G)):
+        idx = np.flatnonzero(np.isfinite(G[i]))
+        if len(idx) < 2:
+            continue
+        v = P[i][idx]
+        k = np.isfinite(v)
+        if k.sum() >= 2:
+            Q[i][idx] = np.interp(idx, idx[k], v[k])
+    return Q
+
+
 TYPES = ("0001", "0003", "0004", "0005", "0006", "0009", "0010", "0011", "0012")
 
 
@@ -140,6 +155,10 @@ def _work(job):
         klin, kper = MT.kaggle_image_snr(G, P, fs)
         rec.update(kaggle_lin=float(klin), kaggle_db=float(10 * np.log10(max(klin, 1e-12))), kaggle_per_lead=kper,
                    pm=MT.pm_image_metrics(G, P, fs))
+        # as the submission scores it: unknown samples inside each lead's window filled from
+        # the nearest known ones (kaggle/submission.py _fill)
+        kfill, _ = MT.kaggle_image_snr(G, _fill_windows(G, P), fs)
+        rec.update(kaggle_fill_lin=float(kfill))
         # signals at 250 Hz (float16) for diagnosis outside the runner
         step = max(1, int(round(fs / 250)))
         (out / "sig").mkdir(exist_ok=True)
@@ -176,14 +195,15 @@ def report_both(results):
     for r in results:
         by[r.get("type", "?")].append(r)
     L = ["### Kaggle metric (official) and PMcardio-style metrics", "",
-         "| Type | n | Kaggle score (dB) | PM SNR (dB) | PM PCC | PM failed leads | PM SNR w/o failures | PM RMSE w/o failures (mV) |",
-         "|---|---|---|---|---|---|---|---|"]
+         "| Type | n | Kaggle score (dB) | Kaggle, holes filled as submitted (dB) | PM SNR (dB) | PM PCC | PM failed leads | PM SNR w/o failures | PM RMSE w/o failures (mV) |",
+         "|---|---|---|---|---|---|---|---|---|"]
 
     def row(name, rs):
         kl = [r["kaggle_lin"] if r.get("ok") and "kaggle_lin" in r else 1.0 for r in rs]
+        kf = [r.get("kaggle_fill_lin", r.get("kaggle_lin", 1.0)) if r.get("ok") else 1.0 for r in rs]
         pm = [r["pm"] if r.get("ok") and r.get("pm") else {l: None for l in MT.LEADS} for r in rs]
         s = MT.pm_summary(pm)
-        return (f"| {name} | {len(rs)} | {MT.kaggle_score(kl):.2f} | {s['snr']:.2f} | {s['pcc']:.3f} | "
+        return (f"| {name} | {len(rs)} | {MT.kaggle_score(kl):.2f} | {MT.kaggle_score(kf):.2f} | {s['snr']:.2f} | {s['pcc']:.3f} | "
                 f"{100 * s['failure']:.1f}% | {s['snr_ok']:.2f} | {s['rmse_ok']:.3f} |")
     for t in sorted(by):
         L.append(row(t, by[t]))
