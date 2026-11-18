@@ -66,7 +66,9 @@ jobs:
         if: always()
         with:
           name: physionet-${{ inputs.mode }}-${{ github.run_id }}
+          # results only: images, ground truth (raw/, data/) and read signals compared with it
+          # (sig/) are competition data and must not be published
           path: |
-            results/physionet/
-            !results/physionet/data/**/*.png
+            results/physionet/results.json
+            results/physionet/report.md
           retention-days: 14

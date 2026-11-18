@@ -117,8 +117,8 @@ jobs:
         if: always()
         with:
           name: shard-${{ inputs.tag }}-${{ matrix.part }}-${{ github.run_id }}
+          # results only (no competition images, ground truth or signals compared with it)
           path: |
-            results/physionet/
-            !results/physionet/data/**
-            !results/physionet/raw/**/*.png
+            results/physionet/results.json
+            results/physionet/report.md
           retention-days: 14
