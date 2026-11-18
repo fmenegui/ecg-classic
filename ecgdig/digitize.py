@@ -56,6 +56,7 @@ class Config:
     row_beats: bool = True       # edge rows without QRS simultaneous with the others are dropped
     ink_model: str = ""         # path of the trace-segmenter ONNX (hybrid mode)
     page_model: str = ""        # path of the page-structure ONNX (ecgdig/pagemodel.py): rows and columns
+    page_orient: bool = True    # with page_model: the network also picks the page rotation
     ink_mix: float = 1.0        # 1 = network only; <1 mixes with the classical map
     # with ink_model: "model" reads the page with the network's ink map only; "select" reads it
     # both ways and keeps the reading with the better internal quality (no ground truth)
@@ -583,13 +584,18 @@ def _mid_pulse_cuts(B, rows, ext, half, R):
     return cuts
 
 
-def _rows_from_hint(B, R, rows, cov):
+def _rows_from_hint(B, R, rows, cov, ext_hint=None):
     """Rows already known (column structure realigned): only extents and pulses, without the
     rules that drop rows."""
     peaks = np.asarray(rows, dtype=int)
     spacing = float(np.median(np.diff(peaks))) if len(peaks) > 1 else 40 * R
     half = 0.45 * float(np.min(np.diff(peaks))) if len(peaks) > 1 else 0.45 * spacing
     ext = [row_extent(B, y, half, R) for y in peaks]
+    if ext_hint is not None and len(ext_hint) == len(ext):
+        # extents seen by the page-structure network: a faint or broken trace gives the binary
+        # map a short extent, and the time axis (duration, origin) would follow it
+        ext = [(int(h[0]), int(h[1])) if (e is None or (e[1] - e[0]) < 0.8 * (h[1] - h[0])) else e
+               for e, h in zip(ext, ext_hint)]
     pulses = []
     for i, (y, e) in enumerate(zip(peaks, ext)):
         up_sp = (y - peaks[i - 1]) if i > 0 else spacing
@@ -608,7 +614,7 @@ def _rows_from_hint(B, R, rows, cov):
     return peaks, cov, ext, pulses, spacing
 
 
-def _rows_pulses(B, pap, R, rows_hint=None):
+def _rows_pulses(B, pap, R, rows_hint=None, ext_hint=None):
     """Candidate trace rows (no text/borders), extents and pulses."""
     H, W = B.shape
     _prow_set = [None]
@@ -619,7 +625,7 @@ def _rows_pulses(B, pap, R, rows_hint=None):
     Bb = clean_grid_segments(Br, R, axes=(0,)) if GRID_SEGS[0] else B
     peaks, cov = find_rows(Br, R)
     if rows_hint is not None:
-        return _rows_from_hint(B, R, rows_hint, cov)
+        return _rows_from_hint(B, R, rows_hint, cov, ext_hint)
     if len(peaks) == 0:
         return peaks, cov, [], [], 40 * R
     tl, raw = trace_likeness(Br, peaks, R, return_raw=True)
@@ -1005,12 +1011,26 @@ def _orient(arrs, R):
     _orient.weak = bool(cands[0] is None and len(hard) == 2 and abs(hard[0] - hard[1]) <= 2.0)
     if ORIENT_FORCE[0] is not None and cands[0] is None:
         best = None if ORIENT_FORCE[0] == "keep" else cv2.ROTATE_180
+    if NET_ORIENT[0] and ORIENT_FORCE[0] is None:
+        # page-structure network: it sees the picture, not the binary map, so a blurred or dark
+        # page that the thresholds turn on its side still shows long rows to it. It overrides
+        # the classical choice only when it is clearly surer (1.5x the score of that rotation):
+        # on a page turned 90 degrees it also finds rows (grid and QRS lines), shorter ones
+        from .pagemodel import orientation_score
+        allc = [None, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_180, cv2.ROTATE_90_COUNTERCLOCKWISE]
+        sc_ = [orientation_score(rot(rect, c), R, NET_ORIENT[0]) for c in allc]
+        nb = int(np.argmax(sc_))
+        if allc[nb] != best and sc_[nb] >= NET_ORIENT_MARGIN[0] * max(sc_[allc.index(best)], 1e-6):
+            best = allc[nb]
+            _orient.weak = False
     return [rot(a, best) for a in arrs], best
 
 
 PULSE_ROWS_GUARD = [True]
 ORIENT_WIGGLE = [True]
 ORIENT_FORCE = [None]   # "keep" / "flip": fixes the 0 vs 180 degree choice (internal use)
+NET_ORIENT = [""]       # page-structure ONNX used for the orientation (set from Config.page_model)
+NET_ORIENT_MARGIN = [1.5]
 
 
 def _edge_cands(D, B, rows, ext, pulses, half, lev, R, rad=0.0):
@@ -1455,6 +1475,7 @@ def _digitize_once(image, cfg: Config | None = None, return_debug: bool = False)
     COL_GAP[0] = cfg.col_gap
     from . import layout_engine as _le
     _le.LIMB_LOG[0] = cfg.limb_log
+    NET_ORIENT[0] = cfg.page_model if cfg.page_model and cfg.page_orient else ""
     from . import extract as _ex
     _ex.ROW_CHAIN[0] = cfg.row_chain
     from . import geometry as _geo
@@ -1488,6 +1509,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     rows_hint = col_info["ref"] if stacked else None
     col_hint = len(col_info["cols"]) if rows_hint is not None else None
     net_hint = None
+    net_ext = None
     page_net = None
     if cfg.page_model and rows_hint is None:
         # page-structure network: where the rows are and how many columns the grid rows have.
@@ -1495,16 +1517,18 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         # hypotheses, tracking) stays classical
         from .pagemodel import page_structure
         try:
-            prow, pcols = page_structure(rect, R, cfg.page_model)
+            prow, pcols = page_structure(rect, R, cfg.page_model, B)
         except Exception:  # noqa: BLE001
             prow, pcols = [], None
         if len(prow) >= 2:
-            net_hint = np.array(sorted(int(round(r_["y"])) for r_ in prow))
+            prow = sorted(prow, key=lambda r_: r_["y"])
+            net_hint = np.array([int(round(r_["y"])) for r_ in prow])
+            net_ext = [(r_["x0"], r_["x1"]) for r_ in prow]
             rows_hint = net_hint
             col_hint = pcols
             page_net = prow
 
-    rows_all, cov, ext_all, pulses_all, spacing = _rows_pulses(B, pap, R, rows_hint)
+    rows_all, cov, ext_all, pulses_all, spacing = _rows_pulses(B, pap, R, rows_hint, net_ext)
 
     def _weak(rows_, ext_):
         # almost no trace: < 2 rows or short rows (< 40 mm)
@@ -1517,7 +1541,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     if cfg.adaptive_threshold and _weak(rows_all, ext_all):
         for sc_ in (0.5, 0.3):
             B2 = binarize(D, R, glev, scale=sc_)
-            r2 = _rows_pulses(B2, pap, R, net_hint)
+            r2 = _rows_pulses(B2, pap, R, net_hint, net_ext)
             if not _weak(r2[0], r2[2]):
                 B = B2
                 rows_all, cov, ext_all, pulses_all, spacing = r2
@@ -1536,7 +1560,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             if glev2 < glev:
                 for sc_ in (1.0, 0.5, 0.3):
                     B2 = binarize(D, R, glev2, scale=sc_)
-                    r2 = _rows_pulses(B2, pap, R, net_hint)
+                    r2 = _rows_pulses(B2, pap, R, net_hint, net_ext)
                     if not _weak(r2[0], r2[2]):
                         B, glev = B2, glev2
                         rows_all, cov, ext_all, pulses_all, spacing = r2
@@ -1545,7 +1569,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         # few long rows (light trace: only the large-amplitude leads passed the threshold): a
         # lower threshold that reveals >= 2 more long rows, at a regular step, wins
         B2 = binarize(D, R, glev, scale=0.5)
-        r2 = _rows_pulses(B2, pap, R, net_hint)
+        r2 = _rows_pulses(B2, pap, R, net_hint, net_ext)
         n1, n2 = _nlong(ext_all), _nlong(r2[2])
         if n2 >= n1 + 2 and n2 <= 16 and len(r2[0]) >= 3:
             d_ = np.diff(np.sort(np.asarray(r2[0], float)))

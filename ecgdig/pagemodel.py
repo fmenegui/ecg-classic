@@ -13,6 +13,7 @@ from __future__ import annotations
 import numpy as np
 
 S_MM = 4.0
+FG_THR = [0.5]     # lead-class probability (1 - background) that makes a ridge a lead
 LEADS = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
 _SESS = {}
 
@@ -97,11 +98,30 @@ def decode(base, bnd, cls, min_len_mm=15.0, thr=0.4):
             best["xs"] = np.r_[best["xs"], p["xs"][keep]]; best["ys"] = np.r_[best["ys"], p["ys"][keep]]
             best["v"] = np.r_[best["v"], p["v"][keep]]
     rows = []
+    fgm = 1.0 - cls[0]
     for c in chains:
         if len(c["xs"]) < min_len_mm * S_MM:
             continue
-        rows.append(dict(y=float(np.median(c["ys"])), x0=int(c["xs"][0]), x1=int(c["xs"][-1]),
-                         strength=float(c["v"].mean()), xs=c["xs"], ys=c["ys"]))
+        # a ridge is a lead only where the network also sees a trace band (lead class, not
+        # background): grid frame lines, empty grid after the trace, text lines and the edge of
+        # the paper can look like a baseline but carry no lead
+        yi = np.clip(np.round(c["ys"]).astype(int), 0, H - 1)
+        fg = np.zeros(len(yi))
+        for dy in range(-int(1.5 * S_MM), int(1.5 * S_MM) + 1):
+            fg = np.maximum(fg, fgm[np.clip(yi + dy, 0, H - 1), c["xs"]])
+        on = np.flatnonzero(fg > FG_THR[0])
+        if len(on) < min_len_mm * S_MM:
+            continue
+        gaps = np.flatnonzero(np.diff(c["xs"][on]) > 8 * S_MM)
+        st_ = np.r_[0, gaps + 1]; en_ = np.r_[gaps, len(on) - 1]
+        j = int(np.argmax(c["xs"][on][en_] - c["xs"][on][st_]))
+        a_, b_ = on[st_[j]], on[en_[j]]
+        if c["xs"][b_] - c["xs"][a_] < min_len_mm * S_MM:
+            continue
+        xs_, ys_ = c["xs"][a_:b_ + 1], c["ys"][a_:b_ + 1]
+        rows.append(dict(y=float(np.median(ys_)), x0=int(xs_[0]), x1=int(xs_[-1]),
+                         strength=float(c["v"][a_:b_ + 1].mean()), trace=float(fg[a_:b_ + 1].mean()),
+                         xs=xs_, ys=ys_))
     rows.sort(key=lambda r: r["y"])
     for r in rows:
         prof_b = np.zeros(r["x1"] - r["x0"] + 1)
@@ -126,11 +146,32 @@ def decode(base, bnd, cls, min_len_mm=15.0, thr=0.4):
     return rows
 
 
-def page_structure(rect_bgr, R, path):
-    """Rows in rectified-image pixels (R px/mm) and the column count most rows agree on."""
+MIN_REL_LEN = [0.5]   # a row spans at least this share of the longest row
+
+
+def page_structure(rect_bgr, R, path, B=None):
+    """Rows in rectified-image pixels (R px/mm) and the column count most rows agree on.
+
+    The network also marks things it was never shown as negatives (grid frame lines, the empty
+    grid after the trace, text lines, QR codes, the paper edge). Two checks drop them: a row spans
+    at least half the longest row (every lead row and rhythm strip of a page spans the plot), and,
+    when the classical binary map B is given and has ink on some row, the row has ink within
+    1 mm of its baseline in B."""
     base, bnd, cls = predict(rect_bgr, R, path)
     rows = decode(base, bnd, cls)
+    if rows:
+        L = max(r["x1"] - r["x0"] for r in rows)
+        rows = [r for r in rows if r["x1"] - r["x0"] >= MIN_REL_LEN[0] * L]
     k = R / S_MM
+    if B is not None and rows:
+        h = int(round(1.0 * R))
+        ink = []
+        for r in rows:
+            y = int(round(r["y"] * k)); x0, x1 = int(r["x0"] * k), int(r["x1"] * k)
+            band = B[max(0, y - h):y + h + 1, x0:x1 + 1]
+            ink.append(float(band.any(0).mean()) if band.size else 0.0)
+        if max(ink) > 0.05:
+            rows = [r for r, v in zip(rows, ink) if v > 0.005]
     out = []
     for r in rows:
         out.append(dict(y=r["y"] * k, x0=r["x0"] * k, x1=r["x1"] * k, strength=r["strength"],
@@ -139,3 +180,21 @@ def page_structure(rect_bgr, R, path):
     multi = [c for c in ncol if c > 1]
     cols = int(np.bincount(multi).argmax()) if len(multi) >= 2 else None
     return out, cols
+
+
+def orientation_score(rect_bgr, R, path):
+    """How much the page looks like an upright ECG to the network: the length (mm) of the rows
+    it finds, weighted by how sure it is of their lead names. A page on its side gives no long
+    rows; upside down, the names (trained on upright pages) lose confidence."""
+    base, bnd, cls = predict(rect_bgr, R, path)
+    rows = decode(base, bnd, cls)
+    if not rows:
+        return 0.0
+    L = max(r["x1"] - r["x0"] for r in rows)
+    sc = 0.0
+    for r in rows:
+        if r["x1"] - r["x0"] < MIN_REL_LEN[0] * L:
+            continue
+        conf = float(np.mean([np.max(n[1:]) / max(n[1:].sum(), 1e-9) for n in r["names"]]))
+        sc += (r["x1"] - r["x0"]) / S_MM * conf
+    return sc
