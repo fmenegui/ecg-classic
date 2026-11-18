@@ -113,6 +113,26 @@ def main():
         print(f"archive opened in {time.time() - t0:.1f}s: {len(names)} files", flush=True)
         ids, _ = train_ids(z)
         print(len(ids), "train records; first", ids[:3], flush=True)
+        # what else is in the archive (public test images, csvs): names, sizes and the test table only,
+        # nothing is written out (competition data stays off the public artifacts)
+        other = [n for n in names if not n.startswith("train/")]
+        print(len(other), "files outside train/:", flush=True)
+        for n in other[:60]:
+            info = z.getinfo(n)
+            line = f"  {n} {info.file_size}"
+            if n.lower().endswith(".png"):
+                hdr = z.read(n)[:32]
+                if hdr[12:16] == b"IHDR":
+                    line += f" {int.from_bytes(hdr[16:20], 'big')}x{int.from_bytes(hdr[20:24], 'big')}"
+            print(line, flush=True)
+        for n in other:
+            if n.endswith(".csv") and z.getinfo(n).file_size < 2_000_000:
+                txt = z.read(n).decode(errors="replace").splitlines()
+                print(f"--- {n}: {len(txt)} lines; head:", flush=True)
+                for l in txt[:8]:
+                    print("   ", l[:160], flush=True)
+        tr = z.read("train.csv").decode().splitlines()
+        print("--- train.csv head:", *tr[:4], sep="\n    ", flush=True)
         t0 = time.time()
         g, m = fetch(z, ids[:1], a.out)
         print(f"fetched {g} files ({m} missing) of record {ids[0]} in {time.time() - t0:.1f}s", flush=True)
