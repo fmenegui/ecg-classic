@@ -15,7 +15,13 @@ echo "setup" > "$OUT/status.txt"
 {
   echo "pod start $(date -u)"
   nvidia-smi || true
-  [ -d repo ] || git clone --depth 1 -b "$REF" https://github.com/fmenegui/ecg-digitalization-classic repo
+  # a pod whose DNS or network to GitHub is broken cannot get the code: retry, then let the
+  # workflow replace the pod (same path as a broken GPU)
+  for i in 1 2 3 4 5 6; do
+    [ -d repo ] || git clone --depth 1 -b "$REF" https://github.com/fmenegui/ecg-digitalization-classic repo && break
+    sleep 20
+  done
+  if [ ! -d repo ]; then echo "nogpu" > "$OUT/status.txt"; echo "cannot clone the repository on this pod"; sleep infinity; fi
   cd repo
   git log --oneline -1
   pip install -q -e . onnx onnxruntime segmentation-models-pytorch==0.3.4 timm wfdb
