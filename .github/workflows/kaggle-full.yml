@@ -71,16 +71,19 @@ jobs:
           get "${{ inputs.row_model_run }}" row
           if [ -n "${{ inputs.page_model_run }}" ]; then
             gh run download "${{ inputs.page_model_run }}" -D dl_page
-            f=$(find dl_page -name page_best.onnx | head -1); [ -n "$f" ] || f=$(find dl_page -name page.onnx | head -1)
-            cp "$f" model/page.onnx
+            python -m pip install -q onnxruntime
+            for f in $(find dl_page -name page_best.onnx) $(find dl_page -name page.onnx); do
+              python -c "import onnxruntime as o, sys; o.InferenceSession(sys.argv[1])" "$f" && cp "$f" model/page.onnx && break
+            done
           fi
           ls -la model
-      - uses: actions/upload-artifact@v4
+      # shared through the cache, not an artifact: 20 shards downloading the models count
+      # against the account's artifact egress limit
+      - uses: actions/cache/save@v4
         if: inputs.ink_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != ''
         with:
-          name: kfull-${{ inputs.tag }}-models
-          path: model/
-          retention-days: 30
+          path: model
+          key: kfull-models-${{ github.run_id }}
   shard:
     needs: models
     runs-on: ubuntu-latest
@@ -104,11 +107,12 @@ jobs:
         run: |
           python -m pip install -q remotezip requests
           python benchmarks/physionet/kaggle_zip.py shard --part ${{ matrix.part }} --nparts 20 --out results/physionet/data
-      - uses: actions/download-artifact@v4
+      - uses: actions/cache/restore@v4
         if: inputs.ink_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != ''
         with:
-          name: kfull-${{ inputs.tag }}-models
           path: model
+          key: kfull-models-${{ github.run_id }}
+          fail-on-cache-miss: true
       - run: ls -la model || true
       - name: Evaluate one record
         env:

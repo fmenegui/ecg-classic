@@ -51,21 +51,16 @@ permissions:
   contents: read
   actions: read
 jobs:
-  shard:
+  models:
+    # the models are fetched and converted once: 20 shards downloading a 300 MB training
+    # artifact each ran into the account's artifact egress limit
     runs-on: ubuntu-latest
-    timeout-minutes: 300
-    strategy:
-      fail-fast: false
-      matrix:
-        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install -e . pandas remotezip onnxruntime
-      - name: Download the shard (Zenodo, by ranges)
-        run: python benchmarks/pmcardio/fetch.py --out data/pm --shard ${{ matrix.part }} --nshards 20 --per-scenario ${{ inputs.per_scenario }}
+      - run: python -m pip install -q onnxruntime
       - name: Ink model (hybrid)
         if: ${{ inputs.ink_model_run != '' }}
         env:
@@ -105,8 +100,41 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh run download ${{ inputs.page_model_run }} -D page_dl
-          f=$(find page_dl -name page_best.onnx | head -1); [ -n "$f" ] || f=$(find page_dl -name page.onnx | head -1)
-          mkdir -p model; cp "$f" model/page.onnx; ls -la model
+          mkdir -p model
+          for f in $(find page_dl -name page_best.onnx) $(find page_dl -name page.onnx); do
+            python -c "import onnxruntime as o, sys; o.InferenceSession(sys.argv[1])" "$f" && cp "$f" model/page.onnx && break
+          done
+          rm -rf page_dl; ls -la model
+      - name: Share the models
+        if: ${{ inputs.ink_model_run != '' || inputs.grid_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: model
+          key: pm-models-${{ github.run_id }}
+  shard:
+    needs: models
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e . pandas remotezip onnxruntime
+      - name: Download the shard (Zenodo, by ranges)
+        run: python benchmarks/pmcardio/fetch.py --out data/pm --shard ${{ matrix.part }} --nshards 20 --per-scenario ${{ inputs.per_scenario }}
+      - name: Models (built once by the models job, shared through the cache)
+        if: ${{ inputs.ink_model_run != '' || inputs.grid_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: model
+          key: pm-models-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - run: ls -la model || true
       - name: Evaluate
         env:
           ECGDIG_FLAGS: ${{ inputs.flags }}
