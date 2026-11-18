@@ -66,6 +66,19 @@ def open_zip(retries=8, part=0):
     raise RuntimeError("could not open the remote archive")
 
 
+def _read(z, name, retries=6):
+    """One member of the remote archive; a read cut off mid-transfer (IncompleteRead, timeout) is
+    retried with back-off instead of failing the whole shard."""
+    for i in range(retries):
+        try:
+            return z.read(name)
+        except Exception as e:  # noqa: BLE001
+            if i == retries - 1:
+                raise
+            print(f"read {name} failed ({type(e).__name__}), retrying", flush=True)
+            time.sleep(5 * 2 ** i)
+
+
 def fetch(z, ids, out: Path, types=TYPES):
     names = set(z.namelist())
     out.mkdir(parents=True, exist_ok=True)
@@ -82,13 +95,13 @@ def fetch(z, ids, out: Path, types=TYPES):
             if n not in names:
                 miss += 1
                 continue
-            dst.write_bytes(z.read(n))
+            dst.write_bytes(_read(z, n))
             got += 1
     return got, miss
 
 
 def train_ids(z):
-    meta = list(csv.DictReader(io.StringIO(z.read("train.csv").decode())))
+    meta = list(csv.DictReader(io.StringIO(_read(z, "train.csv").decode())))
     return [r["id"] for r in meta], {r["id"]: r for r in meta}
 
 
