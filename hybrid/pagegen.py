@@ -121,6 +121,47 @@ class PageStructure:
         m = {k: (v.float() if torch.is_tensor(v) else v) for k, v in rb.metadata.items()}
         return img, seen, m
 
+    def _distractors(self, im, free, xs, ys, inside):
+        """Things on real pages that are not leads, drawn where no lead is (the labels stay 0):
+        frame and separator lines, text lines, a QR-like block, stamps. The renderer's pages
+        have few of them, and the first network marked grid frames and text lines as rows."""
+        r = self.rng
+        dev = im.device
+        Hc, Wc = im.shape[2:]
+        m = torch.zeros(Hc, Wc, device=dev)
+        px = S_MM
+        for _ in range(int(r.integers(0, 6))):            # long straight lines
+            th = float(r.uniform(0.5, 2.5))
+            if r.random() < 0.7:
+                y0 = float(r.uniform(0, Hc)); xa = float(r.uniform(0, 0.5 * Wc)); xb = float(r.uniform(0.5 * Wc, Wc))
+                m = torch.maximum(m, ((ys - y0).abs() <= th / 2).float() * ((xs >= xa) & (xs <= xb)).float())
+            else:
+                x0 = float(r.uniform(0, Wc)); ya = float(r.uniform(0, 0.5 * Hc)); yb = float(r.uniform(0.5 * Hc, Hc))
+                m = torch.maximum(m, ((xs - x0).abs() <= th / 2).float() * ((ys >= ya) & (ys <= yb)).float())
+        for _ in range(int(r.integers(0, 8))):            # text lines: runs of character blobs
+            y0 = float(r.uniform(0, Hc)); x0 = float(r.uniform(0, Wc)); n = int(r.integers(5, 40))
+            ch = float(r.uniform(1.5, 4.0)) * px; cw = ch * float(r.uniform(0.5, 0.8))
+            for k in range(n):
+                xa = x0 + k * cw * 1.2
+                if xa > Wc or r.random() < 0.15:
+                    continue
+                hh = ch * float(r.uniform(0.6, 1.0))
+                m = torch.maximum(m, ((xs >= xa) & (xs <= xa + cw * 0.8) & (ys >= y0 + ch - hh) & (ys <= y0 + ch)).float()
+                                  * float(r.uniform(0.5, 1.0)))
+        if r.random() < 0.3:                              # QR-like block
+            n = int(r.integers(15, 30)); cell = float(r.uniform(0.6, 1.2)) * px
+            x0 = float(r.uniform(0, Wc - n * cell)); y0 = float(r.uniform(0, Hc - n * cell))
+            blk = torch.from_numpy((r.random((n, n)) < 0.5).astype(np.float32)).to(dev)
+            ix = ((xs - x0) / cell).floor().long(); iy = ((ys - y0) / cell).floor().long()
+            okb = (ix >= 0) & (ix < n) & (iy >= 0) & (iy < n)
+            m = torch.maximum(m, torch.where(okb, blk[iy.clamp(0, n - 1), ix.clamp(0, n - 1)], torch.zeros_like(m)))
+        if not bool(m.any()):
+            return im
+        m = (m * free.float() * inside[0, 0])[None, None]
+        col = torch.rand(1, 3, 1, 1, generator=self.g).to(dev) * 0.35
+        a = float(r.uniform(0.5, 1.0))
+        return im * (1 - a * m) + col * a * m
+
     @torch.no_grad()
     def batch(self, n=None):
         """Canvases (P, 3, Hc, Wc) in [0, 1], targets (P, 3, Hc, Wc): baseline, lead change, class
@@ -147,11 +188,18 @@ class PageStructure:
             im = F.grid_sample(img[p:p + 1], grid, mode="bilinear", padding_mode="zeros", align_corners=False)
             inside = ((px >= 0) & (px <= W - 1) & (py >= 0) & (py <= H - 1)).float()[None, None]
             vis = F.grid_sample(seen[p:p + 1], grid, mode="nearest", padding_mode="zeros", align_corners=False) * inside
-            # background beyond the paper: a flat colour with low-frequency texture
+            # background beyond the paper: a flat colour with low-frequency texture, sometimes
+            # with corrugated-cardboard stripes and fine grain
             bg = torch.rand(1, 3, 1, 1, generator=self.g).to(dev) * 0.8 + 0.1
             tex = F.interpolate(torch.rand(1, 1, 12, 16, generator=self.g).to(dev), size=(Hc, Wc), mode="bicubic",
                                 align_corners=False)
-            bg = (bg + 0.15 * (tex - 0.5)).clamp(0, 1)
+            bg = bg + 0.15 * (tex - 0.5)
+            if self.rng.random() < 0.5:
+                per = float(self.rng.uniform(6, 30)); ang = float(self.rng.uniform(0, math.pi))
+                ph = (xs * math.cos(ang) + ys * math.sin(ang)) * 2 * math.pi / per
+                bg = bg + float(self.rng.uniform(0.03, 0.15)) * torch.sin(ph)[None, None]
+                bg = bg + 0.05 * torch.randn(1, 1, Hc, Wc, device=dev)
+            bg = bg.clamp(0, 1)
             im = im * inside + bg * (1 - inside)
             # ---- targets from the metadata, in page pixels
             act = [k for k in (m["active"][p] > 0.5).nonzero().flatten().tolist()]
@@ -178,6 +226,9 @@ class PageStructure:
                     cls_t = torch.where(ins, torch.full_like(cls_t, lead + 1), cls_t)
                     best_d = torch.where(ins, dy.abs(), best_d)
             tg = torch.stack([base_t, bnd_t, cls_t])[None] * inside
+            k_ = int(2 * 6 * S_MM) | 1    # nothing drawn within ~6 mm of a lead band
+            near = F.max_pool2d((cls_t > 0).float()[None, None], (k_, 9), 1, (k_ // 2, 4))[0, 0] > 0
+            im = self._distractors(im, ~near & (base_t < 0.05) & (bnd_t < 0.05), xs, ys, inside)
             X.append(im); T.append(tg); Wt.append(vis)
         X = degrade(torch.cat(X), self.g, self.heavy)
         return X, torch.cat(T), torch.cat(Wt)
@@ -188,7 +239,7 @@ if __name__ == "__main__":
     import cv2
     os.environ.setdefault("RENDER_PAGE", "1060x1500")
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    ps = PageStructure("cuda" if torch.cuda.is_available() else "cpu", canvas=(640, 896), pages=2,
+    ps = PageStructure("cuda" if torch.cuda.is_available() else "cpu", canvas=(896, 1280), pages=2,
                        photo_frac=float(sys.argv[2]) if len(sys.argv) > 2 else 0.0)
     x, t, w = ps.batch()
     tiles = []

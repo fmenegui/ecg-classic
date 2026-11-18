@@ -160,6 +160,7 @@ def main():
     if (a.out / "page_best.pt").exists():
         net.load_state_dict(torch.load(a.out / "page_best.pt", map_location=dev))
         export("_best")
+    (a.out / "page.pt").unlink(missing_ok=True)   # resume-only checkpoint: keeps the artifact small
     print("done", step, "steps", flush=True)
 
 
