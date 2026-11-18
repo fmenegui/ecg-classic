@@ -160,6 +160,42 @@ def render_aug(x, g):
     return x.clamp(0, 1)
 
 
+def heavy_aug(x, g, frac):
+    """Severe capture degradations on a share of the batch (photo of a page shot too small, out of
+    focus, over/under exposed, extreme tone curve): down-and-up sampling by 2-6x, blur up to
+    sigma 5 px, gamma 1/8-8, brightness +-0.6. The sparse label stays where it is. No test
+    image is used: these are generic photo degradations."""
+    n = x.shape[0]
+    dev = x.device
+    sel = torch.rand(n, generator=g) < frac
+    if not bool(sel.any()):
+        return x
+    out = x.clone()
+    H, W = x.shape[2:]
+    for i in torch.nonzero(sel).flatten().tolist():
+        xi = x[i:i + 1]
+        r = float(torch.rand(1, generator=g))
+        if r < 0.5:   # low resolution
+            k = 2.0 + 4.0 * float(torch.rand(1, generator=g))
+            xi = F.interpolate(F.interpolate(xi, size=(max(8, int(H / k)), max(8, int(W / k))), mode="area"),
+                               size=(H, W), mode="bilinear", align_corners=False)
+        if float(torch.rand(1, generator=g)) < 0.5:   # blur
+            s = 1.0 + 4.0 * float(torch.rand(1, generator=g))
+            kk = int(2 * round(3 * s) + 1)
+            ax = torch.arange(kk, device=dev, dtype=xi.dtype) - kk // 2
+            w = torch.exp(-ax ** 2 / (2 * s * s)); w = w / w.sum()
+            xi = F.conv2d(F.pad(xi, (kk // 2,) * 4, mode="replicate"), w.view(1, 1, 1, kk).repeat(3, 1, 1, 1), groups=3)
+            xi = F.conv2d(xi, w.view(1, 1, kk, 1).repeat(3, 1, 1, 1), groups=3)
+        if float(torch.rand(1, generator=g)) < 0.5:   # tone curve
+            gam = float(np.exp((2 * float(torch.rand(1, generator=g)) - 1) * np.log(8.0)))
+            xi = xi.clamp(1e-4, 1) ** gam
+        if float(torch.rand(1, generator=g)) < 0.5:   # brightness, saturating
+            xi = xi + (2 * float(torch.rand(1, generator=g)) - 1) * 0.6
+        xi = xi + torch.randn_like(xi) * 0.03 * float(torch.rand(1, generator=g))
+        out[i] = xi[0].clamp(0, 1)
+    return out
+
+
 def dice_loss(logit, y):
     p = torch.sigmoid(logit)
     num = 2 * (p * y).sum((1, 2, 3)) + 1
@@ -198,6 +234,7 @@ def main():
     ap.add_argument("--reuse", type=int, default=1,
                     help="steps per generated batch (> 1: the extra steps see GPU-augmented copies)")
     ap.add_argument("--val", type=int, default=256, help="fixed validation crops")
+    ap.add_argument("--heavy", type=float, default=0.0, help="share of each batch with severe capture degradations (heavy_aug)")
     ap.add_argument("--out", type=Path, default=Path("hybrid/out_gpu"))
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
@@ -387,6 +424,8 @@ def main():
             y = yb
         else:
             x, y = gpu_aug(xb, yb, g_aug, rot=a.gen != "rowgen")
+        if a.heavy > 0 and not PHASE:
+            x = heavy_aug(x, g_aug, a.heavy)
         with torch.autocast(dev, enabled=dev == "cuda"):
             logit = net(x)
         logit = logit.float()
