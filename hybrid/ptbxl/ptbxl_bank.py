@@ -15,6 +15,7 @@ array in mV that the data workers memory-map.
 from __future__ import annotations
 
 import argparse
+import sys
 import csv
 import os
 import subprocess
@@ -62,7 +63,9 @@ def main():
         excl = {int(s) for s in a.exclude.read_text().split() if s.strip()}
     folds = {int(f) for f in a.folds.split(",")}
     pm = Path(__file__).with_name("eval_pm_lead2.npz")
-    pm_ids = set(int(v) for v in np.load(pm)["ids"]) if pm.exists() else set()
+    if not pm.exists():   # never build a bank that may hold evaluation signals
+        sys.exit(f"{pm} is missing: cannot remove the PM-ECG-ID ECGs from the bank")
+    pm_ids = set(int(v) for v in np.load(pm)["ids"])
     rows = [r for r in csv.DictReader(open(root / "ptbxl_database.csv"))
             if int(r["strat_fold"]) in folds and int(float(r["ecg_id"])) not in excl
             and int(float(r["ecg_id"])) not in pm_ids]
