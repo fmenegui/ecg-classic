@@ -5,7 +5,7 @@ Two classical fixes for photographed pages (`ecgdig/geometry.py` `SCALE_MAJOR5`,
 - **5 mm period rescue.** When blur hides the 1 mm lines, the grid period found is the 5 mm one. The scale used to come from the page width (about 10% off, no perspective correction). Now a period that gives a 150-450 mm plot width at 5 mm is refined and used.
 - **Lone-pulse gain.** A gain other than 10 mm/mV read on a single row (a calibration pulse found only in part, e.g. 5.5-6 mm under blur) must agree with the standard value within 10%. Otherwise it is dropped.
 
-The pulse-column gain (`PCOL_GAIN`, commit `60fb604`) is evaluated separately (run 44353561521).
+The pulse-column gain (`PCOL_GAIN`, commit `60fb604`: when at most one row finds its pulse, the gain comes from a column of pulses printed apart from the trace) was evaluated on its own, run 44353561521. On PM-ECG-ID (5,999 of 6,000 ECGs, 99.98%) it is neutral: PM SNR 9.56 -> 9.55 dB, Kaggle metric 12.80 -> 12.80 dB, no group moves by more than 0.04 dB. The local sample had promised +0.7 dB from a single ECG. It stays on as a generic rule, but it gains nothing measurable.
 
 ## PM-ECG-ID, 5,997 of 6,000 ECGs (99.95%), row network (real pages), paired
 
