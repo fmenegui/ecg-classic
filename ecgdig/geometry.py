@@ -550,6 +550,8 @@ def _refine_long_period(G, angle, ppmm, mm=(10.0, 20.0)):
     return v if abs(v / ppmm - 1) < 0.1 else None
 
 SCALE_X5 = [True]
+# period of a sheet < 15 cm read as the 5 mm one when that gives a 15-45 cm sheet (else paper width)
+SCALE_MAJOR5 = [True]
 
 
 H_FALLBACK = [True]
@@ -596,7 +598,15 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
         if len(xs_):
             pw = float(max(np.ptp(xs_), np.ptp(ys_)) + 1)
             if pw / ppmm < 150.0:
-                ppmm = pw / 297.0
+                p5 = ppmm / 5.0
+                if SCALE_MAJOR5[0] and 150.0 <= pw / p5 <= 450.0:
+                    # blurred or low-resolution page: the 1 mm lines vanish and the period found
+                    # is the 5 mm one. Same treatment as the rescued scale above (1 mm and 5 mm
+                    # correspondences, homography only if it explains most blocks)
+                    ppmm = _refine_long_period(G, ang, p5) or p5
+                    rescued = True
+                else:
+                    ppmm = pw / 297.0
 
     H, W = G.shape
     s = 5.0  # px/mm of the coarse frame

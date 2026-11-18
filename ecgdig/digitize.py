@@ -875,6 +875,9 @@ ROW_FUSE_PX = [3.0]  # row network, fuse mode: classical/network disagreement th
 HYB_W_LIMB = [1.0]   # weight of the limb closure in the hybrid reading score (PhysioNet 135, 16/11)
 GAP_ROBUST_LR = [True]
 HALF_ALONE = [True]
+# a gain other than 10 mm/mV read on a single row needs a pulse within 10% of the standard value
+# (a pulse half-found on a blurred or rescaled photo measures 5.5-6 mm and gave 5 mm/mV)
+LONE_PULSE = [0.10]  # tolerance; 0 = never on a single row
 MID_PULSE_CUT = [True]
 # row extents measured without the straight grid pieces left in the binary map
 EXT_GRIDCLEAN = [False]
@@ -1780,6 +1783,12 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                     and sum(1 for k, v in enumerate(sn) if v == sn[r_] and k != r_) < 2:
                 lv1[r_] = None; lv2[r_] = None; src[r_] = None
     reliable = [_snap(g) for g in lv1 if _std_ok(g)]
+    if LONE_PULSE[0] is not None and len(reliable) == 1 and reliable[0] != 10.0:
+        g_ = next(g for g in lv1 if _std_ok(g))
+        if abs(g_ - reliable[0]) / reliable[0] >= LONE_PULSE[0]:
+            r_ = lv1.index(g_)
+            lv1[r_] = None; lv2[r_] = None; src[r_] = None
+            reliable = []
     if reliable:
         vals, cnts = np.unique(reliable, return_counts=True)
         g1def = float(vals[np.argmax(cnts)])
