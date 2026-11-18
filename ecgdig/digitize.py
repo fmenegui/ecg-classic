@@ -45,7 +45,7 @@ class Config:
     major_snap: bool = True   # fit on the major lines (5 mm)
     fine_snap: bool = True    # fit on the minor lines (1 mm)
     steep_subpx: bool = False  # sub-pixel instant on steep stretches (experimental)
-    edge_stroke: bool = False  # follow a steep stroke into the lead-switch mark (QRS at the boundary)
+    edge_stroke: bool = True   # follow a steep stroke into the lead-switch mark (QRS at the boundary)
     synth: bool = True         # analysis-by-synthesis fit: Gaussian pen + blur (thin trace)
     bridge: bool = True        # Viterbi: a vertical jump linked by weak ink costs little
     synth_max_shift: float = 1.5
