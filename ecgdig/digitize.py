@@ -55,6 +55,7 @@ class Config:
     pulse_retry: bool = True     # pulse also searched from the common left margin of the rows
     row_beats: bool = True       # edge rows without QRS simultaneous with the others are dropped
     ink_model: str = ""         # path of the trace-segmenter ONNX (hybrid mode)
+    page_model: str = ""        # path of the page-structure ONNX (ecgdig/pagemodel.py): rows and columns
     ink_mix: float = 1.0        # 1 = network only; <1 mixes with the classical map
     # with ink_model: "model" reads the page with the network's ink map only; "select" reads it
     # both ways and keeps the reading with the better internal quality (no ground truth)
@@ -1486,6 +1487,22 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     stacked = col_info and (col_info.get("how") == "tracks" or col_info.get("how", "").endswith("+stacked"))
     rows_hint = col_info["ref"] if stacked else None
     col_hint = len(col_info["cols"]) if rows_hint is not None else None
+    net_hint = None
+    page_net = None
+    if cfg.page_model and rows_hint is None:
+        # page-structure network: where the rows are and how many columns the grid rows have.
+        # The rows replace the projection rows; everything after (extents, pulses, layout
+        # hypotheses, tracking) stays classical
+        from .pagemodel import page_structure
+        try:
+            prow, pcols = page_structure(rect, R, cfg.page_model)
+        except Exception:  # noqa: BLE001
+            prow, pcols = [], None
+        if len(prow) >= 2:
+            net_hint = np.array(sorted(int(round(r_["y"])) for r_ in prow))
+            rows_hint = net_hint
+            col_hint = pcols
+            page_net = prow
 
     rows_all, cov, ext_all, pulses_all, spacing = _rows_pulses(B, pap, R, rows_hint)
 
@@ -1500,7 +1517,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     if cfg.adaptive_threshold and _weak(rows_all, ext_all):
         for sc_ in (0.5, 0.3):
             B2 = binarize(D, R, glev, scale=sc_)
-            r2 = _rows_pulses(B2, pap, R)
+            r2 = _rows_pulses(B2, pap, R, net_hint)
             if not _weak(r2[0], r2[2]):
                 B = B2
                 rows_all, cov, ext_all, pulses_all, spacing = r2
@@ -1519,7 +1536,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
             if glev2 < glev:
                 for sc_ in (1.0, 0.5, 0.3):
                     B2 = binarize(D, R, glev2, scale=sc_)
-                    r2 = _rows_pulses(B2, pap, R)
+                    r2 = _rows_pulses(B2, pap, R, net_hint)
                     if not _weak(r2[0], r2[2]):
                         B, glev = B2, glev2
                         rows_all, cov, ext_all, pulses_all, spacing = r2
@@ -1528,7 +1545,7 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         # few long rows (light trace: only the large-amplitude leads passed the threshold): a
         # lower threshold that reveals >= 2 more long rows, at a regular step, wins
         B2 = binarize(D, R, glev, scale=0.5)
-        r2 = _rows_pulses(B2, pap, R)
+        r2 = _rows_pulses(B2, pap, R, net_hint)
         n1, n2 = _nlong(ext_all), _nlong(r2[2])
         if n2 >= n1 + 2 and n2 <= 16 and len(r2[0]) >= 3:
             d_ = np.diff(np.sort(np.asarray(r2[0], float)))
