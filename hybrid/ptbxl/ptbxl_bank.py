@@ -67,9 +67,10 @@ def main():
         sys.exit(f"{pm} is missing: cannot remove the PM-ECG-ID ECGs from the bank")
     pm_ids = set(int(v) for v in np.load(pm)["ids"])
     rows = [r for r in csv.DictReader(open(root / "ptbxl_database.csv"))
-            if int(r["strat_fold"]) in folds and int(float(r["ecg_id"])) not in excl
-            and int(float(r["ecg_id"])) not in pm_ids]
-    print(f"{len(pm_ids)} PM-ECG-ID ecg_ids excluded by id", flush=True)
+            if int(r["strat_fold"]) in folds and int(float(r["ecg_id"])) not in excl]
+    n0 = len(rows)
+    rows = [r for r in rows if int(float(r["ecg_id"])) not in pm_ids]
+    print(f"PM-ECG-ID: {n0 - len(rows)} of {len(pm_ids)} ecg_ids found in folds {folds} and excluded by id", flush=True)
     print(f"{len(rows)} records (folds {sorted(folds)}, {len(excl)} Kaggle records excluded)", flush=True)
     paths = [str(root / r["filename_hr"]) for r in rows]
     with ProcessPoolExecutor(a.jobs) as ex:
