@@ -47,6 +47,11 @@ on:
         required: false
         default: '4'
         type: string
+      base_run:
+        description: 'A previous pod-eval run to compare with (paired, both metrics), optional'
+        required: false
+        default: ''
+        type: string
       tag:
         description: 'Label'
         required: false
@@ -163,3 +168,31 @@ jobs:
         env:
           POD_ID: ${{ steps.pod.outputs.pod_id }}
         run: python hybrid/gpu/runpod_v2.py stop
+  compare:
+    needs: eval
+    if: always() && inputs.base_run != ''
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q -e . pandas
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: podeval-${{ inputs.tag }}-${{ github.run_id }}-*
+          path: new
+      - name: Paired comparison
+        run: |
+          gh run download ${{ inputs.base_run }} -D base -p 'podeval-*'
+          {
+            [ -n "$(find new -name pm_results.json)" ] && python benchmarks/compare.py pm "$(find base -name pm_results.json | paste -sd,)" "$(find new -name pm_results.json | paste -sd,)"
+            echo
+            [ -n "$(find new -name kaggle_results.json)" ] && python benchmarks/compare.py kaggle "$(find base -name kaggle_results.json | paste -sd,)" "$(find new -name kaggle_results.json | paste -sd,)"
+          } | tee compare.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: podcompare-${{ inputs.tag }}-${{ github.run_id }}
+          path: compare.md
