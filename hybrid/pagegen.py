@@ -130,11 +130,13 @@ class PageStructure:
         idx = self.rng.integers(0, len(self._buf), self.pages)
         img = torch.stack([self._buf[i][0] for i in idx]).to(self.dev).float() / 255
         seen = torch.stack([self._buf[i][1] for i in idx]).to(self.dev).float()
-        keys = self._buf[idx[0]][2].keys()
         m = {}
-        for k in keys:
-            vals = [self._buf[i][2][k] for i in idx]
-            m[k] = torch.stack(vals).to(self.dev) if torch.is_tensor(vals[0]) else vals[0]
+        for k in set().union(*(self._buf[i][2].keys() for i in idx)):
+            # flat and photo renders carry different metadata (some None in one of them): keep a
+            # key only when every page has it as a tensor of one shape; batch() reads only those
+            vals = [self._buf[i][2].get(k) for i in idx]
+            if all(torch.is_tensor(v) for v in vals) and len({tuple(v.shape) for v in vals}) == 1:
+                m[k] = torch.stack(vals).to(self.dev)
         return img, seen, m
 
     def _render(self):

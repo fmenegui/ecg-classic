@@ -14,6 +14,7 @@ import argparse
 import io
 import json
 import os
+import re
 import sys
 import tarfile
 import time
@@ -243,6 +244,16 @@ def follow(out: Path):
             pass
     if status != "done":
         sys.exit(f"pod did not finish in time (status: {status!r})")
+    # the pod finishes either way; the job's own exit code decides whether the run succeeded
+    # (a failed training must not start its benchmark)
+    try:
+        full = (out / "log.txt").read_text(errors="replace") if (out / "log.txt").exists() else \
+            _get(base + "/log.txt", timeout=60).decode(errors="replace")
+    except Exception:  # noqa: BLE001
+        full = ""
+    codes = re.findall(r"^exit code (\d+)\s*$", full, flags=re.M)
+    if codes and codes[-1] != "0":
+        sys.exit(f"the job failed on the pod (exit code {codes[-1]})")
     return status
 
 
