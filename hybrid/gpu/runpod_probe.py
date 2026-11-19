@@ -1,34 +1,29 @@
-"""Prints what the RunPod account and API offer for the evaluation infrastructure (no secret is
-printed): data centers with their storage and GPU stock, CPU flavors, network volumes, and the
-GraphQL inputs for network volumes and CPU pods."""
+"""Prints what the RunPod REST API v2 offers for the evaluation infrastructure (read-only; no
+secret is printed): data centers and availability, CPU and GPU catalog, network volumes, pods."""
 import json
-import sys
-from pathlib import Path
+import os
+import urllib.error
+import urllib.request
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from runpod_ctl import gql  # noqa: E402
+KEY = os.environ.get("RUNPOD_API_KEY", "").strip().strip("\"'")
 
 
-def show(title, f):
-    print(f"== {title}")
+def get(path):
+    req = urllib.request.Request("https://api.runpod.io/v2" + path,
+                                 headers={"Authorization": f"Bearer {KEY}", "User-Agent": "ecgdig-probe"})
     try:
-        print(json.dumps(f(), indent=1)[:6000])
-    except Exception as e:  # noqa: BLE001
-        print("error:", e)
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.status, r.read().decode()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode()[:500]
 
 
-def fields(t):
-    q = """query($n: String!) { __type(name: $n) { name kind inputFields { name type { name kind ofType { name kind } } }
-             fields { name args { name type { name kind ofType { name kind } } } } } }"""
-    return gql(q, {"n": t})["__type"]
-
-
-show("myself", lambda: gql("query { myself { clientBalance networkVolumes { id name size dataCenterId } } }"))
-show("dataCenters", lambda: gql("query { dataCenters { id name location storageSupport listed } }"))
-show("cpuFlavors", lambda: gql("query { cpuFlavors { id groupId displayName minVcpu maxVcpu ramMultiplier } }"))
-for t in ["Mutation"]:
-    show(t + " (volume / cpu)", lambda: [f["name"] for f in fields(t)["fields"] if any(k in f["name"].lower() for k in ("volume", "cpu", "deploy"))])
-for t in ["CreateNetworkVolumeInput", "deployCpuPodInput", "DeployCpuPodInput", "PodFindAndDeployOnDemandInput"]:
-    show(t, lambda: fields(t))
-show("gpuTypes stock per data center (cheap cards)", lambda: gql("""query { gpuTypes { id displayName
-     lowestPrice(input: {gpuCount: 1}) { minimumBidPrice uninterruptablePrice stockStatus } } }"""))
+for p in ["/catalog/data-centers", "/catalog/data-centers?include=cpuAvailability",
+          "/catalog/data-centers?include=gpuAvailability", "/catalog/datacenters", "/catalog/cpus",
+          "/catalog/gpus", "/network-volumes", "/pods"]:
+    s, body = get(p)
+    try:
+        body = json.dumps(json.loads(body), separators=(",", ":"))
+    except Exception:  # noqa: BLE001
+        pass
+    print(f"== GET {p} -> {s}\n{body[:5000]}\n")
