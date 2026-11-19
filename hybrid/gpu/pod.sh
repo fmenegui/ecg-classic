@@ -4,26 +4,40 @@
 # /workspace/out over HTTP (port 8000) so the workflow can follow the log and fetch the result.
 # The pod receives no secret: the repository is public and the results leave through the HTTP port.
 set -u
-OUT=/workspace/out
+# OUT_DIR: per-run folder when /workspace is a shared network volume (evaluation pods)
+OUT=${OUT_DIR:-/workspace/out}
+export OUT_DIR=$OUT
+# the code: on the container disk when /workspace is a volume shared by pods of other runs
+REPO=${REPO_DIR:-/workspace/repo}
 mkdir -p "$OUT"
 cd /workspace
-(python -m http.server 8000 --directory "$OUT" > /dev/null 2>&1 &)
+# GET of $OUT, and PUT /in/<name> with the run's one-time upload token (models for evaluations)
+curl -fsSL "https://raw.githubusercontent.com/fmenegui/ecg-digitalization-classic/${REF}/hybrid/gpu/podserve.py" -o /podserve.py \
+  && (python /podserve.py > /dev/null 2>&1 &) || (python -m http.server 8000 --directory "$OUT" > /dev/null 2>&1 &)
 # a RunPod container restart (host hiccup, out of memory) runs this script again: keep the
 # code and the checkpoints, and let train_gpu.py resume from $OUT/unet.pt
 if [ -f "$OUT/status.txt" ]; then echo "POD RESTART detected $(date -u) (was: $(cat "$OUT/status.txt"))" >> "$OUT/log.txt"; fi
 echo "setup" > "$OUT/status.txt"
 {
   echo "pod start $(date -u)"
-  nvidia-smi || true
+  [ -n "${CPU_ONLY:-}" ] && echo "CPU pod: $(nproc) vCPU, $(free -g | awk '/Mem/ {print $2}') GB" || nvidia-smi || true
   # a pod whose DNS or network to GitHub is broken cannot get the code: retry, then let the
   # workflow replace the pod (same path as a broken GPU)
   for i in 1 2 3 4 5 6; do
-    [ -d repo ] || git clone --depth 1 -b "$REF" https://github.com/fmenegui/ecg-digitalization-classic repo && break
+    [ -d "$REPO" ] || git clone --depth 1 -b "$REF" https://github.com/fmenegui/ecg-digitalization-classic "$REPO" && break
     sleep 20
   done
-  if [ ! -d repo ]; then echo "nogpu" > "$OUT/status.txt"; echo "cannot clone the repository on this pod"; sleep infinity; fi
-  cd repo
+  if [ ! -d "$REPO" ]; then echo "nogpu" > "$OUT/status.txt"; echo "cannot clone the repository on this pod"; sleep infinity; fi
+  cd "$REPO"
   git log --oneline -1
+  if [ -n "${CPU_ONLY:-}" ]; then
+    # evaluation pod: the package and onnxruntime only, no GPU, no renderer
+    pip install -q -e . onnxruntime pandas remotezip requests kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0
+    echo "running" > "$OUT/status.txt"
+    echo "command: $JOB"
+    timeout "$(python -c "print(int(float('$MAX_HOURS') * 3600))")" bash -c "$JOB"
+    echo "exit code $?"
+  else
   pip install -q -e . onnx onnxruntime segmentation-models-pytorch==0.3.4 timm wfdb
   # GPU strip renderer (hybrid/rendergen.py): public install, or a read-only token for the private repo
   pip install -q "git+https://${RENDERER_TOKEN:+x-access-token:${RENDERER_TOKEN}@}github.com/fmenegui/ecg-torch-renderer" \
@@ -41,8 +55,9 @@ echo "setup" > "$OUT/status.txt"
   (while sleep 120; do echo "GPU $(nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader)"; done &)
   timeout "$(python -c "print(int(float('$MAX_HOURS') * 3600))")" bash -c "$JOB"
   echo "exit code $?"
+  fi
 } >> "$OUT/log.txt" 2>&1
 cd /workspace
-tar czf /workspace/result.tar.gz -C "$OUT" --exclude=result.tar.gz . && mv /workspace/result.tar.gz "$OUT/"
+tar czf "$OUT.result.tar.gz" -C "$OUT" --exclude=result.tar.gz . && mv "$OUT.result.tar.gz" "$OUT/result.tar.gz"
 echo "done" > "$OUT/status.txt"
 sleep infinity

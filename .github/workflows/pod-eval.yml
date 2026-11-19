@@ -1,0 +1,139 @@
+name: Evaluation on a RunPod CPU pod
+# PM-ECG-ID and/or the Kaggle training records evaluated on one 32-vCPU RunPod CPU pod that mounts
+# the network volume holding the datasets (downloaded once, kept on the volume, never published).
+# The models are fetched here from their training runs and sent to the pod with a one-time upload
+# token; the pod returns only results.json and report.md. The pod is ALWAYS terminated.
+# Cost: cpu5c x32 ~1.1 USD/h (MAX_USD_H 1.2), volume ~0.07 USD/GB/month.
+on:
+  workflow_dispatch:
+    inputs:
+      what:
+        description: 'pm, kaggle or both'
+        required: false
+        default: 'both'
+        type: string
+      per_scenario:
+        description: 'PM ECGs per scenario (0 = all 100; 5 = the 300-ECG development set)'
+        required: false
+        default: '0'
+        type: string
+      kaggle_nparts:
+        description: 'Kaggle records: part 0 of this many parts of the 977 evaluation records (1 = all; 20 = ~49 records)'
+        required: false
+        default: '1'
+        type: string
+      models:
+        description: 'Runs of the models, as kind=run_id separated by spaces (kinds: ink row page dewarp)'
+        required: false
+        default: ''
+        type: string
+      config:
+        description: 'Config overrides, space-separated key=value'
+        required: false
+        default: ''
+        type: string
+      max_hours:
+        description: 'Hard limit for the evaluation on the pod (hours)'
+        required: false
+        default: '4'
+        type: string
+      tag:
+        description: 'Label'
+        required: false
+        default: 'pod'
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+      GH_TOKEN: ${{ github.token }}
+      REF: ${{ github.ref_name }}
+      MAX_HOURS: ${{ inputs.max_hours }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Models
+        run: |
+          mkdir -p model
+          python -m pip install -q onnxruntime
+          for kv in ${{ inputs.models }}; do
+            kind=${kv%%=*}; run=${kv#*=}
+            gh run download "$run" -D "dl_$kind"
+            f=""
+            for c in "${kind}_best.onnx" "${kind}.onnx" trace_seg.onnx; do
+              for g in $(find "dl_$kind" -name "$c"); do
+                python -c "import onnxruntime as o, sys; o.InferenceSession(sys.argv[1])" "$g" && f=$g && break 2
+              done
+            done
+            if [ -z "$f" ]; then   # a row / ink network saved as a checkpoint only
+              p=$(find "dl_$kind" -name unet_best.pt | head -1)
+              python -m pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
+              python -m pip install -q segmentation-models-pytorch==0.3.4 timm onnx onnxscript
+              python - "$p" "model/$kind.onnx" <<'PY'
+          import sys, torch, segmentation_models_pytorch as smp
+          m = smp.Unet(encoder_name="resnet34", encoder_weights=None, in_channels=3, classes=1)
+          m.load_state_dict(torch.load(sys.argv[1], map_location="cpu")); m.eval()
+          torch.onnx.export(m, torch.zeros(1, 3, 256, 256), sys.argv[2], input_names=["x"], output_names=["logit"],
+                            dynamic_axes={"x": {0: "n", 2: "h", 3: "w"}, "logit": {0: "n", 2: "h", 3: "w"}}, opset_version=17, dynamo=False)
+          PY
+            else
+              cp "$f" "model/$kind.onnx"
+            fi
+            rm -rf "dl_$kind"
+          done
+          ls -la model
+      - name: Volume
+        id: vol
+        run: python hybrid/gpu/runpod_v2.py volume
+      - name: Start the CPU pod
+        id: pod
+        env:
+          VOLUME_ID: ${{ steps.vol.outputs.volume_id }}
+          DATA_CENTER: ${{ steps.vol.outputs.data_center }}
+          KAGGLE_API_TOKEN: ${{ (inputs.what == 'kaggle' || inputs.what == 'both') && secrets.KAGGLE_API_TOKEN || '' }}
+          KAGGLE_USERNAME: ${{ (inputs.what == 'kaggle' || inputs.what == 'both') && vars.KAGGLE_USERNAME || '' }}
+          JOB: >-
+            WHAT=${{ inputs.what }} PER_SCENARIO=${{ inputs.per_scenario }} KAGGLE_PART=0
+            KAGGLE_NPARTS=${{ inputs.kaggle_nparts }} EVAL_CONFIG="${{ inputs.config }}" bash benchmarks/podeval.sh
+        run: |
+          echo "UPLOAD_TOKEN=$(python -c 'import secrets; print(secrets.token_hex(24))')" >> "$GITHUB_ENV"
+          . "$GITHUB_ENV"
+          UPLOAD_TOKEN=$UPLOAD_TOKEN python hybrid/gpu/runpod_v2.py cpu-start
+      - name: Send the models
+        env:
+          POD_ID: ${{ steps.pod.outputs.pod_id }}
+        run: |
+          echo ok > model/READY
+          python hybrid/gpu/runpod_v2.py put $(ls model/*.onnx 2>/dev/null) model/READY
+      - name: Follow
+        env:
+          POD_ID: ${{ steps.pod.outputs.pod_id }}
+        run: python hybrid/gpu/runpod_ctl.py follow --out result
+      - name: Report
+        if: always()
+        run: |
+          ls -la result || true
+          cat result/pm_report.md result/kaggle_report.md 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: podeval-${{ inputs.tag }}-${{ github.run_id }}
+          path: |
+            result/log.txt
+            result/pm_results.json
+            result/pm_report.md
+            result/kaggle_results.json
+            result/kaggle_report.md
+          retention-days: 60
+      - name: Terminate the pod
+        if: always()
+        env:
+          POD_ID: ${{ steps.pod.outputs.pod_id }}
+        run: python hybrid/gpu/runpod_v2.py stop
