@@ -84,12 +84,13 @@ def degrade(x, g, heavy=0.5):
 
 class PageStructure:
     def __init__(self, device, canvas=(896, 1280), page_hw=(1400, 1980), pages=4, photo_frac=0.4,
-                 heavy=0.5, seed=0):
+                 heavy=0.5, seed=0, reuse=1, buf_size=600):
         from ecg_gpu import ECGSupervisionLayer, RenderConfig
         if os.environ.get("RENDER_PAGE"):            # e.g. "1060x1500" for a small CPU test
             page_hw = tuple(int(v) for v in os.environ["RENDER_PAGE"].split("x"))
         self.dev = torch.device(device)
         self.canvas, self.pages, self.photo_frac, self.heavy = canvas, pages, photo_frac, heavy
+        self.reuse, self.buf_size, self._buf = reuse, buf_size, []
         self.synth = ECGSupervisionLayer(fs=500, config=RenderConfig(height=page_hw[0], width=page_hw[1]),
                                          photo=False).to(self.dev)
         self.synth.train()
@@ -105,6 +106,36 @@ class PageStructure:
             from ecgdig.synth import synth_signals
             x = np.stack([synth_signals(self.rng)[:, :5000].astype(np.float32) for _ in range(n)])
         return torch.from_numpy(np.nan_to_num(x)).to(self.dev)
+
+    def _pages(self):
+        """Pages for one batch: freshly rendered, or (reuse > 1) drawn from a CPU buffer of the
+        last renders, each page reused about `reuse` times under new placement and degradation.
+        Rendering is ~55% of a training step on the GPU (profile_gen.py)."""
+        if self.reuse <= 1:
+            return self._render()
+        if not self._buf or self.rng.random() < 1.0 / self.reuse:
+            img, seen, m = self._render()
+            for p in range(img.shape[0]):
+                mp = {}
+                for k, v in m.items():
+                    if torch.is_tensor(v) and v.dim() > 0 and len(v) == img.shape[0]:
+                        v = v[p].cpu()
+                        if v.dim() == 1 and k != "ppm":   # per-occurrence: pad to a fixed count
+                            v = F.pad(v, (0, max(0, 96 - len(v))))[:96]
+                    mp[k] = v
+
+                self._buf.append(((img[p] * 255).round().byte().cpu(), seen[p].bool().cpu(), mp))
+            del self._buf[:-self.buf_size]
+            return img, seen, m
+        idx = self.rng.integers(0, len(self._buf), self.pages)
+        img = torch.stack([self._buf[i][0] for i in idx]).to(self.dev).float() / 255
+        seen = torch.stack([self._buf[i][1] for i in idx]).to(self.dev).float()
+        keys = self._buf[idx[0]][2].keys()
+        m = {}
+        for k in keys:
+            vals = [self._buf[i][2][k] for i in idx]
+            m[k] = torch.stack(vals).to(self.dev) if torch.is_tensor(vals[0]) else vals[0]
+        return img, seen, m
 
     def _render(self):
         sig = self._signals(self.pages)
@@ -167,7 +198,7 @@ class PageStructure:
     def batch(self, n=None):
         """Canvases (P, 3, Hc, Wc) in [0, 1], targets (P, 3, Hc, Wc): baseline, lead change, class
         (as float), and weights (P, 1, Hc, Wc): 0 where the page was not seen."""
-        img, seen, m = self._render()
+        img, seen, m = self._pages()
         P, _, H, W = img.shape
         Hc, Wc = self.canvas
         dev = self.dev

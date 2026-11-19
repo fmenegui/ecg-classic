@@ -84,6 +84,7 @@ def main():
     ap.add_argument("--lr", type=float, default=5e-4)
     ap.add_argument("--photo", type=float, default=0.4)
     ap.add_argument("--heavy", type=float, default=0.5)
+    ap.add_argument("--reuse", type=float, default=1.0, help="each rendered page is used ~this many times")
     ap.add_argument("--val", type=int, default=48)
     ap.add_argument("--init", type=Path, default=None)
     ap.add_argument("--weights", default="imagenet")
@@ -101,7 +102,8 @@ def main():
     if a.init and a.init.exists():
         print("init from", a.init, net.load_state_dict(torch.load(a.init, map_location="cpu"), strict=False), flush=True)
     net = net.to(dev)
-    gen = PageStructure(dev, canvas=canvas, pages=a.pages, photo_frac=a.photo, heavy=a.heavy, seed=int(time.time()) % 100000)
+    gen = PageStructure(dev, canvas=canvas, pages=a.pages, photo_frac=a.photo, heavy=a.heavy, seed=int(time.time()) % 100000,
+                        reuse=a.reuse)
     gv = PageStructure(dev, canvas=canvas, pages=4, photo_frac=a.photo, heavy=a.heavy, seed=999)
     vb = [gv.batch() for _ in range(max(1, a.val // 4))]
     vx = torch.cat([b[0] for b in vb]).cpu(); vt = torch.cat([b[1] for b in vb]).cpu()

@@ -38,12 +38,13 @@ IN_HW = (512, 704)
 
 
 class Photos:
-    def __init__(self, device, page_hw=(1400, 1980), pages=4, heavy=0.4, seed=0):
+    def __init__(self, device, page_hw=(1400, 1980), pages=4, heavy=0.4, seed=0, reuse=1, buf_size=500):
         from ecg_gpu import ECGSupervisionLayer, RenderConfig
         if os.environ.get("RENDER_PAGE"):
             page_hw = tuple(int(v) for v in os.environ["RENDER_PAGE"].split("x"))
         self.dev = torch.device(device)
         self.pages, self.heavy = pages, heavy
+        self.reuse, self.buf_size, self._buf = reuse, buf_size, []
         self.synth = ECGSupervisionLayer(fs=500, config=RenderConfig(height=page_hw[0], width=page_hw[1]),
                                          photo=True).to(self.dev)
         self.synth.train()
@@ -60,13 +61,31 @@ class Photos:
             x = np.stack([synth_signals(self.rng)[:, :5000].astype(np.float32) for _ in range(n)])
         return torch.from_numpy(np.nan_to_num(x)).to(self.dev)
 
+    def _render(self):
+        rb = self.synth.render_batch(self._signals(self.pages), stage="image", photo=True, return_field=True)
+        return rb.image.float().clamp(0, 1), rb.inverse_field.float()          # (P, 3, H, W), (P, H, W, 2)
+
+    def _photos(self):
+        """Fresh renders, or (reuse > 1) photos from a CPU buffer of the last renders, each used
+        about `reuse` times under a new crop and new degradations (rendering dominates the step)."""
+        if self.reuse <= 1:
+            return self._render()
+        if not self._buf or self.rng.random() < 1.0 / self.reuse:
+            img, fld = self._render()
+            for p in range(len(img)):
+                self._buf.append(((img[p] * 255).round().byte().cpu(), fld[p].half().cpu()))
+            del self._buf[:-self.buf_size]
+            return img, fld
+        idx = self.rng.integers(0, len(self._buf), self.pages)
+        img = torch.stack([self._buf[i][0] for i in idx]).to(self.dev).float() / 255
+        fld = torch.stack([self._buf[i][1] for i in idx]).to(self.dev).float()
+        return img, fld
+
     @torch.no_grad()
     def batch(self):
         """Photos (P, 3, h, w) in [0, 1]; targets (P, 3, h, w): flat-page x, y (normalised, -1..1
         on the page) and page visibility (1 where the photo pixel shows the page)."""
-        rb = self.synth.render_batch(self._signals(self.pages), stage="image", photo=True, return_field=True)
-        img = rb.image.float().clamp(0, 1)
-        fld = rb.inverse_field.float()                      # (P, H, W, 2)
+        img, fld = self._photos()
         P, _, H, W = img.shape
         X, T = [], []
         for p in range(P):
@@ -131,6 +150,7 @@ def main():
     ap.add_argument("--pages", type=int, default=6)
     ap.add_argument("--lr", type=float, default=5e-4)
     ap.add_argument("--heavy", type=float, default=0.4)
+    ap.add_argument("--reuse", type=float, default=1.0, help="each rendered photo is used ~this many times")
     ap.add_argument("--val", type=int, default=48)
     ap.add_argument("--weights", default="imagenet")
     ap.add_argument("--init", type=Path, default=None, help="state_dict to start from (an earlier run)")
@@ -147,7 +167,7 @@ def main():
     elif a.init and a.init.exists():
         print("init from", a.init, net.load_state_dict(torch.load(a.init, map_location="cpu")), flush=True)
     net = net.to(dev)
-    gen = Photos(dev, pages=a.pages, heavy=a.heavy, seed=int(time.time()) % 100000)
+    gen = Photos(dev, pages=a.pages, heavy=a.heavy, seed=int(time.time()) % 100000, reuse=a.reuse)
     gv = Photos(dev, pages=4, heavy=a.heavy, seed=999)
     vb = [gv.batch() for _ in range(max(1, a.val // 4))]
     vx = torch.cat([b[0] for b in vb]).cpu(); vt = torch.cat([b[1] for b in vb]).cpu()
