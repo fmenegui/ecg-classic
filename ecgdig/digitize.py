@@ -61,6 +61,10 @@ class Config:
                                 # reading with the better internal quality (_reading_score)
     page_margin: float = 0.0
     page_margin_same: float = 0.1   # PM-ECG-ID, network v1: 0 -> 9.06, 0.1 -> 9.22 dB (simulated)
+    # the network reading drops a rhythm strip the classical reading has, same lead block
+    # (3x4+1 -> 3x4): on Kaggle (all 3x4+1) that was 384 of 8,352 images and cost 0.31 dB.
+    # Simulated on PM-ECG-ID (5,700 ECGs, network v1): unconditional -0.09 dB, margin 0.5 -0.03 dB
+    page_margin_rhythm: float = 0.5
     dewarp_margin: float = 0.0
     dewarp_model: str = ""      # page-flattening ONNX (ecgdig/dewarp.py): the photo is also read
                                 # flattened, and the reading with the better quality is kept
@@ -1345,6 +1349,17 @@ def _baseline_guard(sig, fs, win_s=0.6, thr_mv=1.5):
         out[i] = s_.astype(out.dtype)
     return out
 
+def _drops_rhythm(lay_c, lay_n):
+    """True when layout lay_n is lay_c with fewer rhythm strips: same lead block ("3x4"), fewer
+    "+k" rows ("3x4+1" -> "3x4")."""
+    import re
+    if not isinstance(lay_c, str) or not isinstance(lay_n, str):
+        return False
+    plus = lambda l: int(m.group(1)) if (m := re.search(r"\+(\d)", l)) else 0  # noqa: E731
+    block = lambda l: re.sub(r"\+\d.*", "", l)  # noqa: E731
+    return block(lay_c) == block(lay_n) and plus(lay_n) < plus(lay_c)
+
+
 def _reading_score(res):
     """Internal quality of a reading (no ground truth): the page quality score (coverage x
     repetition x layout confidence), plus the Einthoven/Goldberger closure of the chosen
@@ -1442,7 +1457,10 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         # same layout from both: the network only changed where the rows lie, and the classical
         # rows are the better default (clean renders); it must then be clearly better
         same = rc is not None and rn is not None and rc.get("layout") == rn.get("layout")
-        use_n = rc is None or (rn is not None and sn_ > sc_ + (cfg.page_margin_same if same else cfg.page_margin))
+        margin = cfg.page_margin_same if same else cfg.page_margin
+        if rc is not None and rn is not None and _drops_rhythm(rc.get("layout"), rn.get("layout")):
+            margin = max(margin, cfg.page_margin_rhythm)
+        use_n = rc is None or (rn is not None and sn_ > sc_ + margin)
         out = rn if use_n else rc
         out["page_select"] = dict(chosen="network" if use_n else "classical", score_classical=sc_,
                                   score_network=sn_, layout_classical=None if rc is None else rc.get("layout"),
