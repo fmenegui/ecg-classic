@@ -40,6 +40,21 @@ On the volume, the job finds `$CACHE`:
 
 Jobs write to `$OUT_DIR`, the per-run folder the pod serves, not to `/workspace/out`.
 
+### Faster steps: `--reuse` (page and dewarp networks)
+
+On a 3090, rendering takes about 55% of a page-network step: 0.67 s per 4 pages, against about 0.5 s for the network. With `--reuse N`, the generator keeps the last renders in a CPU buffer and draws each page about N times, each time with a new placement, crop and degradation. `--reuse 3` should bring a step from about 1.2 s down to about 0.7 s.
+
+The row network has `--reuse` already. Its bottleneck is the CPU strip generator: the GPU sits idle about half the time. A larger `--render-frac`, which renders strips on the GPU, shifts that work to the GPU.
+
+### Automatic development benchmark: `eval_models`
+
+After a training run, `eval_models="page=THIS row=<run>"` starts `pod-eval` with the development set (300 PM ECGs, about 440 Kaggle images). `THIS` stands for the run itself. `eval_base=<pod-eval run>` pairs the result with a baseline. The paired table goes into that run's summary.
+
+### Not done, on purpose
+
+- **No image of our own for the pods.** The setup takes about 3 min on most hosts; the slow ones were slow at pulling any image. The image would hold the private renderer, so it would need a private registry and an access token on RunPod.
+- **No render cache shared between runs.** Cheap cards are often unavailable in the volume's data center, and training must not wait for them. Reuse inside a run takes most of the gain.
+
 ## Evaluation: `pod-eval.yml` → RunPod CPU pods on a network volume
 
 The datasets live on the network volume `ecgdig-data`: 60 GB in EUR-IS-1, about 4 USD/month.
