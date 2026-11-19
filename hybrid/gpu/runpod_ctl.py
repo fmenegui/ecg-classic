@@ -152,7 +152,8 @@ def _get(url, timeout=30):
 
 LOST_MIN = 20
 CKPT_MIN = 30
-CKPT_FILES = ["page_best.onnx", "page_best.pt", "unet_best.pt", "trace_seg_best.onnx", "val.json"]
+CKPT_FILES = ["page_best.onnx", "page_best.pt", "unet_best.pt", "trace_seg_best.onnx", "dewarp_best.onnx",
+              "dewarp_best.pt", "val.json"]
 
 
 def _copy_checkpoints(base, out):
