@@ -148,13 +148,14 @@ class PageStructure:
                 hh = ch * float(r.uniform(0.6, 1.0))
                 m = torch.maximum(m, ((xs >= xa) & (xs <= xa + cw * 0.8) & (ys >= y0 + ch - hh) & (ys <= y0 + ch)).float()
                                   * float(r.uniform(0.5, 1.0)))
-        if r.random() < 0.3:                              # QR-like block
-            n = int(r.integers(15, 30)); cell = float(r.uniform(0.6, 1.2)) * px
-            x0 = float(r.uniform(0, Wc - n * cell)); y0 = float(r.uniform(0, Hc - n * cell))
-            blk = torch.from_numpy((r.random((n, n)) < 0.5).astype(np.float32)).to(dev)
-            ix = ((xs - x0) / cell).floor().long(); iy = ((ys - y0) / cell).floor().long()
-            okb = (ix >= 0) & (ix < n) & (iy >= 0) & (iy < n)
-            m = torch.maximum(m, torch.where(okb, blk[iy.clamp(0, n - 1), ix.clamp(0, n - 1)], torch.zeros_like(m)))
+        if r.random() < 0.3:                              # QR-like block (slicing, no gather)
+            n = int(r.integers(15, 30)); cell = max(1, int(round(float(r.uniform(0.6, 1.2)) * px)))
+            size = n * cell
+            if size < min(Hc, Wc):
+                x0 = int(r.integers(0, Wc - size)); y0 = int(r.integers(0, Hc - size))
+                blk = torch.from_numpy((r.random((n, n)) < 0.5).astype(np.float32)).to(dev)
+                blk = blk.repeat_interleave(cell, 0).repeat_interleave(cell, 1)
+                m[y0:y0 + size, x0:x0 + size] = torch.maximum(m[y0:y0 + size, x0:x0 + size], blk)
         if not bool(m.any()):
             return im
         m = (m * free.float() * inside[0, 0])[None, None]
