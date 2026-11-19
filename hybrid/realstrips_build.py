@@ -65,8 +65,32 @@ def main():
     ap.add_argument("--chunk", type=int, default=400, help="strips per chunk file")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--wait-hours", type=float, default=2.0, help="keep retrying the archive this long")
+    ap.add_argument("--cache", type=Path, default=None,
+                    help="folder (a persistent volume) keeping finished strip sets by content key; OUT becomes "
+                         "a link to the cached set (reused when complete, built in place otherwise)")
     a = ap.parse_args()
     import kaggle_zip as KZ
+    if a.cache:
+        import hashlib
+        h = hashlib.sha1()
+        here = Path(__file__).resolve().parent
+        for f in [here / "realstrips.py", Path(__file__).resolve()]:
+            h.update(f.read_bytes())
+        h.update(f"{a.max_pages} {a.chunk} {a.seed}".encode())
+        cdir = a.cache / f"real-{h.hexdigest()[:12]}"
+        cdir.mkdir(parents=True, exist_ok=True)
+        if a.out.exists() or a.out.is_symlink():
+            if a.out.is_symlink() or not any(a.out.iterdir()):
+                a.out.unlink() if a.out.is_symlink() else a.out.rmdir()
+        if not a.out.exists():
+            a.out.parent.mkdir(parents=True, exist_ok=True)
+            a.out.symlink_to(cdir)
+        if (cdir / "DONE").exists():
+            print(f"real strips from the cache: {cdir}", flush=True)
+            return
+        a.out = cdir
+        for f in cdir.glob("chunk_*.npz"):   # a partial set of an interrupted run is rebuilt
+            f.unlink()
     a.out.mkdir(parents=True, exist_ok=True)
     t_end = time.time() + 3600 * a.wait_hours
     while True:   # Kaggle may answer 429 for hours after heavy use: keep trying, training goes on meanwhile

@@ -26,6 +26,11 @@ on:
         required: false
         default: 'python hybrid/train_gpu.py --minutes 45 --out /workspace/out'
         type: string
+      use_volume:
+        description: 'Try the data center of the data volume first (cached bank and real strips; JOB uses $CACHE and $OUT_DIR)'
+        required: false
+        default: true
+        type: boolean
       init_run:
         description: 'An earlier gpu-train run to continue from: its *_best.pt checkpoints are sent to the pod as /workspace/in/<name> (use --init there)'
         required: false
@@ -62,12 +67,18 @@ jobs:
             g=$(find init_dl -name "$f" | head -1); [ -n "$g" ] && cp "$g" init/
           done
           rm -rf init_dl; ls -la init
+      - name: Data volume
+        id: vol
+        if: ${{ inputs.use_volume }}
+        run: python hybrid/gpu/runpod_v2.py volume || true
       - name: Train on a pod (a pod whose CUDA fails is replaced)
         env:
           GPU: ${{ inputs.gpu }}
           MAX_HOURS: ${{ inputs.max_hours }}
           JOB: ${{ inputs.job }}
           REF: ${{ github.ref_name }}
+          VOLUME_ID: ${{ steps.vol.outputs.volume_id }}
+          DATA_CENTER: ${{ steps.vol.outputs.data_center }}
         run: |
           export UPLOAD_TOKEN=$(python -c 'import secrets; print(secrets.token_hex(24))')
           python hybrid/gpu/runpod_ctl.py run --out result

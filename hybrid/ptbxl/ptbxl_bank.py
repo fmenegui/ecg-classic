@@ -47,7 +47,27 @@ def main():
     ap.add_argument("--exclude", type=Path, default=Path(__file__).with_name("exclude_ptbxl.txt"))
     ap.add_argument("--folds", default="1,2,3,4,5,6,7,8,9")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
+    ap.add_argument("--cache", type=Path, default=None,
+                    help="folder (a persistent volume) keeping built banks by content key: reused when the "
+                         "builder, the exclusions and the folds are unchanged")
     a = ap.parse_args()
+    key = None
+    if a.cache:
+        import hashlib
+        h = hashlib.sha1()
+        for f in [Path(__file__), a.exclude, Path(__file__).with_name("eval_lead2.npz"),
+                  Path(__file__).with_name("eval_pm_lead2.npz")]:
+            h.update(f.read_bytes() if f.exists() else b"-")
+        h.update(a.folds.encode())
+        key = h.hexdigest()[:12]
+        hit = a.cache / f"bank-{key}.npy"
+        if hit.exists():
+            a.out.parent.mkdir(parents=True, exist_ok=True)
+            if a.out.exists() or a.out.is_symlink():
+                a.out.unlink()
+            a.out.symlink_to(hit)
+            print(f"bank from the cache: {hit}", flush=True)
+            return
     a.work.mkdir(parents=True, exist_ok=True)
     z = a.work / "ptbxl.zip"
     if not z.exists():
@@ -111,6 +131,13 @@ def main():
     X = X[~bad]       # one copy of the 2 GB array: the pod also builds the real strips meanwhile
     np.save(a.out, X)
     print(f"bank {X.shape} {X.dtype} -> {a.out} ({X.nbytes / 2**30:.1f} GB)", flush=True)
+    if key:
+        import shutil
+        a.cache.mkdir(parents=True, exist_ok=True)
+        tmp = a.cache / f".bank-{key}.{os.getpid()}.npy"
+        shutil.copyfile(a.out, tmp)
+        os.replace(tmp, a.cache / f"bank-{key}.npy")
+        print(f"bank kept in the cache as bank-{key}.npy", flush=True)
 
 
 if __name__ == "__main__":

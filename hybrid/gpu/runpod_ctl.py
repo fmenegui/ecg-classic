@@ -111,6 +111,22 @@ def start(exclude=(), cloud="ALL"):
     q = """mutation($input: PodFindAndDeployOnDemandInput) {
              podFindAndDeployOnDemand(input: $input) { id machineId costPerHr gpuCount } }"""
     last = None
+    vid, vdc = os.environ.get("VOLUME_ID", ""), os.environ.get("DATA_CENTER", "")
+    if vid and vdc:
+        # first the data center of the volume: the bank and the real strips are then cached
+        run = os.environ.get("GITHUB_RUN_ID", "local")
+        venv = env + [{"key": "OUT_DIR", "value": f"/workspace/runs/{run}/out"},
+                      {"key": "IN_DIR", "value": f"/workspace/runs/{run}/in"},
+                      {"key": "REPO_DIR", "value": "/root/repo"}, {"key": "CACHE", "value": "/workspace/cache"}]
+        for attempt in range(int(os.environ.get("VOLUME_TRIES", "3"))):
+            got = _try_cards(gpus, asked, q, "SECURE", venv, cmd, (vid, vdc))
+            if isinstance(got, tuple):
+                print(f"on the data volume {vid} ({vdc})", file=sys.stderr)
+                return got
+            print(f"no cheap card in {vdc} with the volume ({got}); retry {attempt + 1}", file=sys.stderr)
+            time.sleep(60)
+        print("training without the data volume (nothing cached)", file=sys.stderr)
+    env = env + [{"key": "CACHE", "value": "/workspace/cache"}]
     t_end = time.time() + 60 * WAIT_MIN
     while True:
         got = _try_cards(gpus, asked, q, cloud, env, cmd)
@@ -124,7 +140,7 @@ def start(exclude=(), cloud="ALL"):
     sys.exit(f"no GPU available: {last}")
 
 
-def _try_cards(gpus, asked, q, cloud, env, cmd):
+def _try_cards(gpus, asked, q, cloud, env, cmd, vol=None):
     last = None
     # preferred GPU first, with as many vCPU as possible (the crops are generated on the CPU)
     # a cheap card with 8 vCPU beats an expensive one with more: every card at 16 vCPU first, then at 8
@@ -132,6 +148,8 @@ def _try_cards(gpus, asked, q, cloud, env, cmd):
         inp = dict(cloudType=cloud, gpuCount=1, volumeInGb=0, containerDiskInGb=60, minVcpuCount=vcpu,
                    minMemoryInGb=30, gpuTypeId=g, name=NAME, imageName=IMAGE, dockerArgs=cmd,
                    ports="8000/http", volumeMountPath="/workspace", env=env)
+        if vol:   # the data volume (caches of the bank and of the real strips): its data center only
+            inp.update(cloudType="SECURE", networkVolumeId=vol[0], dataCenterId=vol[1])
         try:
             d = gql(q, {"input": inp})["podFindAndDeployOnDemand"]
         except Exception as e:  # noqa: BLE001

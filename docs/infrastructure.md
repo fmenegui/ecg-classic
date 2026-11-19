@@ -20,6 +20,26 @@ Safeguards added after losses:
 
 GitHub stops a job after 6 h. A training run should end within about 5 h 30 min of training, including setup.
 
+### Longer runs: `init_run`
+
+A training longer than one job, or one whose pod was lost, continues in a new run:
+
+- set `init_run=<earlier run>`;
+- put `--init /workspace/in/<checkpoint>` (or `$IN_DIR/<checkpoint>`) in the job.
+
+The runner downloads the earlier run's `*_best.pt` and sends it with a one-time upload token. The pod waits for it before starting the job.
+
+### Data volume and caches: `use_volume`, on by default
+
+The pod is first sought in the data center of the data volume, among cheap secure cards there. If none is free, it runs anywhere as before.
+
+On the volume, the job finds `$CACHE`:
+
+- `ptbxl_bank.py --cache $CACHE` reuses a bank built with the same builder, exclusions and folds. Building one took up to 1 h.
+- `realstrips_build.py --cache $CACHE` reuses a finished set of real Kaggle strips from the same code and settings. These strips are kept only on the volume.
+
+Jobs write to `$OUT_DIR`, the per-run folder the pod serves, not to `/workspace/out`.
+
 ## Evaluation: `pod-eval.yml` → RunPod CPU pods on a network volume
 
 The datasets live on the network volume `ecgdig-data`: 60 GB in EUR-IS-1, about 4 USD/month.
