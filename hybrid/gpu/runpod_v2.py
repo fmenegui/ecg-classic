@@ -113,7 +113,8 @@ def put(files):
     tok = os.environ["UPLOAD_TOKEN"]
     for f in files:
         p = Path(f)
-        for i in range(60):   # the pod may still be booting
+        tries = int(os.environ.get("PUT_TRIES", "120"))
+        for i in range(tries):   # the pod may still be booting (image pull: up to ~1 h)
             try:
                 req = urllib.request.Request(f"{base}/in/{p.name}", data=p.read_bytes(), method="PUT",
                                              headers={"X-Upload-Token": tok, "User-Agent": "ecgdig-eval"})
@@ -121,7 +122,7 @@ def put(files):
                     print(f"sent {p.name} ({p.stat().st_size // 1_000_000} MB): {r.status}", flush=True)
                     break
             except Exception as e:  # noqa: BLE001
-                if i == 59:
+                if i == tries - 1:
                     sys.exit(f"could not send {p.name}: {e}")
                 time.sleep(30)
 

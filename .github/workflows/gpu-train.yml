@@ -26,6 +26,11 @@ on:
         required: false
         default: 'python hybrid/train_gpu.py --minutes 45 --out /workspace/out'
         type: string
+      init_run:
+        description: 'An earlier gpu-train run to continue from: its *_best.pt checkpoints are sent to the pod as /workspace/in/<name> (use --init there)'
+        required: false
+        default: ''
+        type: string
       tag:
         description: 'Label'
         required: false
@@ -33,6 +38,7 @@ on:
         type: string
 permissions:
   contents: read
+  actions: read
 jobs:
   train:
     runs-on: ubuntu-latest
@@ -45,13 +51,26 @@ jobs:
       KAGGLE_USERNAME: ${{ inputs.kaggle && vars.KAGGLE_USERNAME || '' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Checkpoints to continue from
+        if: ${{ inputs.init_run != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download ${{ inputs.init_run }} -D init_dl
+          mkdir -p init
+          for f in page_best.pt unet_best.pt dewarp_best.pt; do
+            g=$(find init_dl -name "$f" | head -1); [ -n "$g" ] && cp "$g" init/
+          done
+          rm -rf init_dl; ls -la init
       - name: Train on a pod (a pod whose CUDA fails is replaced)
         env:
           GPU: ${{ inputs.gpu }}
           MAX_HOURS: ${{ inputs.max_hours }}
           JOB: ${{ inputs.job }}
           REF: ${{ github.ref_name }}
-        run: python hybrid/gpu/runpod_ctl.py run --out result
+        run: |
+          export UPLOAD_TOKEN=$(python -c 'import secrets; print(secrets.token_hex(24))')
+          python hybrid/gpu/runpod_ctl.py run --out result
       - uses: actions/upload-artifact@v4
         if: always()
         with:

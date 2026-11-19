@@ -90,7 +90,13 @@ def check():
 def start(exclude=(), cloud="ALL"):
     check()
     ref = os.environ["REF"]
-    env = [{"key": "REF", "value": ref}, {"key": "JOB", "value": os.environ["JOB"]},
+    init = _init_files()
+    extra = []
+    if os.environ.get("UPLOAD_TOKEN"):
+        extra.append({"key": "UPLOAD_TOKEN", "value": os.environ["UPLOAD_TOKEN"]})
+    if init:   # the job starts once the checkpoints to continue from are on the pod
+        extra.append({"key": "WAIT_IN", "value": "1"})
+    env = extra + [{"key": "REF", "value": ref}, {"key": "JOB", "value": os.environ["JOB"]},
            {"key": "MAX_HOURS", "value": os.environ.get("MAX_HOURS", "1")}]
     for k in ("KAGGLE_API_TOKEN", "KAGGLE_USERNAME"):   # only when the run asks for it (input kaggle)
         if os.environ.get(k):
@@ -222,6 +228,24 @@ def follow(out: Path):
     return status
 
 
+def _init_files():
+    d = Path(os.environ.get("INIT_DIR", "init"))
+    return sorted(p for p in d.glob("*") if p.is_file()) if d.exists() else []
+
+
+def _send_init(pod):
+    """Checkpoints of an earlier run (workflow input init_run) to the pod's /workspace/in, then
+    READY: a training longer than one GitHub job continues from them."""
+    files = _init_files()
+    if not files:
+        return
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import runpod_v2
+    os.environ["POD_ID"] = pod
+    ready = Path("init_READY"); ready.write_text("ok")
+    runpod_v2.put([str(f) for f in files] + [str(ready.rename(ready.with_name("READY")))])
+
+
 def run(out: Path, tries=3):
     """start + follow; a pod whose CUDA does not work is terminated and replaced (up to `tries`)."""
     bad = []
@@ -230,6 +254,7 @@ def run(out: Path, tries=3):
         pod, g = start(cloud="SECURE" if bad else "ALL")
         os.environ["POD_ID"] = pod
         Path("pod_ids.txt").open("a").write(pod + "\n")
+        _send_init(pod)
         if follow(out) != "nogpu":
             return
         print(f"pod {pod} ({g}): CUDA not usable, terminating it and trying another pod", flush=True)

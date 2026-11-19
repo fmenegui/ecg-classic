@@ -133,6 +133,7 @@ def main():
     ap.add_argument("--heavy", type=float, default=0.4)
     ap.add_argument("--val", type=int, default=48)
     ap.add_argument("--weights", default="imagenet")
+    ap.add_argument("--init", type=Path, default=None, help="state_dict to start from (an earlier run)")
     ap.add_argument("--out", type=Path, default=Path("hybrid/out_dewarp"))
     a = ap.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
@@ -143,6 +144,8 @@ def main():
     net = build(a.weights)
     if (a.out / "dewarp.pt").exists():
         print("resuming", net.load_state_dict(torch.load(a.out / "dewarp.pt", map_location="cpu")), flush=True)
+    elif a.init and a.init.exists():
+        print("init from", a.init, net.load_state_dict(torch.load(a.init, map_location="cpu")), flush=True)
     net = net.to(dev)
     gen = Photos(dev, pages=a.pages, heavy=a.heavy, seed=int(time.time()) % 100000)
     gv = Photos(dev, pages=4, heavy=a.heavy, seed=999)

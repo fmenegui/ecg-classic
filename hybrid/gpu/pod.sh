@@ -49,6 +49,11 @@ echo "setup" > "$OUT/status.txt"
   if ! python -c "import torch; assert torch.cuda.is_available(); print('cuda ok', torch.cuda.get_device_name(0), (torch.ones(1, device='cuda') * 2).item())"; then
     echo "nogpu" > "$OUT/status.txt"; echo "CUDA not usable on this pod"; sleep infinity
   fi
+  if [ -n "${WAIT_IN:-}" ]; then   # checkpoints of an earlier run sent by the workflow
+    IN=${IN_DIR:-/workspace/in}
+    for i in $(seq 1 240); do [ -f "$IN/READY" ] && break; sleep 10; done
+    echo "init files: $(ls "$IN" 2>/dev/null | tr '\n' ' ')"
+  fi
   echo "running" > "$OUT/status.txt"
   echo "command: $JOB"
   # GPU use every 2 minutes in the log (utilization %, memory): shows whether the GPU is starved
