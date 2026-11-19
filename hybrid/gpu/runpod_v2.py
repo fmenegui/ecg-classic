@@ -103,7 +103,9 @@ def cpu_start():
     last = None
     while True:
         for flavor in ("cpu5c", "cpu3c", "cpu5g", "cpu3g"):
-            body = {"name": NAME, "image": IMAGE, "cpu": {"id": flavor, "vcpuCount": vcpu}, "disk": 40,
+            body = {"name": NAME, "image": IMAGE, "cpu": {"id": flavor, "vcpuCount": vcpu},
+                    # container disk cap: 10 GB per vCPU on cpu3*, 15 on cpu5* (2 vCPU: 20 GB)
+                    "disk": min(40, 10 * vcpu),
                     "cloud": "SECURE", "dataCenterIds": [dc], "ports": ["8000/http"], "env": env, "args": args,
                     "mounts": {"network": [{"volumeId": vol, "path": "/workspace"}]}}
             s, d = call("POST", "/pods", body)
