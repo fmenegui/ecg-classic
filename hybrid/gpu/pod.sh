@@ -7,6 +7,7 @@ set -u
 # OUT_DIR: per-run folder when /workspace is a shared network volume (evaluation pods)
 OUT=${OUT_DIR:-/workspace/out}
 export OUT_DIR=$OUT
+export IN_DIR=${IN_DIR:-/workspace/in} CACHE=${CACHE:-/workspace/cache}
 # the code: on the container disk when /workspace is a volume shared by pods of other runs
 REPO=${REPO_DIR:-/workspace/repo}
 mkdir -p "$OUT"
@@ -50,7 +51,7 @@ echo "setup" > "$OUT/status.txt"
     echo "nogpu" > "$OUT/status.txt"; echo "CUDA not usable on this pod"; sleep infinity
   fi
   if [ -n "${WAIT_IN:-}" ]; then   # checkpoints of an earlier run sent by the workflow
-    IN=${IN_DIR:-/workspace/in}
+    IN=$IN_DIR
     for i in $(seq 1 240); do [ -f "$IN/READY" ] && break; sleep 10; done
     echo "init files: $(ls "$IN" 2>/dev/null | tr '\n' ' ')"
   fi
