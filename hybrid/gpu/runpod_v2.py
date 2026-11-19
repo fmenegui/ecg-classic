@@ -25,7 +25,7 @@ from pathlib import Path
 API = "https://api.runpod.io/v2"
 IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 DATA_CENTERS = os.environ.get("DATA_CENTERS", "EUR-IS-1,EU-RO-1,EU-SE-1,CA-MTL-3,EU-CZ-1,EUR-NO-1").split(",")
-NAME = "ecgdig-eval-" + os.environ.get("GITHUB_RUN_ID", "local")
+NAME = "ecgdig-eval-" + os.environ.get("GITHUB_RUN_ID", "local") + "-" + os.environ.get("SHARD", "0")
 MAX_USD_H = float(os.environ.get("MAX_USD_H", "1.2"))
 
 
@@ -74,7 +74,7 @@ def volume():
 
 def cpu_start():
     vol, dc = os.environ["VOLUME_ID"], os.environ["DATA_CENTER"]
-    run_dir = f"/workspace/runs/{os.environ.get('GITHUB_RUN_ID', 'local')}"
+    run_dir = f"/workspace/runs/{os.environ.get('GITHUB_RUN_ID', 'local')}-{os.environ.get('SHARD', '0')}"
     env = {"REF": os.environ["REF"], "JOB": os.environ["JOB"], "MAX_HOURS": os.environ.get("MAX_HOURS", "3"),
            "CPU_ONLY": "1", "OUT_DIR": run_dir + "/out", "REPO_DIR": "/root/repo",
            "UPLOAD_TOKEN": os.environ["UPLOAD_TOKEN"], "IN_DIR": run_dir + "/in"}

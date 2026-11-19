@@ -113,6 +113,7 @@ def main():
     ap.add_argument("--part", type=int, default=0)
     ap.add_argument("--nparts", type=int, default=20)
     ap.add_argument("--types", default=",".join(TYPES))
+    ap.add_argument("--ids-file", default="", help="where to write the record ids (default OUT/ids.txt)")
     a = ap.parse_args()
     if a.cmd == "probe":
         u = signed_url()
@@ -159,11 +160,13 @@ def main():
         all_ids, _ = train_ids(z)
         ids = all_ids[a.part::a.nparts]
         (a.out).mkdir(parents=True, exist_ok=True)
-        (a.out / "train.csv").write_bytes(z.read("train.csv"))
+        tmp = a.out / f"train.csv.{os.getpid()}"
+        tmp.write_bytes(_read(z, "train.csv"))
+        tmp.replace(a.out / "train.csv")   # atomic: pods sharing the volume may write it at once
     t0 = time.time()
     g, m = fetch(z, ids, a.out, tuple(a.types.split(",")))
     print(f"{len(ids)} records: {g} files, {m} missing, {time.time() - t0:.0f}s", flush=True)
-    (a.out / "ids.txt").write_text(",".join(ids))
+    (Path(a.ids_file) if a.ids_file else a.out / "ids.txt").write_text(",".join(ids))
 
 
 if __name__ == "__main__":

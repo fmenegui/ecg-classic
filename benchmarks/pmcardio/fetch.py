@@ -35,6 +35,7 @@ def main():
     ap.add_argument("--per-scenario", type=int, default=0)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--threads", type=int, default=6)
+    ap.add_argument("--sel-out", default="", help="where to write the selection (default OUT/sel.csv)")
     a = ap.parse_args()
     import numpy as np
     import pandas as pd
@@ -84,7 +85,7 @@ def main():
     chunks = [sel[i::a.threads] for i in range(a.threads)]
     with ThreadPoolExecutor(a.threads) as ex:
         list(ex.map(get, chunks))
-    pd.Series(sel, name="path").to_csv(os.path.join(a.out, "sel.csv"), index=False)
+    pd.Series(sel, name="path").to_csv(a.sel_out or os.path.join(a.out, "sel.csv"), index=False)
     print("images", len(sel))
 
 

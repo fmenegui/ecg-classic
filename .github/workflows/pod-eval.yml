@@ -32,6 +32,16 @@ on:
         required: false
         default: ''
         type: string
+      pods:
+        description: 'Pods in parallel (1-4), each a share of the ECGs; the data must already be on the volume'
+        required: false
+        default: '1'
+        type: string
+      data_only:
+        description: 'Only download the missing data to the volume (no evaluation)'
+        required: false
+        default: false
+        type: boolean
       max_hours:
         description: 'Hard limit for the evaluation on the pod (hours)'
         required: false
@@ -46,10 +56,25 @@ permissions:
   contents: read
   actions: read
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.p.outputs.shards }}
+    steps:
+      - id: p
+        run: |
+          n=$(( ${{ inputs.pods }} < 1 ? 1 : (${{ inputs.pods }} > 4 ? 4 : ${{ inputs.pods }}) ))
+          echo "shards=$(python3 -c "print(list(range($n)))")" >> "$GITHUB_OUTPUT"
   eval:
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
     env:
+      SHARD: ${{ matrix.shard }}
       RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
       GH_TOKEN: ${{ github.token }}
       REF: ${{ github.ref_name }}
@@ -100,6 +125,7 @@ jobs:
           KAGGLE_API_TOKEN: ${{ (inputs.what == 'kaggle' || inputs.what == 'both') && secrets.KAGGLE_API_TOKEN || '' }}
           KAGGLE_USERNAME: ${{ (inputs.what == 'kaggle' || inputs.what == 'both') && vars.KAGGLE_USERNAME || '' }}
           JOB: >-
+            SHARD=${{ matrix.shard }} NSHARDS=${{ strategy.job-total }} DATA_ONLY=${{ inputs.data_only && '1' || '0' }}
             WHAT=${{ inputs.what }} PER_SCENARIO=${{ inputs.per_scenario }} KAGGLE_PART=0
             KAGGLE_NPARTS=${{ inputs.kaggle_nparts }} EVAL_CONFIG="${{ inputs.config }}" bash benchmarks/podeval.sh
         run: |
@@ -124,7 +150,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: podeval-${{ inputs.tag }}-${{ github.run_id }}
+          name: podeval-${{ inputs.tag }}-${{ github.run_id }}-${{ matrix.shard }}
           path: |
             result/log.txt
             result/pm_results.json
