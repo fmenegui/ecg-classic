@@ -24,7 +24,7 @@ import torch.nn.functional as F
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pagegen import PageStructure, N_CLS, CH  # noqa: E402
-from ecgdig.pagemodel import decode  # noqa: E402
+from ecgdig.pagemodel import decode, length_filter, edge_filter  # noqa: E402
 
 
 def build(encoder="resnet34", weights="imagenet"):
@@ -49,9 +49,13 @@ def _sig(z):
 
 
 def evaluate(net, vx, vt, dev):
-    """Row-count accuracy, baseline error (mm), column-count accuracy and name accuracy."""
+    """Row-count accuracy, baseline error (mm), column-count accuracy and name accuracy.
+
+    Rows go through the same geometric filters as ecgdig (length, isolated edge row); the ink and
+    deflection checks need the classical binary map, so they are left out. `rows_raw` is the exact
+    row count before any filter."""
     net.eval()
-    n_ok = n_col = n_tot = 0; dy = []; nm_ok = nm_tot = 0
+    n_ok = n_col = n_tot = n_raw = 0; dy = []; nm_ok = nm_tot = 0
     with torch.no_grad():
         for i in range(len(vx)):
             with torch.autocast(dev, enabled=dev == "cuda"):
@@ -60,7 +64,9 @@ def evaluate(net, vx, vt, dev):
             oh = np.eye(N_CLS, dtype=np.float32)[t[2].astype(int)].transpose(2, 0, 1)
             ref = decode(t[0], t[1], oh)
             e = np.exp(o[2:] - o[2:].max(0, keepdims=True)); pc = e / e.sum(0, keepdims=True)
-            got = decode(_sig(o[0]), _sig(o[1]), pc)
+            raw = decode(_sig(o[0]), _sig(o[1]), pc)
+            n_raw += len(ref) == len(raw)
+            ref = edge_filter(length_filter(ref)); got = edge_filter(length_filter(raw))
             n_tot += 1
             n_ok += len(ref) == len(got)
             if len(ref) == len(got):
@@ -71,7 +77,7 @@ def evaluate(net, vx, vt, dev):
                         for na, nb in zip(a["names"], b["names"]):
                             nm_tot += 1; nm_ok += int(np.argmax(na[1:]) == np.argmax(nb[1:]))
     net.train()
-    return dict(rows=n_ok / max(n_tot, 1), cols=n_col / max(n_tot, 1),
+    return dict(rows=n_ok / max(n_tot, 1), rows_raw=n_raw / max(n_tot, 1), cols=n_col / max(n_tot, 1),
                 dy_mm=float(np.median(dy)) if dy else float("nan"), names=nm_ok / max(nm_tot, 1))
 
 

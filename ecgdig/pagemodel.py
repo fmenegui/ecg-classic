@@ -152,6 +152,27 @@ INK_REL = [0.4]       # ... and of the median ink coverage along its baseline
 ISOLATED = [1.8]      # an edge row farther than this many median steps from the block is dropped
 
 
+def length_filter(rows):
+    """Keep the rows spanning at least MIN_REL_LEN of the longest one."""
+    if not rows:
+        return rows
+    L = max(r["x1"] - r["x0"] for r in rows)
+    return [r for r in rows if r["x1"] - r["x0"] >= MIN_REL_LEN[0] * L]
+
+
+def edge_filter(rows):
+    """Drop an edge row farther than ISOLATED median steps from the block."""
+    while len(rows) >= 4:
+        ys = np.array([r["y"] for r in rows]); g = np.diff(ys)
+        if g[0] > ISOLATED[0] * np.median(g[1:]):
+            rows = rows[1:]
+        elif g[-1] > ISOLATED[0] * np.median(g[:-1]):
+            rows = rows[:-1]
+        else:
+            break
+    return rows
+
+
 def page_structure(rect_bgr, R, path, B=None):
     """Rows in rectified-image pixels (R px/mm) and the column count most rows agree on.
 
@@ -161,10 +182,7 @@ def page_structure(rect_bgr, R, path, B=None):
     when the classical binary map B is given and has ink on some row, the row has ink within
     1 mm of its baseline in B."""
     base, bnd, cls = predict(rect_bgr, R, path)
-    rows = decode(base, bnd, cls)
-    if rows:
-        L = max(r["x1"] - r["x0"] for r in rows)
-        rows = [r for r in rows if r["x1"] - r["x0"] >= MIN_REL_LEN[0] * L]
+    rows = length_filter(decode(base, bnd, cls))
     k = R / S_MM
     if B is not None and rows:
         h = int(round(1.0 * R))
@@ -193,14 +211,7 @@ def page_structure(rect_bgr, R, path, B=None):
             rows = [r for r, a in zip(rows, act) if a >= ACT_REL[0] * med]
     # an edge row far from the block (more than 1.8 median steps) is the paper edge, a header
     # rule or a footer line, not a lead: rhythm strips follow the block at about one step
-    while len(rows) >= 4:
-        ys = np.array([r["y"] for r in rows]); g = np.diff(ys)
-        if g[0] > ISOLATED[0] * np.median(g[1:]):
-            rows = rows[1:]
-        elif g[-1] > ISOLATED[0] * np.median(g[:-1]):
-            rows = rows[:-1]
-        else:
-            break
+    rows = edge_filter(rows)
     out = []
     for r in rows:
         out.append(dict(y=r["y"] * k, x0=r["x0"] * k, x1=r["x1"] * k, strength=r["strength"],
