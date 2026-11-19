@@ -77,7 +77,14 @@ def check():
             pass
         sys.exit(f"RunPod rejected the API key (HTTP {e.code}): check that the secret RUNPOD_API_KEY holds a "
                  "valid key with read/write (GraphQL) permission")
-    print(f"RunPod account ok, balance {me.get('clientBalance')} USD", file=sys.stderr)
+    bal = float(me.get("clientBalance") or 0.0)
+    print(f"RunPod account ok, balance {bal:.2f} USD", file=sys.stderr)
+    # a pod is stopped by RunPod when the balance reaches 0 (two runs were lost that way, at
+    # 4 h of 5 h): do not start one the balance cannot pay for, at the price cap
+    need = float(os.environ.get("MAX_HOURS", "1")) * MAX_USD_H
+    if bal < need:
+        sys.exit(f"RunPod balance {bal:.2f} USD is below the {need:.2f} USD this run may cost "
+                 f"({os.environ.get('MAX_HOURS', '1')} h at up to {MAX_USD_H} USD/h): add funds")
 
 
 def start(exclude=(), cloud="ALL"):
