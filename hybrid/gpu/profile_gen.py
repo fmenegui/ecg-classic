@@ -29,7 +29,7 @@ x, tg, w = g.batch()
 print(f"page: render+targets+degrade {t(g.batch):.3f} s per 4 pages", flush=True)
 g0 = PageStructure(dev, pages=4, photo_frac=0.0, seed=2)
 print(f"page: same without photos {t(g0.batch):.3f} s", flush=True)
-net = build_page("none").to(dev); opt = torch.optim.AdamW(net.parameters()); sc = torch.amp.GradScaler()
+net = build_page(weights="none").to(dev); opt = torch.optim.AdamW(net.parameters()); sc = torch.amp.GradScaler()
 
 
 def step():
@@ -46,10 +46,15 @@ print(f"dewarp: render {t(p.batch):.3f} s per 6 photos", flush=True)
 from rendergen import TorchStrips  # noqa: E402
 ts = TorchStrips(dev, size=512, pages=1, photo_frac=0.7)
 print(f"rows: rendered strips {t(lambda: ts.batch(13)):.3f} s per 13 strips", flush=True)
-import rowgen  # noqa: E402
-import numpy as np  # noqa: E402
-rng = np.random.default_rng(0)
-t0 = time.time()
-for _ in range(32):
-    rowgen.sample(rng, 512) if hasattr(rowgen, "sample") else None
-print(f"rows: CPU strip generator {(time.time() - t0) / 32:.3f} s per strip (one core)", flush=True)
+dn = build_dw("none").to(dev); od = torch.optim.AdamW(dn.parameters()); xd, td = p.batch()
+from train_dewarp import loss_fn as dloss  # noqa: E402
+
+
+def dstep():
+    with torch.autocast("cuda"):
+        o = dn(xd)
+    l1, lg, lm = dloss(o.float(), td)
+    od.zero_grad(); (l1 + lg + lm).backward(); od.step()
+
+
+print(f"dewarp: network step {t(dstep):.3f} s per 6 photos", flush=True)
