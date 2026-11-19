@@ -27,6 +27,11 @@ on:
         required: false
         default: ''
         type: string
+      dewarp_model_run:
+        description: 'Run id of a gpu-train run of hybrid/train_dewarp.py (dewarp_best.onnx = Config.dewarp_model)'
+        required: false
+        default: ''
+        type: string
       tag:
         description: 'Label'
         required: false
@@ -76,11 +81,18 @@ jobs:
               python -c "import onnxruntime as o, sys; o.InferenceSession(sys.argv[1])" "$f" && cp "$f" model/page.onnx && break
             done
           fi
+          if [ -n "${{ inputs.dewarp_model_run }}" ]; then
+            gh run download "${{ inputs.dewarp_model_run }}" -D dl_dw
+            python -m pip install -q onnxruntime
+            for f in $(find dl_dw -name dewarp_best.onnx) $(find dl_dw -name dewarp.onnx); do
+              python -c "import onnxruntime as o, sys; o.InferenceSession(sys.argv[1])" "$f" && cp "$f" model/dewarp.onnx && break
+            done
+          fi
           ls -la model
       # shared through the cache, not an artifact: 20 shards downloading the models count
       # against the account's artifact egress limit
       - uses: actions/cache/save@v4
-        if: inputs.ink_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != ''
+        if: inputs.ink_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' || inputs.dewarp_model_run != ''
         with:
           path: model
           key: kfull-models-${{ github.run_id }}
@@ -108,7 +120,7 @@ jobs:
           python -m pip install -q remotezip requests
           python benchmarks/physionet/kaggle_zip.py shard --part ${{ matrix.part }} --nparts 20 --out results/physionet/data
       - uses: actions/cache/restore@v4
-        if: inputs.ink_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != ''
+        if: inputs.ink_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' || inputs.dewarp_model_run != ''
         with:
           path: model
           key: kfull-models-${{ github.run_id }}
@@ -124,6 +136,7 @@ jobs:
           [ -f model/ink.onnx ] && ARGS="$ARGS --config ink_model=$PWD/model/ink.onnx"
           [ -f model/row.onnx ] && ARGS="$ARGS --config row_model=$PWD/model/row.onnx"
           [ -f model/page.onnx ] && ARGS="$ARGS --config page_model=$PWD/model/page.onnx"
+          [ -f model/dewarp.onnx ] && ARGS="$ARGS --config dewarp_model=$PWD/model/dewarp.onnx"
           python benchmarks/physionet/run.py eval --n 1000 --jobs 4 --keep-raw 0 --ids "$ID" --out results/physionet $ARGS
       - uses: actions/upload-artifact@v4
         if: always()

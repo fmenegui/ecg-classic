@@ -60,6 +60,9 @@ class Config:
     page_select: bool = True    # with page_model: read with and without the network, keep the
                                 # reading with the better internal quality (_reading_score)
     page_margin: float = 0.0
+    dewarp_margin: float = 0.0
+    dewarp_model: str = ""      # page-flattening ONNX (ecgdig/dewarp.py): the photo is also read
+                                # flattened, and the reading with the better quality is kept
     ink_mix: float = 1.0        # 1 = network only; <1 mixes with the classical map
     # with ink_model: "model" reads the page with the network's ink map only; "select" reads it
     # both ways and keeps the reading with the better internal quality (no ground truth)
@@ -1386,6 +1389,34 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         out["hybrid"] = dict(chosen="model" if use_h else "classical", score_classical=sc, score_model=sh,
                              layout_classical=None if rc is None else rc.get("layout"),
                              layout_model=None if rh is None else rh.get("layout"), errors=err)
+        return out
+    if cfg.dewarp_model:
+        # dense page flattening (photos of bent or crumpled sheets, strong perspective): read the
+        # photo as it is and flattened, keep the reading with the better internal quality
+        if isinstance(image, (str, bytes)) or hasattr(image, "__fspath__"):
+            image = cv2.imread(str(image), cv2.IMREAD_COLOR)
+        base = dataclasses.replace(cfg, dewarp_model="")
+        ro = rf = None
+        err = []
+        try:
+            ro = digitize(image, base, return_debug)
+        except Exception as e:  # noqa: BLE001
+            err.append(f"photo: {type(e).__name__}: {e}")
+        try:
+            from .dewarp import flatten
+            flat, seen = flatten(image, cfg.dewarp_model)
+            if flat is not None and seen > 0.3:
+                rf = digitize(flat, base, return_debug)
+        except Exception as e:  # noqa: BLE001
+            err.append(f"flattened: {type(e).__name__}: {e}")
+        if ro is None and rf is None:
+            raise RuntimeError("; ".join(err) or "no page")
+        so = None if ro is None else _reading_score(ro)
+        sf = None if rf is None else _reading_score(rf)
+        use_f = ro is None or (rf is not None and sf > so + cfg.dewarp_margin)
+        out = rf if use_f else ro
+        out["dewarp_select"] = dict(chosen="flattened" if use_f else "photo", score_photo=so, score_flat=sf,
+                                    errors=err)
         return out
     if cfg.page_model and cfg.page_select:
         # the page-structure network and the classical rows are each right where the other

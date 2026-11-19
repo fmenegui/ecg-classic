@@ -99,7 +99,7 @@ def _digitize(job):
                    seg={k: [np.nonzero(np.isfinite(m))[0][[0, -1]] if np.isfinite(m).any() else None for m in v]
                         for k, v in r.get("per_segment", {}).items()},
                    layout=r.get("layout"), quality=r.get("quality"), sec=time.time() - t0,
-                   diag=_diag(r), select=r.get("page_select"))
+                   diag=_diag(r), select=r.get("page_select"), dewarp=r.get("dewarp_select"))
     except Exception as e:  # noqa: BLE001
         out = dict(ok=False, err=f"{type(e).__name__}: {e}", sec=time.time() - t0)
     signal.alarm(0)
@@ -345,7 +345,8 @@ def main():
                          layout=[p.get("layout") for p in pages], sec=sum(p.get("sec", 0) for p in pages),
                          leads=per, rhythms=rhy, err=[p.get("err") for p in pages if not p.get("ok")],
                          diag=[p.get("diag") for p in pages],
-                         select=[p.get("select") for p in pages]))
+                         select=[p.get("select") for p in pages],
+                         dewarp=[p.get("dewarp") for p in pages]))
     (a.out / "results.json").write_text(json.dumps(dict(config=cfg, rows=rows), default=float))
     summarize(rows, a.out)
 

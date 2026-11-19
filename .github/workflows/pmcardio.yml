@@ -42,6 +42,11 @@ on:
         required: false
         default: ''
         type: string
+      dewarp_model_run:
+        description: 'Page-flattening network: run id of a gpu-train run of hybrid/train_dewarp.py (optional)'
+        required: false
+        default: ''
+        type: string
       per_scenario:
         description: 'ECGs per scenario (0 = whole database)'
         required: false
@@ -105,8 +110,19 @@ jobs:
             python -c "import onnxruntime as o, sys; o.InferenceSession(sys.argv[1])" "$f" && cp "$f" model/page.onnx && break
           done
           rm -rf page_dl; ls -la model
+      - name: Page-flattening model
+        if: ${{ inputs.dewarp_model_run != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download ${{ inputs.dewarp_model_run }} -D dw_dl
+          mkdir -p model
+          for f in $(find dw_dl -name dewarp_best.onnx) $(find dw_dl -name dewarp.onnx); do
+            python -c "import onnxruntime as o, sys; o.InferenceSession(sys.argv[1])" "$f" && cp "$f" model/dewarp.onnx && break
+          done
+          rm -rf dw_dl; ls -la model
       - name: Share the models
-        if: ${{ inputs.ink_model_run != '' || inputs.grid_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' }}
+        if: ${{ inputs.ink_model_run != '' || inputs.grid_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' || inputs.dewarp_model_run != '' }}
         uses: actions/cache/save@v4
         with:
           path: model
@@ -128,7 +144,7 @@ jobs:
       - name: Download the shard (Zenodo, by ranges)
         run: python benchmarks/pmcardio/fetch.py --out data/pm --shard ${{ matrix.part }} --nshards 20 --per-scenario ${{ inputs.per_scenario }}
       - name: Models (built once by the models job, shared through the cache)
-        if: ${{ inputs.ink_model_run != '' || inputs.grid_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' }}
+        if: ${{ inputs.ink_model_run != '' || inputs.grid_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' || inputs.dewarp_model_run != '' }}
         uses: actions/cache/restore@v4
         with:
           path: model
@@ -144,6 +160,7 @@ jobs:
           if [ -f model/grid_phase.onnx ]; then ARGS="$ARGS --config grid_model=$PWD/model/grid_phase.onnx"; fi
           if [ -f model/row.onnx ]; then ARGS="$ARGS --config row_model=$PWD/model/row.onnx"; fi
           if [ -f model/page.onnx ]; then ARGS="$ARGS --config page_model=$PWD/model/page.onnx"; fi
+          if [ -f model/dewarp.onnx ]; then ARGS="$ARGS --config dewarp_model=$PWD/model/dewarp.onnx"; fi
           if [ "${{ inputs.oracle }}" = "true" ]; then ARGS="$ARGS --oracle-layout"; fi
           for kv in ${{ inputs.config }}; do ARGS="$ARGS --config $kv"; done
           python benchmarks/pmcardio/eval_pm.py --root data/pm/visual_data --gt data/pm/final_data/data \
