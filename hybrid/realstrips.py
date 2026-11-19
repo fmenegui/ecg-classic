@@ -32,6 +32,7 @@ FS = 500
 R = 10.0            # rectified px per mm
 MIN_CORR = 0.9
 MAX_LAG = 40
+SUBSAMPLE = [True]   # sub-sample lag and amplitude scale of the label (see _refine)
 
 
 def load_gt(csv_path, n_out=5000, duration=10.0):
@@ -71,6 +72,28 @@ def _best_lag(read, gt):
     return best
 
 
+def _refine(read, gt, lag):
+    """Sub-sample lag and amplitude scale of the truth against the reading, around the integer
+    lag. At 500 Hz one sample is 0.5 mm at 25 mm/s (5 px at 10 px/mm): an integer lag left
+    labels up to 2.5 px off on every QRS, which taught the network a blurred trace (the row
+    network read clean renders worse than the classical reader)."""
+    t = np.arange(len(gt), dtype=float)
+    mg = np.isfinite(gt)
+    best = (np.inf, float(lag), 1.0)
+    for lf in np.arange(lag - 1.0, lag + 1.0001, 0.05):
+        # reading sample i shows the truth at i + lf
+        g_ = np.interp(t + lf, t[mg], gt[mg], left=np.nan, right=np.nan)
+        m = np.isfinite(g_) & np.isfinite(read)
+        if m.sum() < 100:
+            continue
+        a, b = g_[m] - g_[m].mean(), read[m] - read[m].mean()
+        sc = float(np.clip((a * b).sum() / max((a * a).sum(), 1e-9), 0.8, 1.25))
+        v = float(((b - sc * a) ** 2).mean())
+        if v < best[0]:
+            best = (v, float(lf), sc)
+    return best[1], best[2]
+
+
 def page_labels(img_bgr, G, cfg=None):
     """Read the page and place the true signal of every segment on the rectified image.
     Returns (rectified BGR, segments, info). A segment: dict(lead, row, base, x, y) with x, y the
@@ -95,12 +118,17 @@ def page_labels(img_bgr, G, cfg=None):
         corrs.append(c)
         if c < MIN_CORR:
             continue
+        if SUBSAMPLE[0]:
+            lag, sc = _refine(read, gt, lag)
+        else:
+            sc = 1.0
         idx = np.arange(n1 - n0, dtype=float) - lag                   # GT sample i is drawn where the reading's i - lag is
         okx = (idx >= 0) & (idx <= len(xn) - 1) & np.isfinite(gt)
         x = np.interp(idx[okx], np.arange(len(xn)), xn)
-        m = np.isfinite(yn[np.clip(idx[okx].round().astype(int), 0, len(yn) - 1)])
-        off = np.nanmedian((yn[np.clip(idx[okx].round().astype(int), 0, len(yn) - 1)] + gt[okx] * k)[m])
-        y = off - gt[okx] * k
+        yr = np.interp(idx[okx], np.arange(len(yn)), np.where(np.isfinite(yn), yn, np.nan))
+        m = np.isfinite(yr)
+        off = np.nanmedian((yr + sc * gt[okx] * k)[m])
+        y = off - sc * gt[okx] * k
         segs.append(dict(lead=j["lead"], row=int(j["row"]), base=float(j["base"]), x=x, y=y, corr=c, lag=lag))
     info = dict(n_jobs=len(corrs), kept=len(segs), corr_median=float(np.median(corrs)) if corrs else 0.0,
                 layout=r.get("layout"))
