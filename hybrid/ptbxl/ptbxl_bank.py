@@ -85,10 +85,12 @@ def main():
         bad = C.max(1) >= 0.95
         print(f"evaluation ECGs found in PTB-XL: {int((C.max(0) >= 0.95).sum())} of {len(E)}; "
               f"{int(bad.sum())} records dropped", flush=True)
-        X = X[~bad]
+    else:
+        bad = np.zeros(len(X), bool)
     if pm.exists():   # PM-ECG-ID: 2.5 s of lead II anywhere in the record (FFT cross-correlation)
         E = np.load(pm)["x"].astype(np.float32)                  # (100, 250) at 100 Hz
         L2 = X[:, 1, ::5].astype(np.float32)                       # (N, 1000)
+        L2[bad] = 0.0
         n = 2048
         drop = np.zeros(len(X), bool)
         FE = np.conj(np.fft.rfft(E, n))
@@ -103,9 +105,10 @@ def main():
             for e in range(len(E)):
                 cc = np.fft.irfft(FY * FE[e], n)[:, :nrm.shape[1]] / nrm
                 best = np.maximum(best, cc.max(1))
-            drop[i:i + 512] = best >= 0.9
+            drop[i:i + 512] = best >= 0.95
         print(f"PM-ECG-ID ECGs matched on lead II: {int(drop.sum())} records dropped", flush=True)
-        X = X[~drop]
+        bad |= drop
+    X = X[~bad]       # one copy of the 2 GB array: the pod also builds the real strips meanwhile
     np.save(a.out, X)
     print(f"bank {X.shape} {X.dtype} -> {a.out} ({X.nbytes / 2**30:.1f} GB)", flush=True)
 
