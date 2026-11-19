@@ -65,6 +65,8 @@ jobs:
       KAGGLE_API_TOKEN: ${{ inputs.kaggle && secrets.KAGGLE_API_TOKEN || '' }}
       KAGGLE_USERNAME: ${{ inputs.kaggle && vars.KAGGLE_USERNAME || '' }}
     steps:
+      - name: Job start time (the follower stops before the 355 min job limit)
+        run: echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - name: Checkpoints to continue from
         if: ${{ inputs.init_run != '' }}
@@ -91,7 +93,7 @@ jobs:
           DATA_CENTER: ${{ steps.vol.outputs.data_center }}
         run: |
           export UPLOAD_TOKEN=$(python -c 'import secrets; print(secrets.token_hex(24))'); echo "::add-mask::$UPLOAD_TOKEN"
-          python hybrid/gpu/runpod_ctl.py run --out result
+          FOLLOW_UNTIL=$(( JOB_T0 + 340 * 60 )) python hybrid/gpu/runpod_ctl.py run --out result
       - uses: actions/upload-artifact@v4
         if: always()
         with:

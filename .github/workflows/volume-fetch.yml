@@ -1,0 +1,72 @@
+# Checkpoints of an earlier run, read from the data volume by a small CPU pod.
+#
+# A training pod on the volume writes to /workspace/runs/<run>/out. When its GitHub job ends
+# without the artifact (job time limit, follower lost), the checkpoints are still on the volume.
+# This workflow copies them back into an artifact named gpu-<tag>-<this run>, so that
+# gpu-train.yml can continue from it with init_run=<this run>.
+#
+# Only checkpoint files leave the volume: *_best.pt, *_best.onnx, val.json and the run's log.
+# Never data (images, signals, real strips). Cost: 2 vCPU, ~0.07 USD/h, a few minutes.
+name: Checkpoints from the data volume
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: GitHub run id of the training whose checkpoints are on the volume
+        required: true
+      tag:
+        description: artifact tag (gpu-<tag>-<this run>)
+        default: fetched
+permissions:
+  contents: read
+  actions: read
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+      REF: ${{ github.ref_name }}
+      MAX_HOURS: '0.5'
+      VCPU: '2'
+      BALANCE_RESERVE: '1'
+    steps:
+      - name: Job start time
+        run: echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Volume
+        id: vol
+        run: python hybrid/gpu/runpod_v2.py volume
+      - name: Start the CPU pod
+        id: pod
+        env:
+          VOLUME_ID: ${{ steps.vol.outputs.volume_id }}
+          DATA_CENTER: ${{ steps.vol.outputs.data_center }}
+          JOB: bash hybrid/gpu/volume_fetch.sh ${{ inputs.run_id }}
+        run: |
+          case "${{ inputs.run_id }}" in (*[!0-9]*|'') echo "run_id must be a number"; exit 1;; esac
+          tok=$(python -c 'import secrets; print(secrets.token_hex(24))'); echo "::add-mask::$tok"
+          UPLOAD_TOKEN=$tok python hybrid/gpu/runpod_v2.py cpu-start
+      - name: Follow
+        env:
+          POD_ID: ${{ steps.pod.outputs.pod_id }}
+        run: FOLLOW_UNTIL=$(( JOB_T0 + 80 * 60 )) python hybrid/gpu/runpod_ctl.py follow --out result
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpu-${{ inputs.tag }}-${{ github.run_id }}
+          path: |
+            result/*_best.pt
+            result/*_best.onnx
+            result/val.json
+            result/log.txt
+            result/source_log.txt
+          retention-days: 30
+      - name: Terminate the pod
+        if: always()
+        env:
+          POD_ID: ${{ steps.pod.outputs.pod_id }}
+        run: python hybrid/gpu/runpod_v2.py stop

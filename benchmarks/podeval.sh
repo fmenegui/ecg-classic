@@ -38,8 +38,8 @@ case "${WHAT:-both}" in kaggle|both)
   if [ -z "${KAGGLE_API_TOKEN:-}" ]; then echo "no Kaggle token: Kaggle part skipped"; else
     KP=${KAGGLE_PART:-0}; KN=${KAGGLE_NPARTS:-1}
     if [ "${NSHARDS:-1}" -gt 1 ]; then KP=$(( KP * NSHARDS + ${SHARD:-0} )); KN=$(( KN * NSHARDS )); fi
-    python benchmarks/physionet/kaggle_zip.py shard --part "$KP" --nparts "$KN" --out "$D/kaggle" \
-      --ids-file "$RUN/kaggle_ids.txt" | tail -2
+    python benchmarks/physionet/kaggle_zip.py shard --part "$KP" --nparts "$KN" --out "$D/kaggle" --threads 8 \
+      --ids-file "$RUN/kaggle_ids.txt" | grep -v "^token\|attempt"
     echo "Kaggle data ready in $(( $(date +%s) - t0 )) s"
     if [ "${DATA_ONLY:-}" != "1" ]; then
     mkdir -p "$RUN/kaggle"; ln -sfn "$D/kaggle" "$RUN/kaggle/data"

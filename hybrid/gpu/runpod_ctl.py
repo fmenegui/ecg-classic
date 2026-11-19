@@ -169,13 +169,26 @@ def _try_cards(gpus, asked, q, cloud, env, cmd, vol=None):
     return last
 
 
-def _get(url, timeout=30):
+def _get(url, timeout=30, total=None):
+    """GET with a hard limit on the whole transfer (`total`, default 4 x timeout), not only on each
+    socket operation: a response trickling through the proxy once hung the follower for 5 h, so
+    the run saw neither the log nor the checkpoints of a pod that kept training."""
+    total = total or 4 * timeout
+    t_end = time.time() + total
     req = urllib.request.Request(url, headers={"User-Agent": "ecgdig-gpu-train"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+        buf = []
+        while True:
+            if time.time() > t_end:
+                raise TimeoutError(f"{url.rsplit('/', 1)[-1]}: no complete answer in {total:.0f} s")
+            b = r.read(1 << 20)
+            if not b:
+                return b"".join(buf)
+            buf.append(b)
 
 
 LOST_MIN = 20
+STALL_MIN = 25     # pod.sh logs the GPU use every 2 min: a log that stops growing means a dead job
 CKPT_MIN = 30
 CKPT_FILES = ["page_best.onnx", "page_best.pt", "unet_best.pt", "trace_seg_best.onnx", "dewarp_best.onnx",
               "dewarp_best.pt", "val.json"]
@@ -202,10 +215,14 @@ def follow(out: Path):
     pod = os.environ["POD_ID"]
     base = f"https://{pod}-8000.proxy.runpod.net"
     limit = time.time() + float(os.environ.get("MAX_HOURS", "1")) * 3600 + 40 * 60   # + setup margin
+    if os.environ.get("FOLLOW_UNTIL"):
+        # the GitHub job has a hard time limit: stop following before it, so that the checkpoints
+        # are copied and uploaded (a job cancelled by the limit uploads nothing)
+        limit = min(limit, float(os.environ["FOLLOW_UNTIL"]))
     seen = 0
     status = ""
     out.mkdir(parents=True, exist_ok=True)
-    last_ok, last_ckpt = time.time(), time.time()
+    last_ok, last_ckpt, last_grow = time.time(), time.time(), time.time()
     while time.time() < limit:
         try:
             status = _get(base + "/status.txt").decode().strip()
@@ -213,8 +230,9 @@ def follow(out: Path):
             if len(log) > seen:
                 print(log[seen:], end="", flush=True)
                 seen = len(log)
+                last_grow = time.time()
             last_ok = time.time()
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:   # pod still booting
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:   # pod still booting
             print(f"[waiting: {getattr(e, 'code', '')} {type(e).__name__}]", flush=True)
         if status in ("done", "nogpu"):
             break
@@ -224,12 +242,23 @@ def follow(out: Path):
             print(f"pod unreachable for {LOST_MIN} min: giving up on it", flush=True)
             status = "lost"
             break
+        if seen and status == "running" and time.time() - last_grow > STALL_MIN * 60:
+            print(f"the pod log has not grown for {STALL_MIN} min: the job is stuck", flush=True)
+            status = "stalled"
+            break
         if seen and time.time() - last_ok < 120 and time.time() - last_ckpt > CKPT_MIN * 60:
             _copy_checkpoints(base, out)
             last_ckpt = time.time()
         time.sleep(60)
+    if status not in ("done", "nogpu", "lost"):
+        try:   # time limit or stalled job: the latest checkpoints before giving up
+            _copy_checkpoints(base, out)
+        except Exception as e:  # noqa: BLE001
+            print(f"last checkpoint copy failed: {e}", flush=True)
     if status == "lost":
         sys.exit("pod lost; the artifact holds the last checkpoints copied")
+    if status == "stalled":
+        sys.exit("job stalled on the pod; the artifact holds the last checkpoints copied")
     if status == "nogpu":
         return status
     try:
@@ -243,7 +272,7 @@ def follow(out: Path):
         except Exception:  # noqa: BLE001
             pass
     if status != "done":
-        sys.exit(f"pod did not finish in time (status: {status!r})")
+        sys.exit(f"pod did not finish in time (status: {status!r}); the artifact holds the last checkpoints")
     # the pod finishes either way; the job's own exit code decides whether the run succeeded
     # (a failed training must not start its benchmark)
     try:

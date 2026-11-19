@@ -18,6 +18,7 @@ import csv
 import io
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -60,15 +61,18 @@ def signed_url():
     raise RuntimeError(f"no signed URL: HTTP {last.status_code} {last.text[:300]}")
 
 
-def open_zip(retries=8, part=0):
+def open_zip(retries=8, part=0, n=1):
     """Kaggle limits the download-all endpoint (HTTP 429 when 20 runners ask at once): the shards
-    start staggered and back off with jitter up to ~15 min in all."""
+    start staggered and back off with jitter up to ~15 min in all. n > 1: that many handles on one
+    signed URL (one API call), for parallel range reads."""
     import random
     from remotezip import RemoteZip
-    time.sleep(12 * part)
+    time.sleep(12 * min(part, 20))
     for i in range(retries):
         try:
-            return RemoteZip(signed_url(), timeout=120)
+            u = signed_url()
+            zs = [RemoteZip(u, timeout=120) for _ in range(n)]
+            return zs[0] if n == 1 else zs
         except Exception as e:  # noqa: BLE001
             print("open failed:", e, flush=True)
             time.sleep(min(240, 15 * 2 ** i) * random.uniform(0.6, 1.0))
@@ -104,7 +108,9 @@ def fetch(z, ids, out: Path, types=TYPES):
             if n not in names:
                 miss += 1
                 continue
-            tmp = dst.with_name(dst.name + ".part")   # atomic: a cancelled download leaves no truncated file
+            # atomic: a cancelled download leaves no truncated file; unique per writer, since pods
+            # sharing the volume may fetch the same record at once
+            tmp = dst.with_name(f"{dst.name}.{os.getpid()}.{threading.get_ident()}.part")
             tmp.write_bytes(_read(z, n))
             tmp.replace(dst)
             got += 1
@@ -125,6 +131,7 @@ def main():
     ap.add_argument("--nparts", type=int, default=20)
     ap.add_argument("--types", default=",".join(TYPES))
     ap.add_argument("--ids-file", default="", help="where to write the record ids (default OUT/ids.txt)")
+    ap.add_argument("--threads", type=int, default=1, help="parallel range readers (shard)")
     a = ap.parse_args()
     if a.cmd == "probe":
         u = signed_url()
@@ -175,7 +182,27 @@ def main():
         tmp.write_bytes(_read(z, "train.csv"))
         tmp.replace(a.out / "train.csv")   # atomic: pods sharing the volume may write it at once
     t0 = time.time()
-    g, m = fetch(z, ids, a.out, tuple(a.types.split(",")))
+    if a.threads <= 1:
+        g, m = fetch(z, ids, a.out, tuple(a.types.split(",")))
+    else:
+        # one archive handle per thread (a RemoteZip is not thread-safe); each record is one
+        # unit of work. A single stream did not fetch the 977 records in 4.5 h on a pod.
+        from concurrent.futures import ThreadPoolExecutor
+        zs = [z] + open_zip(n=a.threads - 1) if a.threads > 2 else [z, open_zip()]
+        done = [0, 0, 0]
+        lock = threading.Lock()
+
+        def work(k):
+            for rid in ids[k::a.threads]:
+                g_, m_ = fetch(zs[k], [rid], a.out, tuple(a.types.split(",")))
+                with lock:
+                    done[0] += 1; done[1] += g_; done[2] += m_
+                    if done[0] % 50 == 0:
+                        print(f"{done[0]}/{len(ids)} records, {time.time() - t0:.0f}s", flush=True)
+
+        with ThreadPoolExecutor(a.threads) as ex:
+            list(ex.map(work, range(a.threads)))
+        g, m = done[1], done[2]
     print(f"{len(ids)} records: {g} files, {m} missing, {time.time() - t0:.0f}s", flush=True)
     (Path(a.ids_file) if a.ids_file else a.out / "ids.txt").write_text(",".join(ids))
 

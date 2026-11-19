@@ -72,8 +72,23 @@ def volume():
     sys.exit("no data center accepted the volume")
 
 
+def balance_guard(vcpu):
+    """RunPod stops every pod when the balance reaches 0 (an evaluation pod never came up and a
+    training was cut that way): refuse a pod the balance cannot pay for, with a reserve for the
+    pods already running (BALANCE_RESERVE USD)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import runpod_ctl
+    bal = float(runpod_ctl.gql("query { myself { clientBalance } }")["myself"].get("clientBalance") or 0)
+    need = float(os.environ.get("MAX_HOURS", "3")) * min(MAX_USD_H, 0.04 * vcpu) + \
+        float(os.environ.get("BALANCE_RESERVE", "2"))
+    print(f"RunPod balance {bal:.2f} USD, this pod may need {need:.2f} USD with the reserve", file=sys.stderr)
+    if bal < need:
+        sys.exit(f"RunPod balance {bal:.2f} USD is below {need:.2f} USD: add funds")
+
+
 def cpu_start():
     vol, dc = os.environ["VOLUME_ID"], os.environ["DATA_CENTER"]
+    balance_guard(int(os.environ.get("VCPU", "32")))
     run_dir = f"/workspace/runs/{os.environ.get('GITHUB_RUN_ID', 'local')}-{os.environ.get('SHARD', '0')}"
     env = {"REF": os.environ["REF"], "JOB": os.environ["JOB"], "MAX_HOURS": os.environ.get("MAX_HOURS", "3"),
            "CPU_ONLY": "1", "OUT_DIR": run_dir + "/out", "REPO_DIR": "/root/repo",

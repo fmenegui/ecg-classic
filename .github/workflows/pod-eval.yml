@@ -85,6 +85,8 @@ jobs:
       REF: ${{ github.ref_name }}
       MAX_HOURS: ${{ inputs.max_hours }}
     steps:
+      - name: Job start time (the follower stops before the 355 min job limit)
+        run: echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -148,7 +150,7 @@ jobs:
       - name: Follow
         env:
           POD_ID: ${{ steps.pod.outputs.pod_id }}
-        run: python hybrid/gpu/runpod_ctl.py follow --out result
+        run: FOLLOW_UNTIL=$(( JOB_T0 + 340 * 60 )) python hybrid/gpu/runpod_ctl.py follow --out result
       - name: Report
         if: always()
         run: |

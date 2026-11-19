@@ -36,6 +36,9 @@ echo "setup" > "$OUT/status.txt"
     pip install -q -e . onnxruntime pandas remotezip requests kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0
     echo "running" > "$OUT/status.txt"
     echo "command: $JOB"
+    # heartbeat every 2 min (load, free space on the volume): shows progress of silent
+    # steps (downloads, evaluations piped through tail) and keeps the follower's stall check fed
+    (while sleep 120; do echo "CPU load $(cut -d' ' -f1 /proc/loadavg), volume free $(df -m /workspace | awk 'NR==2 {print $4}') MB"; done &)
     timeout "$(python -c "print(int(float('$MAX_HOURS') * 3600))")" bash -c "$JOB"
     echo "exit code $?"
   else

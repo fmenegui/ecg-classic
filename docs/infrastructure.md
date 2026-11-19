@@ -18,6 +18,10 @@ Safeguards added after losses:
 | Retries the clone; replaces a pod whose CUDA or network to GitHub is broken | |
 | Asks for at least 46 GB of RAM (`MIN_RAM_GB`) | The row network was killed for memory twice (exit 137) while building real strips on 8-vCPU hosts. |
 | Never lists pods | A pod listing carries the pod's environment, which holds the Kaggle token of runs with `kaggle=true`. |
+| Every request to the pod has a hard limit on the whole transfer | A response trickling through the proxy hung the follower for 5 h: the run saw neither the log nor the checkpoints of a pod that kept training. |
+| Gives up on a job whose log stops growing for 25 min, after a last checkpoint copy | `pod.sh` logs GPU use (training) or load and free space (CPU pods) every 2 min, so a silent log means a dead job. |
+| Stops following 340 min after the job started, copies the checkpoints and fails the run | GitHub cancels a job at 355 min, and a cancelled job uploaded nothing (row network, run 44546313205). |
+| Fails the run when the job on the pod exits non-zero | A training that crashed was reported as a success and started its benchmark. |
 
 GitHub stops a job after 6 h. A training run should end within about 5 h 30 min of training, including setup.
 
@@ -29,6 +33,10 @@ A training longer than one job, or one whose pod was lost, continues in a new ru
 - put `--init /workspace/in/<checkpoint>` (or `$IN_DIR/<checkpoint>`) in the job.
 
 The runner downloads the earlier run's `*_best.pt` and sends it with a one-time upload token. The pod waits for it before starting the job.
+
+### Checkpoints left on the volume: `volume-fetch.yml`
+
+A training pod on the volume writes to `/workspace/runs/<run>/out`. If its job ended without the artifact, `volume-fetch.yml` with `run_id=<run>` copies the checkpoints back with a 2-vCPU pod (a few minutes, ~0.07 USD/h). The result is an artifact `gpu-<tag>-<fetch run>`, so `init_run=<fetch run>` continues from it. Only `*_best.pt`, `*_best.onnx`, `val.json` and the log leave the volume.
 
 ### Data volume and caches: `use_volume`, on by default
 
@@ -76,7 +84,7 @@ The datasets live on the network volume `ecgdig-data`: 60 GB in EUR-IS-1, about 
 Each run:
 
 1. Fetches the models from their training runs: `models: "row=RUN page=RUN dewarp=RUN ink=RUN"`. A checkpoint-only row or ink network is converted to ONNX.
-2. Starts one CPU pod per shard (`pods`, 1-4). Each pod is a cpu3c/cpu5c with 32 vCPU, about 1 USD/h (cap 1.2), mounting the volume.
+2. Starts one CPU pod per shard (`pods`, 1-4). Each pod is a cpu3c/cpu5c with 32 vCPU, about 1 USD/h (cap 1.2), mounting the volume; a prefill (`data_only`) uses 4 vCPU (~0.14 USD/h), since it only downloads. The pod is refused when the RunPod balance does not cover its hours plus a 2 USD reserve for the pods already running: at 0 USD RunPod stops every pod.
 3. Sends the models with a one-time upload token. The pod gets no GitHub token.
 4. Runs `benchmarks/podeval.sh`:
    - PM: `eval_pm.py` on `PER_SCENARIO` ECGs per scenario.
@@ -90,7 +98,9 @@ Shapes of run:
 |---|---|---|---|
 | Development benchmark | `per_scenario=5`, `kaggle_nparts=20` | 300 PM ECGs, ~49 Kaggle records (~440 images) | ~15-20 min, ~0.3 USD |
 | Whole databases | `per_scenario=0`, `kaggle_nparts=1`, `pods=3` | 6,000 PM ECGs, 977 Kaggle records | ~1.5-2 h per pod |
-| Prefill | `data_only=true` | Downloads what is missing, evaluates nothing | |
+| Prefill | `data_only=true` | Downloads what is missing, evaluates nothing | 4 vCPU |
+
+PM-ECG-ID is on the volume in full (74 min the first time, limited by Zenodo answering 429). The Kaggle records are fetched by range reads from the competition archive, 8 in parallel (`kaggle_zip.py --threads`). A single stream did not fetch the 977 records in 4.5 h, so the whole Kaggle set is not on the volume yet; the development benchmark fetches its ~49 records itself. The whole-database Kaggle evaluation stays on the free 20-runner workflow until a parallel prefill has filled the volume.
 
 Smoke test (run 44532635331): 60 PM ECGs plus 10 Kaggle records, end to end in about 8 minutes on cpu3c × 32 (0.96 USD/h).
 
