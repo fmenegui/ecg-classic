@@ -36,6 +36,16 @@ on:
         required: false
         default: ''
         type: string
+      eval_models:
+        description: 'After training, run the development benchmark (pod-eval) with these models; THIS stands for this run (e.g. "page=THIS row=44356949676")'
+        required: false
+        default: ''
+        type: string
+      eval_base:
+        description: 'pod-eval run to compare the development benchmark with'
+        required: false
+        default: ''
+        type: string
       tag:
         description: 'Label'
         required: false
@@ -43,7 +53,7 @@ on:
         type: string
 permissions:
   contents: read
-  actions: read
+  actions: write
 jobs:
   train:
     runs-on: ubuntu-latest
@@ -88,6 +98,15 @@ jobs:
           name: gpu-${{ inputs.tag }}-${{ github.run_id }}
           path: result/
           retention-days: 30
+      - name: Development benchmark of the new model
+        if: ${{ success() && inputs.eval_models != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          M=$(echo "${{ inputs.eval_models }}" | sed "s/THIS/${{ github.run_id }}/g")
+          gh workflow run pod-eval.yml --ref "${{ github.ref_name }}" -f what=both -f per_scenario=5 -f kaggle_nparts=20 \
+            -f models="$M" -f base_run="${{ inputs.eval_base }}" -f tag="dev-${{ inputs.tag }}" -f max_hours=2
+          echo "development benchmark started with: $M" >> "$GITHUB_STEP_SUMMARY"
       - name: Terminate the pod
         if: always()
         run: python hybrid/gpu/runpod_ctl.py stop   # every pod named ecgdig-train
