@@ -60,6 +60,7 @@ class Config:
     page_select: bool = True    # with page_model: read with and without the network, keep the
                                 # reading with the better internal quality (_reading_score)
     page_margin: float = 0.0
+    page_margin_same: float = 0.1   # PM-ECG-ID, network v1: 0 -> 9.06, 0.1 -> 9.22 dB (simulated)
     dewarp_margin: float = 0.0
     dewarp_model: str = ""      # page-flattening ONNX (ecgdig/dewarp.py): the photo is also read
                                 # flattened, and the reading with the better quality is kept
@@ -1438,7 +1439,10 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
             raise RuntimeError("; ".join(err))
         sc_ = None if rc is None else _reading_score(rc)
         sn_ = None if rn is None else _reading_score(rn)
-        use_n = rc is None or (rn is not None and sn_ > sc_ + cfg.page_margin)
+        # same layout from both: the network only changed where the rows lie, and the classical
+        # rows are the better default (clean renders); it must then be clearly better
+        same = rc is not None and rn is not None and rc.get("layout") == rn.get("layout")
+        use_n = rc is None or (rn is not None and sn_ > sc_ + (cfg.page_margin_same if same else cfg.page_margin))
         out = rn if use_n else rc
         out["page_select"] = dict(chosen="network" if use_n else "classical", score_classical=sc_,
                                   score_network=sn_, layout_classical=None if rc is None else rc.get("layout"),
