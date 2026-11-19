@@ -16,6 +16,7 @@ Safeguards added after losses:
 | Copies the best checkpoints (`*_best.onnx/.pt`, `val.json`) to the runner every 30 min | |
 | Gives up on a pod silent for 20 min and keeps the last checkpoints | |
 | Retries the clone; replaces a pod whose CUDA or network to GitHub is broken | |
+| Asks for at least 46 GB of RAM (`MIN_RAM_GB`) | The row network was killed for memory twice (exit 137) while building real strips on 8-vCPU hosts. |
 | Never lists pods | A pod listing carries the pod's environment, which holds the Kaggle token of runs with `kaggle=true`. |
 
 GitHub stops a job after 6 h. A training run should end within about 5 h 30 min of training, including setup.
@@ -42,7 +43,15 @@ Jobs write to `$OUT_DIR`, the per-run folder the pod serves, not to `/workspace/
 
 ### Faster steps: `--reuse` (page and dewarp networks)
 
-On a 3090, rendering takes about 55% of a page-network step: 0.67 s per 4 pages, against about 0.5 s for the network. With `--reuse N`, the generator keeps the last renders in a CPU buffer and draws each page about N times, each time with a new placement, crop and degradation. `--reuse 3` should bring a step from about 1.2 s down to about 0.7 s.
+Measured on an RTX 4000 Ada (`hybrid/gpu/profile_gen.py`, run 44543053782):
+
+| Network | Rendering | Network step |
+|---|---|---|
+| Page | 1.14 s per 4 pages | 0.27 s |
+| Dewarp | 1.28 s per 6 photos | 0.13 s |
+| Row (strips rendered on the GPU) | 0.51 s per 13 strips | |
+
+So the GPU spends 80-90% of a step rendering. With `--reuse N`, the generator keeps the last renders in a CPU buffer and draws each page about N times, each time with a new placement, crop and degradation. `--reuse 4` should make the page network about 2.5 times faster, and `--reuse 6` the dewarp network about 3.5 times faster.
 
 The row network has `--reuse` already. Its bottleneck is the CPU strip generator: the GPU sits idle about half the time. A larger `--render-frac`, which renders strips on the GPU, shifts that work to the GPU.
 
