@@ -57,6 +57,9 @@ class Config:
     ink_model: str = ""         # path of the trace-segmenter ONNX (hybrid mode)
     page_model: str = ""        # path of the page-structure ONNX (ecgdig/pagemodel.py): rows and columns
     page_orient: bool = True    # with page_model: the network also picks the page rotation
+    page_select: bool = True    # with page_model: read with and without the network, keep the
+                                # reading with the better internal quality (_reading_score)
+    page_margin: float = 0.0
     ink_mix: float = 1.0        # 1 = network only; <1 mixes with the classical map
     # with ink_model: "model" reads the page with the network's ink map only; "select" reads it
     # both ways and keeps the reading with the better internal quality (no ground truth)
@@ -1383,6 +1386,32 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         out["hybrid"] = dict(chosen="model" if use_h else "classical", score_classical=sc, score_model=sh,
                              layout_classical=None if rc is None else rc.get("layout"),
                              layout_model=None if rh is None else rh.get("layout"), errors=err)
+        return out
+    if cfg.page_model and cfg.page_select:
+        # the page-structure network and the classical rows are each right where the other
+        # fails (PM-ECG-ID, network v1: of 1,933 pages whose layout changed, 699 were fixed and
+        # 592 broken): read both and keep the reading with the better internal quality
+        if isinstance(image, (str, bytes)) or hasattr(image, "__fspath__"):
+            image = cv2.imread(str(image), cv2.IMREAD_COLOR)
+        rc = rn = None
+        err = []
+        try:
+            rc = digitize(image, dataclasses.replace(cfg, page_model="", page_select=False), return_debug)
+        except Exception as e:  # noqa: BLE001
+            err.append(f"classical: {type(e).__name__}: {e}")
+        try:
+            rn = digitize(image, dataclasses.replace(cfg, page_select=False), return_debug)
+        except Exception as e:  # noqa: BLE001
+            err.append(f"network: {type(e).__name__}: {e}")
+        if rc is None and rn is None:
+            raise RuntimeError("; ".join(err))
+        sc_ = None if rc is None else _reading_score(rc)
+        sn_ = None if rn is None else _reading_score(rn)
+        use_n = rc is None or (rn is not None and sn_ > sc_ + cfg.page_margin)
+        out = rn if use_n else rc
+        out["page_select"] = dict(chosen="network" if use_n else "classical", score_classical=sc_,
+                                  score_network=sn_, layout_classical=None if rc is None else rc.get("layout"),
+                                  layout_network=None if rn is None else rn.get("layout"), errors=err)
         return out
     _orient.weak = False
     res = _digitize_once(image, cfg, return_debug)

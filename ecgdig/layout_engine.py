@@ -619,7 +619,7 @@ class Ctx:
 
     def choose(self):
         cands = [(nm, sp, 0.0) for nm, sp in self.candidates()]
-        if ROW_DROP[0] and not getattr(self, "col_hint", None) and self.n >= 3:
+        if ROW_DROP[0] and (not getattr(self, "col_hint", None) or getattr(self, "net", None)) and self.n >= 3:
             # edge rows may not be trace (grid frame, ruler, text band): the hypothesis
             # without them competes with the others and pays a cost. The usual score decides
             # (labels, boundaries, Einthoven/Goldberger, duplicates)

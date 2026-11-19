@@ -147,6 +147,9 @@ def decode(base, bnd, cls, min_len_mm=15.0, thr=0.4):
 
 
 MIN_REL_LEN = [0.5]   # a row spans at least this share of the longest row
+ACT_REL = [0.5]       # a row has at least this share of the median deflection activity
+INK_REL = [0.4]       # ... and of the median ink coverage along its baseline
+ISOLATED = [1.8]      # an edge row farther than this many median steps from the block is dropped
 
 
 def page_structure(rect_bgr, R, path, B=None):
@@ -171,7 +174,33 @@ def page_structure(rect_bgr, R, path, B=None):
             band = B[max(0, y - h):y + h + 1, x0:x1 + 1]
             ink.append(float(band.any(0).mean()) if band.size else 0.0)
         if max(ink) > 0.05:
-            rows = [r for r, v in zip(rows, ink) if v > 0.005]
+            mi = float(np.median(ink))
+            rows = [r for r, v in zip(rows, ink) if v > 0.005 and v >= INK_REL[0] * mi]
+    if B is not None and len(rows) >= 3:
+        # deflections: a lead has QRS complexes, i.e. columns where its ink runs >= 2 mm tall
+        # around the baseline; the paper edge, the grid frame and a text line do not. A row is
+        # kept when it has at least a quarter of the median activity of the rows
+        ys = np.array([r["y"] for r in rows]) * k
+        act = []
+        for i, r in enumerate(rows):
+            y = int(round(ys[i])); x0, x1 = int(r["x0"] * k), int(r["x1"] * k)
+            gap = np.min(np.abs(np.delete(ys, i) - ys[i]))
+            h = int(max(3 * R, min(0.45 * gap, 12 * R)))
+            band = B[max(0, y - h):y + h + 1, x0:x1 + 1]
+            act.append(float((band.sum(0) >= 2 * R).mean()) if band.size else 0.0)
+        med = float(np.median(act))
+        if med > 0.01:
+            rows = [r for r, a in zip(rows, act) if a >= ACT_REL[0] * med]
+    # an edge row far from the block (more than 1.8 median steps) is the paper edge, a header
+    # rule or a footer line, not a lead: rhythm strips follow the block at about one step
+    while len(rows) >= 4:
+        ys = np.array([r["y"] for r in rows]); g = np.diff(ys)
+        if g[0] > ISOLATED[0] * np.median(g[1:]):
+            rows = rows[1:]
+        elif g[-1] > ISOLATED[0] * np.median(g[:-1]):
+            rows = rows[:-1]
+        else:
+            break
     out = []
     for r in rows:
         out.append(dict(y=r["y"] * k, x0=r["x0"] * k, x1=r["x1"] * k, strength=r["strength"],
