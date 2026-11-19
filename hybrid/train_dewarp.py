@@ -126,8 +126,10 @@ def loss_fn(out, t):
 
 
 def evaluate(net, vx, vt, dev):
-    """Median page-coordinate error in mm (A4 landscape, 297 x 210 mm) on visible pixels."""
-    net.eval(); errs = []; acc = []
+    """Median page-coordinate error in mm (A4 landscape, 297 x 210 mm) on visible pixels, and the
+    local error left after the best affine map per photo (err_local_*): a global shift, scale or
+    shear of the flattened page is undone by ecgdig's own rectification; local bending is not."""
+    net.eval(); errs = []; acc = []; loc = []
     with torch.no_grad():
         for i in range(0, len(vx), 4):
             with torch.autocast(dev, enabled=dev == "cuda"):
@@ -136,11 +138,22 @@ def evaluate(net, vx, vt, dev):
             v = t[:, 2] > 0.5
             ex = (o[:, 0] - t[:, 0]) * 297 / 2; ey = (o[:, 1] - t[:, 1]) * 210 / 2
             errs.append(torch.sqrt(ex ** 2 + ey ** 2)[v])
+            for q in range(len(t)):
+                vq = v[q]
+                if int(vq.sum()) < 100:
+                    continue
+                po = torch.stack([o[q, 0][vq], o[q, 1][vq], torch.ones(int(vq.sum()))], 1).double()
+                pt = torch.stack([t[q, 0][vq], t[q, 1][vq]], 1).double()
+                sub = torch.arange(0, len(po), max(1, len(po) // 20000))
+                A = torch.linalg.lstsq(po[sub], pt[sub]).solution
+                r = po @ A - pt
+                loc.append(torch.sqrt((r[:, 0] * 297 / 2) ** 2 + (r[:, 1] * 210 / 2) ** 2).float())
             acc.append(((o[:, 2] > 0) == v).float().mean())
     net.train()
-    e = torch.cat(errs)
-    return dict(err_mm_median=float(e.median()), err_mm_p90=float(e.quantile(0.9)) if len(e) < 16_000_000 else None,
-                mask_acc=float(torch.stack(acc).mean()))
+    e = torch.cat(errs); el = torch.cat(loc) if loc else torch.tensor([float("nan")])
+    q90 = lambda x: float(x.quantile(0.9)) if len(x) < 16_000_000 else float(x[::max(1, len(x) // 8_000_000)].quantile(0.9))  # noqa: E731
+    return dict(err_mm_median=float(e.median()), err_mm_p90=q90(e), err_local_median=float(el.median()),
+                err_local_p90=q90(el), mask_acc=float(torch.stack(acc).mean()))
 
 
 def main():
@@ -206,8 +219,8 @@ def main():
             ev = evaluate(net, vx, vt, dev); ev["step"] = step; hist.append(ev)
             print("val", json.dumps(ev), flush=True)
             torch.save(net.state_dict(), a.out / "dewarp.pt")
-            if ev["err_mm_median"] < best:
-                best = ev["err_mm_median"]
+            if ev["err_local_median"] < best:        # the error that bends the traces
+                best = ev["err_local_median"]
                 torch.save(net.state_dict(), a.out / "dewarp_best.pt")
                 export("_best")
                 print("best", round(best, 3), flush=True)
