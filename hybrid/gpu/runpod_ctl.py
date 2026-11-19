@@ -143,6 +143,28 @@ def _get(url, timeout=30):
         return r.read()
 
 
+LOST_MIN = 20
+CKPT_MIN = 30
+CKPT_FILES = ["page_best.onnx", "page_best.pt", "unet_best.pt", "trace_seg_best.onnx", "val.json"]
+
+
+def _copy_checkpoints(base, out):
+    """Copies the best checkpoints the training has written so far: a pod that dies late in a
+    run (it happened at 4 h 10 min of 5 h) no longer takes the whole run with it."""
+    got = []
+    for f in CKPT_FILES:
+        try:
+            data = _get(base + "/" + f, timeout=600)
+        except Exception:  # noqa: BLE001  (not written yet, or not this kind of training)
+            continue
+        tmp = out / (f + ".part")
+        tmp.write_bytes(data)
+        tmp.replace(out / f)
+        got.append(f"{f} {len(data) // 1_000_000} MB")
+    if got:
+        print(f"[checkpoints copied: {', '.join(got)}]", flush=True)
+
+
 def follow(out: Path):
     pod = os.environ["POD_ID"]
     base = f"https://{pod}-8000.proxy.runpod.net"
@@ -150,6 +172,7 @@ def follow(out: Path):
     seen = 0
     status = ""
     out.mkdir(parents=True, exist_ok=True)
+    last_ok, last_ckpt = time.time(), time.time()
     while time.time() < limit:
         try:
             status = _get(base + "/status.txt").decode().strip()
@@ -157,11 +180,23 @@ def follow(out: Path):
             if len(log) > seen:
                 print(log[seen:], end="", flush=True)
                 seen = len(log)
+            last_ok = time.time()
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:   # pod still booting
             print(f"[waiting: {getattr(e, 'code', '')} {type(e).__name__}]", flush=True)
         if status in ("done", "nogpu"):
             break
+        if seen and time.time() - last_ok > LOST_MIN * 60:
+            # the pod answered before and has not for LOST_MIN minutes (host reset or lost):
+            # stop waiting and keep the last checkpoints already copied
+            print(f"pod unreachable for {LOST_MIN} min: giving up on it", flush=True)
+            status = "lost"
+            break
+        if seen and time.time() - last_ok < 120 and time.time() - last_ckpt > CKPT_MIN * 60:
+            _copy_checkpoints(base, out)
+            last_ckpt = time.time()
         time.sleep(60)
+    if status == "lost":
+        sys.exit("pod lost; the artifact holds the last checkpoints copied")
     if status == "nogpu":
         return status
     try:
