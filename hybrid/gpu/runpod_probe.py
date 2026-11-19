@@ -18,12 +18,14 @@ def get(path):
         return e.code, e.read().decode()[:500]
 
 
-for p in ["/catalog/data-centers", "/catalog/data-centers?include=cpuAvailability",
-          "/catalog/data-centers?include=gpuAvailability", "/catalog/datacenters", "/catalog/cpus",
-          "/catalog/gpus", "/network-volumes", "/pods"]:
+# never /pods: a pod listing carries the pods' environment (the Kaggle token of a training pod)
+for p in ["/catalog/datacenters", "/catalog/cpus", "/network-volumes"]:
     s, body = get(p)
     try:
         body = json.dumps(json.loads(body), separators=(",", ":"))
     except Exception:  # noqa: BLE001
         pass
+    for k in ("KAGGLE", "TOKEN", "KEY", "SECRET"):
+        if k in body.upper():
+            body = "(withheld: the answer mentions a credential)"
     print(f"== GET {p} -> {s}\n{body[:5000]}\n")
