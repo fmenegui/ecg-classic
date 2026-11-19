@@ -136,7 +136,8 @@ jobs:
         run: |
           echo "UPLOAD_TOKEN=$(python -c 'import secrets; print(secrets.token_hex(24))')" >> "$GITHUB_ENV"
           . "$GITHUB_ENV"
-          UPLOAD_TOKEN=$UPLOAD_TOKEN python hybrid/gpu/runpod_v2.py cpu-start
+          # A prefill only downloads: network-bound, so 4 vCPU (~0.12 USD/h) instead of 32 (~1.1 USD/h).
+          VCPU=${{ inputs.data_only && '4' || '32' }} UPLOAD_TOKEN=$UPLOAD_TOKEN python hybrid/gpu/runpod_v2.py cpu-start
       - name: Send the models
         env:
           POD_ID: ${{ steps.pod.outputs.pod_id }}

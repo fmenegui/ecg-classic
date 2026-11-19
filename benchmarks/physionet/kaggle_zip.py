@@ -27,6 +27,15 @@ COMP = os.environ.get("COMP", "physionet-ecg-image-digitization")
 TYPES = ("0001", "0003", "0004", "0005", "0006", "0009", "0010", "0011", "0012")
 
 
+def _complete(p: Path) -> bool:
+    """False for a PNG cut short (written before downloads were atomic and then cancelled)."""
+    if p.suffix.lower() != ".png":
+        return True
+    with open(p, "rb") as f:
+        f.seek(max(0, p.stat().st_size - 12))
+        return f.read().endswith(b"IEND\xaeB`\x82")
+
+
 def signed_url():
     tok = os.environ.get("KAGGLE_API_TOKEN", "").strip()
     url = f"https://www.kaggle.com/api/v1/competitions/data/download-all/{COMP}"
@@ -89,13 +98,15 @@ def fetch(z, ids, out: Path, types=TYPES):
         d.mkdir(exist_ok=True)
         for n in want:
             dst = d / Path(n).name
-            if dst.exists() and dst.stat().st_size > 0:
+            if dst.exists() and dst.stat().st_size > 0 and _complete(dst):
                 got += 1
                 continue
             if n not in names:
                 miss += 1
                 continue
-            dst.write_bytes(_read(z, n))
+            tmp = dst.with_name(dst.name + ".part")   # atomic: a cancelled download leaves no truncated file
+            tmp.write_bytes(_read(z, n))
+            tmp.replace(dst)
             got += 1
     return got, miss
 
