@@ -90,7 +90,7 @@ jobs:
           VOLUME_ID: ${{ steps.vol.outputs.volume_id }}
           DATA_CENTER: ${{ steps.vol.outputs.data_center }}
         run: |
-          export UPLOAD_TOKEN=$(python -c 'import secrets; print(secrets.token_hex(24))')
+          export UPLOAD_TOKEN=$(python -c 'import secrets; print(secrets.token_hex(24))'); echo "::add-mask::$UPLOAD_TOKEN"
           python hybrid/gpu/runpod_ctl.py run --out result
       - uses: actions/upload-artifact@v4
         if: always()

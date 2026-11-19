@@ -134,7 +134,8 @@ jobs:
             WHAT=${{ inputs.what }} PER_SCENARIO=${{ inputs.per_scenario }} KAGGLE_PART=0
             KAGGLE_NPARTS=${{ inputs.kaggle_nparts }} EVAL_CONFIG="${{ inputs.config }}" bash benchmarks/podeval.sh
         run: |
-          echo "UPLOAD_TOKEN=$(python -c 'import secrets; print(secrets.token_hex(24))')" >> "$GITHUB_ENV"
+          tok=$(python -c 'import secrets; print(secrets.token_hex(24))'); echo "::add-mask::$tok"
+          echo "UPLOAD_TOKEN=$tok" >> "$GITHUB_ENV"
           . "$GITHUB_ENV"
           # A prefill only downloads: network-bound, so 4 vCPU (~0.12 USD/h) instead of 32 (~1.1 USD/h).
           VCPU=${{ inputs.data_only && '4' || '32' }} UPLOAD_TOKEN=$UPLOAD_TOKEN python hybrid/gpu/runpod_v2.py cpu-start
