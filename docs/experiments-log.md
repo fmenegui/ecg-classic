@@ -52,6 +52,8 @@ saw CV-to-private drops of ~4 dB.
 | 20/11 | 44653806160 | rowheavy3e (continues 3c) | 3090, 0.5 | 4.6 | 2.31 | **current best row network**: Kaggle dev 17.95 / holdout 17.67 (+0.54 / +0.95 over 3c; +0.24 / +0.53 over rowreal); PM dev 9.34 (+0.21 over rowreal); few real strips (built during training) |
 | 20/11 | 44778865703, 44786097024, 44789063535 | 2nd place solution, smoke | A4000-3090 | ~1 | ~0.3 | pipeline fixes (paths, timm version, layout); see §5 |
 | 20/11 | 44796609191 | 2nd place solution, smoke (36 images) | 3090, 0.5 | 1.2 | 0.60 | runs end to end; Kaggle dev 30.07 dB (in-sample: memorised); PM-ECG-ID 3x4+1R 0 of 18 read; see §5 |
+| 20/11 | 44834969780 | Open-ECG-Digitizer input size 2200x1700, 1 ECG per scenario (60 ECGs, 66 images) | GPU | 0.5 | ~0.15 | 3.91 dB PMcardio-style, failed leads 23.8% |
+| 20/11 | 44834966288 | Open-ECG-Digitizer, images at their own size (same 60 ECGs) | GPU | 0.8 | ~0.2 | **5.09 dB (+1.19 over 2200x1700)**, failed 22.8%; photos gain most (iphone +10, bents +6.6, samsung +6.1); 2148 s vs 1222 s |
 | 20/11 | 44834976689 | 2nd place solution, PM-ECG-ID 3x4+1R pages (5 per scenario) | 3090, 0.5 | 0.3 | 0.16 | **1 of 300 pages read** (stage 0, the homography to the Kaggle reference page, failed on 292; stage 1 on 7); PM SNR 0.00 dB. On the 21 of these ECGs also in our PM dev: ours 11.08 dB |
 | 20/11 | 44834954765 | rowheavy4 smoke (10 min) | A4500, 0.25 (EU-RO-1, on the volume) | 0.3 | 0.08 | real strips from the cache, bank cached, 0.64 s/step, data wait 1%; found that only 20,000 of ~50,000 real strips were loaded (`--real-cap` added) |
 | 20/11 | 44837522288 | rowheavy4: init rowheavy3e, full real strips (`--real-cap 60000`), 285 min | (running) | | | |
