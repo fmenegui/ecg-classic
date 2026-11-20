@@ -41,6 +41,9 @@ def convert(nb_path, out_path):
     s = re.sub(r"ids_gpu0 = valid_id\[:mid_idx\]", "ids_gpu0 = valid_id", s)
     s = re.sub(r"ids_gpu1 = valid_id\[mid_idx:\]", "ids_gpu1 = []", s)
     s = re.sub(r"args=\(1,", "args=(0,", s)
+    # the notebooks draw their first 10 images; on an image the solution fails on, the drawing
+    # itself crashes the whole stage (the failure was meant to be skipped): no drawing
+    s = re.sub(r"if n\s*<\s*10 and gpu_id\s*==\s*0\s*:", "if False:", s)
     s = re.sub(r"\bp1\.start\(\)", "pass", s)
     s = re.sub(r"\bp1\.join\(\)", "pass", s)
     head = ("import os, sys\nimport matplotlib\nmatplotlib.use('Agg')\n"
