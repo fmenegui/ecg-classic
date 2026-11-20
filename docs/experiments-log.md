@@ -52,6 +52,9 @@ saw CV-to-private drops of ~4 dB.
 | 20/11 | 44653806160 | rowheavy3e (continues 3c) | 3090, 0.5 | 4.6 | 2.31 | **current best row network**: Kaggle dev 17.95 / holdout 17.67 (+0.54 / +0.95 over 3c; +0.24 / +0.53 over rowreal); PM dev 9.34 (+0.21 over rowreal); few real strips (built during training) |
 | 20/11 | 44778865703, 44786097024, 44789063535 | 2nd place solution, smoke | A4000-3090 | ~1 | ~0.3 | pipeline fixes (paths, timm version, layout); see §5 |
 | 20/11 | 44796609191 | 2nd place solution, smoke (36 images) | 3090, 0.5 | 1.2 | 0.60 | runs end to end; Kaggle dev 30.07 dB (in-sample: memorised); PM-ECG-ID 3x4+1R 0 of 18 read; see §5 |
+| 20/11 | 44834976689 | 2nd place solution, PM-ECG-ID 3x4+1R pages (5 per scenario) | 3090, 0.5 | 0.3 | 0.16 | **1 of 300 pages read** (stage 0, the homography to the Kaggle reference page, failed on 292; stage 1 on 7); PM SNR 0.00 dB. On the 21 of these ECGs also in our PM dev: ours 11.08 dB |
+| 20/11 | 44834954765 | rowheavy4 smoke (10 min) | A4500, 0.25 (EU-RO-1, on the volume) | 0.3 | 0.08 | real strips from the cache, bank cached, 0.64 s/step, data wait 1%; found that only 20,000 of ~50,000 real strips were loaded (`--real-cap` added) |
+| 20/11 | 44837522288 | rowheavy4: init rowheavy3e, full real strips (`--real-cap 60000`), 285 min | (running) | | | |
 | 20/11 | 44797759750 | Open-ECG-Digitizer, smoke (18 images) | A4000, 0.25 | 0.4 | 0.10 | runs end to end, ~19 s per image; see §5 |
 | 20/11 | 44801827747 | Open-ECG-Digitizer, PM dev | 4000 Ada, 0.28 | 2.5 | 0.70 | 3.54 dB vs ours 9.34 (300 ECGs); see §5 |
 | 20/11 | 44801832861 | Open-ECG-Digitizer, Kaggle dev | A4000, 0.25 | 2.7 | 0.68 | read 540 of 540, but only 45 scored (5 records): the scoring crashed (128 processes on a pod that shows 128 host cores; OpenBLAS thread limit). On those 45: 10.00 vs ours 15.48 dB. Fixed; rerun needed |
@@ -108,7 +111,7 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
 |---|---|---|---|---|---|
 | ours, rowheavy3e | 9.34 (300) | 15.2% | 15.48 | 17.95 (540) | |
 | Open-ECG-Digitizer | 3.54 (300) | 24.5% | 5.37 | 10.00 vs ours 15.48 (45 of 540 paired, 8%) | images fitted inside 2200x1700; size sensitivity not checked yet |
-| 2nd place Kaggle | 0.00 (18, 3x4+1R only) | 100% | 0.42 | 30.07 (18) | Kaggle records are in its training set; fails the page template on PM |
+| 2nd place Kaggle | 0.00 (300, 3x4+1R only: 1 of 300 pages read) | 100% | 0.46 | 30.07 (18) | Kaggle records are in its training set; fails the page template on PM |
 
 ## 5. Diagnostics
 
@@ -186,10 +189,10 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
 | Run | What | Limit | Worst case |
 |---|---|---|---|
 | 44834948746 | env-check | 1 h | cents |
-| 44834954765 | rowheavy4 smoke: full real strips from the volume, init rowheavy3e, 10 min | 0.7 h | 0.35 USD |
+| 44834954765 | rowheavy4 smoke: done, OK | | 0.08 USD |
+| 44837522288 | rowheavy4, 285 min on the volume, then the free dev benchmark | 5.8 h | 2.9 USD |
 | 44834958768 | PM dev, rowheavy3e + page v3, on free GitHub runners (pmcardio.yml, 20 shards) | 5 h | free |
 | 44834962498 | Open-ECG-Digitizer, Kaggle dev again (scoring fixed) | 4 h | 2.0 USD |
 | 44834966288 / 44834969780 / 44834973129 | Open-ECG-Digitizer input size: none / 2200x1700 / 3300x2550, 1 PM-ECG-ID ECG per scenario | 1 h each | 1.5 USD |
-| 44834976689 | 2nd place, PM-ECG-ID 3x4+1R pages, 5 per scenario | 1.5 h | 0.75 USD |
+| 44834976689 | 2nd place, PM-ECG-ID 3x4+1R pages: done (1 of 300 read) | | 0.16 USD |
 
-After the smoke: rowheavy4, 285 min on the volume (`use_volume=true`).
