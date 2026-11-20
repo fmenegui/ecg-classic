@@ -65,6 +65,7 @@ def main():
     ap.add_argument("--max-pages", type=int, default=3000)
     ap.add_argument("--workers", type=int, default=max(2, (os.cpu_count() or 4) // 2))
     ap.add_argument("--chunk", type=int, default=400, help="strips per chunk file")
+    ap.add_argument("--readers", type=int, default=8, help="threads reading pages from the archive")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--wait-hours", type=float, default=2.0, help="keep retrying the archive this long")
     ap.add_argument("--cache", type=Path, default=None,
@@ -130,29 +131,57 @@ def main():
         print(f"real strips: chunk {k} ({len(buf_x)} strips), pages {done}/{len(jobs)}, kept {kept}", flush=True)
         buf_x, buf_h, k = [], [], k + 1
 
-    with ProcessPoolExecutor(a.workers) as ex:
+    # the pages are read by a.readers threads, each with its own handle on the archive (one
+    # stream read about 26 pages a minute, the labelling processes waited for it)
+    import threading
+    from collections import deque
+    from concurrent.futures import ThreadPoolExecutor
+    zs = [z] + (KZ.open_zip(n=a.readers - 1) if a.readers > 2 else [KZ.open_zip()] if a.readers == 2 else [])
+    tl = threading.local()
+    nxt = [0]
+    lock = threading.Lock()
+
+    def read(job):
+        rid, t = job
+        if not hasattr(tl, "k"):
+            with lock:
+                tl.k = nxt[0] % len(zs); nxt[0] += 1
+        for attempt in range(3):
+            try:
+                with lock:
+                    c = csv_cache.get(rid)
+                if c is None:
+                    c = zs[tl.k].read(f"train/{rid}/{rid}.csv")
+                    with lock:
+                        csv_cache[rid] = c
+                return rid, t, zs[tl.k].read(f"train/{rid}/{rid}-{t}.png"), c
+            except Exception as e:  # noqa: BLE001  (signed URL expired, network): reopen this handle
+                print("archive read failed, reopening:", e, flush=True)
+                time.sleep(30)
+                zs[tl.k] = KZ.open_zip()
+        return None
+
+    with ProcessPoolExecutor(a.workers) as ex, ThreadPoolExecutor(a.readers) as rd:
         pending = set()
+        reads = deque()
         it = iter(jobs)
         t0 = time.time()
-        while True:
-            while len(pending) < 2 * a.workers:
+
+        def top_up():
+            while len(reads) < 4 * a.workers:
                 try:
-                    rid, t = next(it)
+                    reads.append(rd.submit(read, next(it)))
                 except StopIteration:
-                    break
-                for attempt in range(3):
-                    try:
-                        if rid not in csv_cache:
-                            csv_cache[rid] = z.read(f"train/{rid}/{rid}.csv")
-                        png = z.read(f"train/{rid}/{rid}-{t}.png")
-                        break
-                    except Exception as e:  # noqa: BLE001  (signed URL expired, network): reopen
-                        print("archive read failed, reopening:", e, flush=True)
-                        time.sleep(30)
-                        z = KZ.open_zip()
-                else:
-                    continue
-                pending.add(ex.submit(_work, (rid, t, png, csv_cache[rid], int(rng.integers(1 << 30)))))
+                    return
+
+        top_up()
+        while True:
+            while len(pending) < 2 * a.workers and reads:
+                r = reads.popleft().result()
+                top_up()
+                if r is not None:
+                    rid, t, png, c = r
+                    pending.add(ex.submit(_work, (rid, t, png, c, int(rng.integers(1 << 30)))))
             if not pending:
                 break
             fut = next(as_completed(pending))

@@ -9,7 +9,8 @@
 set -u
 SOL=${SOL:-takashisomeya/physionet-2nd-place-submission}
 W=/root/ts; mkdir -p "$W/input" "$W/work" "$W/data" "$W/nb"
-pip install -q kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0 remotezip pandas connected-components-3d timm 2>&1 | tail -2
+# the solutions need recent timm (pretrained tags like ra4_e3600_r224_in1k) and an smp that matches it
+pip install -q -U kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0 remotezip pandas connected-components-3d "timm>=1.0.15" "segmentation-models-pytorch>=0.4" 2>&1 | tail -2
 kaggle kernels pull "$SOL" -p "$W/nb" -m > /dev/null || { echo "could not pull $SOL"; exit 1; }
 NB=$(ls "$W"/nb/*.ipynb | head -1)
 python - "$W/nb/kernel-metadata.json" > "$W/datasets.txt" <<'EOF'
