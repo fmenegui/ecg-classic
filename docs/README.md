@@ -12,6 +12,7 @@
 | [`infrastructure.md`](infrastructure.md) | architecture, rebuilding from zero, components, recipes, leaderboard loop, costs, secrets, model storage, maintenance |
 | [`runpod-troubleshooting.md`](runpod-troubleshooting.md) | every RunPod failure: symptom, confirmation, fix, money lost, prevention |
 | [`experiments.csv`](experiments.csv) | one line per development experiment tag |
+| [`../CLAUDE.md`](../CLAUDE.md) | the working rules, read by every Claude Code session; enforced by `.claude/hooks/guard.py` and `tests/test_infra_rules.py` |
 
 | Method and background | |
 |---|---|

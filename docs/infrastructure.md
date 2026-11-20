@@ -18,6 +18,28 @@ Related documents:
 
 ## 1. Principles
 
+These rules are enforced three ways:
+
+- **`CLAUDE.md`** is read by every Claude Code session in this repository.
+- **`.claude/hooks/guard.py`** is a PreToolUse hook that blocks the costly commands before they
+  run:
+  - an expensive GPU;
+  - `max_hours` > 5.8 or `--minutes` > 290;
+  - more than two 32-vCPU pods;
+  - calling the RunPod API from the session;
+  - printing secrets;
+  - competition data in `git add`;
+  - `gpu-stop-all`.
+
+  An explicit `ALLOW_<RULE>` in the command passes one rule when the owner decides it.
+- **`tests/test_infra_rules.py`** runs on every push (`tests.yml`). It checks that:
+  - the default card list is cheap;
+  - the balance guards and follower limits exist;
+  - CPU pods use the PyTorch image;
+  - every workflow that starts a pod terminates it in an always-run step and bounds its follower;
+  - no artifact path can carry data;
+  - no tool prints a pod listing.
+
 1. **Pay for GPUs, not for waiting.** Training runs on RunPod GPUs (0.2-0.3 USD/h cards). The
    free GitHub runners evaluate. A paid CPU pod is used only when its speed is worth the money.
 2. **Nothing runs blind.** Every pod writes a log that can be read while it runs
