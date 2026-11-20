@@ -146,6 +146,13 @@ jobs:
           . "$GITHUB_ENV"
           # A prefill only downloads: network-bound, so 4 vCPU (~0.12 USD/h) instead of 32 (~1.1 USD/h).
           VCPU=${{ inputs.data_only && '4' || '32' }} UPLOAD_TOKEN=$UPLOAD_TOKEN python hybrid/gpu/runpod_v2.py cpu-start
+      - name: Pod id, readable while the job runs (https://<pod>-8000.proxy.runpod.net/log.txt)
+        run: echo "${{ steps.pod.outputs.pod_id }}" > pod_id.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: podid-${{ github.run_id }}-${{ strategy.job-index }}
+          path: pod_id.txt
+          retention-days: 3
       - name: Send the models
         env:
           POD_ID: ${{ steps.pod.outputs.pod_id }}

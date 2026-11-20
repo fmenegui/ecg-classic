@@ -52,6 +52,13 @@ jobs:
         run: |
           tok=$(python -c 'import secrets; print(secrets.token_hex(24))'); echo "::add-mask::$tok"
           UPLOAD_TOKEN=$tok python hybrid/gpu/runpod_v2.py cpu-start
+      - name: Pod id, readable while the job runs (https://<pod>-8000.proxy.runpod.net/log.txt)
+        run: echo "${{ steps.pod.outputs.pod_id }}" > pod_id.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: podid-${{ github.run_id }}
+          path: pod_id.txt
+          retention-days: 3
       - name: Follow
         env:
           POD_ID: ${{ steps.pod.outputs.pod_id }}
