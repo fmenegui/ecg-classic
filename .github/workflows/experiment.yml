@@ -41,7 +41,7 @@ jobs:
       - name: Start both parts
         run: |
           T="${{ inputs.tag }}"
-          case "$T" in (dev-*) ;; (*) echo "the tag must start with dev-"; exit 1;; esac
+          case "$T" in (dev*) ;; (*) echo "the tag must start with dev"; exit 1;; esac
           M="${{ inputs.models }}"
           if [ "${{ inputs.pm }}" = "true" ]; then
             gh workflow run pod-eval.yml -R "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}" -f what=pm -f per_scenario=5 \
