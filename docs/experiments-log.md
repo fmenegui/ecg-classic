@@ -80,7 +80,14 @@ Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-
 | rowheavy3c 44523858950 | 8.95 | 17.41 | 16.71 |
 | **rowheavy3e 44653806160** | **9.34** | **17.95** | **17.67** |
 | rowheavy3e + dewarp v2 (numpy, really running) | (rerunning) | 17.95 | 17.67 |
-| classical only; classical at 20 px/mm | (Kaggle only, running) | | |
+| classical only (no network) | — | 17.22 | 17.15 |
+| classical at 20 px/mm (rectified frame; same rules) | — | 17.51 (+0.29) | 17.79 (+0.64) |
+
+Classical at 20 vs 10 px/mm per type: 0001 24.38 → 25.20 (+0.82, as the simulated ceiling
+predicts), 0010 +0.13; every other degraded type loses 0.2-1.5 dB (0004 −1.48, 0012 −1.23): the
+classical thresholds were tuned at 10 px/mm. The overall gain comes from the clean renders, which
+dominate the linear mean. Resolution pays where the trace is clean; a row network trained at
+20 px/mm is the test that matters.
 
 ## 5. Diagnostics
 
