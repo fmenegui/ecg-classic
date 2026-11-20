@@ -40,8 +40,9 @@ if [ "${TS_KAGGLE:-1}" = "1" ]; then
 fi
 python benchmarks/topsol/prepare.py --out "$W/data" $PREP
 t0=$(date +%s)
-( cd "$W/work" && TS_DATA="$W/data" TS_INPUT="$W/input" TS_WORK="$W/work" python "$W/run.py" 2>&1 | tr '\r' '\n' \
-    | grep -vE "^\s+[0-9]+ |^\s*$" | tail -60 )
+( cd "$W/work" && TS_DATA="$W/data" TS_INPUT="$W/input" TS_WORK="$W/work" python "$W/run.py" > "$W/solution.log" 2>&1 )
+# progress lines (\r) dropped; every error kept with its context
+tr '\r' '\n' < "$W/solution.log" | grep -vE "^\s+(\[GPU[0-9]\])?\s*[0-9]+(/[0-9]+)? |^\s*$" | grep -vE "WARN.*imread" | head -150
 echo "solution ran in $(( $(date +%s) - t0 )) s on $(ls $W/work/outputs/digitalised 2>/dev/null | wc -l) images"
 python benchmarks/topsol/to_npz.py "$W/work/outputs/digitalised" "$W/data/test.csv" "$W/ext"
 

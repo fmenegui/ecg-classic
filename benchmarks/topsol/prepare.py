@@ -48,7 +48,9 @@ def main():
     if a.kaggle_dir:
         ids = [i for i in a.kaggle_ids.split(",") if i]
         for rid in ids:
-            d = a.kaggle_dir / "train" / rid
+            d = a.kaggle_dir / rid                      # kaggle_zip.py layout: <dir>/<record>/<record>-<type>.png
+            if not d.exists():
+                d = a.kaggle_dir / "train" / rid
             csv_p = d / f"{rid}.csv"
             if not csv_p.exists():
                 continue
