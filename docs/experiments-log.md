@@ -93,6 +93,7 @@ Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-
 | base: rowreal 44206699093 | 9.12 | 17.71 | 17.13 |
 | + dewarp v2 (torch missing: never ran) | 9.12 | 17.71 | 17.13 |
 | + page v3 + rhythm margin | (timed out: 44787684688) | 17.72 | 17.14 |
+| rowheavy3e + page v3 (free runners, 44834958768; 19 of 20 shards) | 9.16 → 9.59 (+0.43) on 280 (4.7%); failed leads 15.4 → 11.7%; Kaggle metric on PM 15.62 → 14.22 | (17.72 with rowreal) | |
 | rowheavy3c 44523858950 | 8.95 | 17.41 | 16.71 |
 | **rowheavy3e 44653806160** | **9.34** | **17.95** | **17.67** |
 | rowheavy3e + dewarp v2 (numpy, really running) | 9.26 (-0.07) | 17.95 | 17.67 |
@@ -142,6 +143,14 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
 - **Page v3 with rowheavy3e (Nov 20, pod-eval 44787684688, 32 vCPU, 3 h, ~3.4 USD): no result.**
   The PM dev part hit the 3 h limit (exit code 124) with nothing kept. The evaluator now prints
   its progress and stops before the limit with partial results (runpod-troubleshooting section 10).
+- **Page v3 with rowheavy3e on free runners (Nov 20, pmcardio.yml 44834958768, 0 USD).** 19 of 20
+  shards (one runner was shut down by GitHub; rerun started): 280 of 6,000 ECGs paired with
+  rowheavy3e alone. PMcardio-style SNR 9.16 → 9.59 dB (+0.43), PCC 0.681 → 0.722, failed leads
+  15.4% → 11.7%; 60-scenario mean 9.25 → 9.65. Gains: contrast +2.27, perspective +1.04, screens
+  +1.42, resolution (failed leads 30% → 10%). Losses: rotation −0.64, padding −0.55, doogee and
+  scans −0.7. The Kaggle metric on the same PM leads falls 15.62 → 14.22 (it is dominated by the
+  best images: digital 21.7 → 19.6, scans 10.7 → 7.0), so the page network trades a little
+  precision on clean pages for fewer failures. On Kaggle dev (with rowreal) it was neutral (+0.01).
 - **Dewarp v2 with rowheavy3e (Nov 20, pod-eval 44789252756, 32 vCPU, 1.7 h, ~1.9 USD).** PM dev
   300 of 6,000 ECGs (5%): 9.34 -> 9.26 dB, failed leads 15.2% -> 15.9%; Kaggle dev (540 images,
   6.1%) unchanged (17.95). It changed only blur, brightness and contrast images (-0.13 to -0.36 dB)
@@ -191,7 +200,7 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
 | 44834948746 | env-check | 1 h | cents |
 | 44834954765 | rowheavy4 smoke: done, OK | | 0.08 USD |
 | 44837522288 | rowheavy4, 285 min on the volume, then the free dev benchmark | 5.8 h | 2.9 USD |
-| 44834958768 | PM dev, rowheavy3e + page v3, on free GitHub runners (pmcardio.yml, 20 shards) | 5 h | free |
+| 44834958768 | PM dev, rowheavy3e + page v3, free runners: 19 of 20 shards done, shard 7 rerunning | 5 h | free |
 | 44834962498 | Open-ECG-Digitizer, Kaggle dev again (scoring fixed) | 4 h | 2.0 USD |
 | 44834966288 / 44834969780 / 44834973129 | Open-ECG-Digitizer input size: none / 2200x1700 / 3300x2550, 1 PM-ECG-ID ECG per scenario | 1 h each | 1.5 USD |
 | 44834976689 | 2nd place, PM-ECG-ID 3x4+1R pages: done (1 of 300 read) | | 0.16 USD |
