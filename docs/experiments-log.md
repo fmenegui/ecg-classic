@@ -119,8 +119,10 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
   300 of 6,000 ECGs (5%): 9.34 -> 9.26 dB, failed leads 15.2% -> 15.9%; Kaggle dev (540 images,
   6.1%) unchanged (17.95). It changed only blur, brightness and contrast images (-0.13 to -0.36 dB)
   and photos_bents (+0.09 dB SNR but failed leads 0% -> 18.3%); crumbled photos, where it should
-  help, did not change. Not adopted: the gate that decides when to flatten fires on the wrong
-  images. Next: gate on the measured local residual of the grid, not on the page network's warp.
+  help, did not change. Not adopted: both readings are made and the one with the better internal
+  quality score is kept (`dewarp_margin` 0), and that score prefers the flattened reading on images
+  where it is worse. Next: a margin (`dewarp_margin` > 0) or a score that tracks the error, checked
+  on the per-image `dewarp_select` fields.
   - Their methods are summarised in [`kaggle-insights.md`](kaggle-insights.md).
   - 2nd place smoke test (run 44796609191, 24 GB card, 185 s for 36 images,
     `TS_LIMIT=18 TS_PM_FORMATS=3x4+1R`):
