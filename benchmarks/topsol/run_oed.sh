@@ -2,9 +2,9 @@
 # Open-ECG-Digitizer (Ahus-AIM, Akershus University Hospital; Stenhede et al., npj Digit Med 2026;
 # CC BY-SA 4.0) on our development sets, on a GPU pod:
 #   bash benchmarks/topsol/run_oed.sh          (gpu-train.yml kaggle=true for the Kaggle part)
-# The images are resized to the size of its training images before it reads them
-# (TS_OED_SIZE, default 2200x1700: the ECG-Image-Kit page it was trained on; aspect kept, white
-# padding; TS_OED_SIZE=none keeps the original size). Generic layouts (lead_layouts_all.yml: 12x1, 6x2, 3x4 with 0-3 rhythm strips, ...).
+# Input size: TS_OED_SIZE=WxH fits every image inside WxH (aspect kept, white padding); the default,
+# none, keeps the images as they are (it resamples to 3000 px inside). Nov 20, 60 PM-ECG-ID ECGs:
+# 2200x1700 3.91 dB, own size 5.09, 3300x2550 5.12 (runs 44834969780, 44834966288, 44834973129). Generic layouts (lead_layouts_all.yml: 12x1, 6x2, 3x4 with 0-3 rhythm strips, ...).
 # Options as run_hengck.sh: TS_PM, TS_KAGGLE, TS_LIMIT, TS_PM_FORMATS, TS_PM_PER.
 set -u
 W=/root/oed; mkdir -p "$W"
@@ -31,7 +31,7 @@ if [ "${TS_KAGGLE:-1}" = "1" ]; then
   if [ -n "${TS_LIMIT:-}" ]; then IDS=$(echo "$IDS" | tr ',' '\n' | head -n $(( (TS_LIMIT + 8) / 9 )) | paste -sd,); echo "$IDS" > "$W/kaggle_ids.txt"; fi
   PREP="$PREP --kaggle-dir /root/kaggle --kaggle-ids $IDS"
 fi
-RS="${TS_OED_SIZE:-2200x1700}"; [ "$RS" = none ] && RS=""      # none: the images as they are
+RS="${TS_OED_SIZE:-none}"; [ "$RS" = none ] && RS=""      # none: the images as they are
 python benchmarks/topsol/prepare.py --out "$W/data" ${RS:+--resize $RS} $PREP
 
 cat > "$W/code/src/config/ours.yml" <<YML
