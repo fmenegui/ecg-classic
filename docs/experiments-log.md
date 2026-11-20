@@ -115,6 +115,9 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
     homography to a reference page.
   - Running them on PM-ECG-ID (out of their distribution) and on our Kaggle dev set (in-sample for
     them: they trained on all training records) is in progress (`benchmarks/topsol/`).
+- **Page v3 with rowheavy3e (Nov 20, pod-eval 44787684688, 32 vCPU, 3 h, ~3.4 USD): no result.**
+  The PM dev part hit the 3 h limit (exit code 124) with nothing kept. The evaluator now prints
+  its progress and stops before the limit with partial results (runpod-troubleshooting section 10).
 - **Dewarp v2 with rowheavy3e (Nov 20, pod-eval 44789252756, 32 vCPU, 1.7 h, ~1.9 USD).** PM dev
   300 of 6,000 ECGs (5%): 9.34 -> 9.26 dB, failed leads 15.2% -> 15.9%; Kaggle dev (540 images,
   6.1%) unchanged (17.95). It changed only blur, brightness and contrast images (-0.13 to -0.36 dB)

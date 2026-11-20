@@ -8,7 +8,7 @@
 # Environment: WHAT (pm, kaggle or both), PER_SCENARIO (PM ECGs per scenario, 0 = all),
 # KAGGLE_PART/KAGGLE_NPARTS (subset of the Kaggle evaluation records), EVAL_CONFIG, JOBS.
 set -u
-RUN=$(dirname "$OUT_DIR"); D=/workspace/data; IN=${IN_DIR:-$RUN/in}
+T_JOB=$(date +%s); RUN=$(dirname "$OUT_DIR"); D=/workspace/data; IN=${IN_DIR:-$RUN/in}
 mkdir -p "$D" "$RUN"
 JOBS=${JOBS:-$(nproc)}
 echo "waiting for the models"
@@ -27,6 +27,12 @@ case "${WHAT:-both}" in pm|both)
     --sel-out "$RUN/pm_sel.csv" | tail -3
   echo "PM data ready in $(( $(date +%s) - t0 )) s"
   if [ "${DATA_ONLY:-}" = "1" ]; then echo "data only"; else
+  # stop 15 min before the pod's limit (MAX_HOURS) and keep the images read so far; when the
+  # Kaggle part follows, the PM part gets 60% of the time
+  if [ -n "${MAX_HOURS:-}" ]; then
+    F=$( [ "${WHAT:-both}" = pm ] && echo 1.0 || echo 0.6 )
+    export ECGDIG_DEADLINE=$(python -c "print(int($T_JOB + float('$MAX_HOURS') * 3600 * $F - 900))")
+  fi
   python benchmarks/pmcardio/eval_pm.py --root "$D/pm/visual_data" --gt "$D/pm/final_data/data" \
     --meta "$D/pm/final_data/metadata.csv" --list "$RUN/pm_sel.csv" --out "$RUN/pm" --jobs "$JOBS" $ARGS | tail -40
   cp "$RUN/pm/results.json" "$OUT_DIR/pm_results.json"; cp "$RUN/pm/report.md" "$OUT_DIR/pm_report.md" 2>/dev/null

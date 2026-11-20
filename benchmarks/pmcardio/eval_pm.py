@@ -142,7 +142,26 @@ def _run_all(jobs, n, cache: Path, root: Path):
         res[os.path.relpath(path, root)] = o
         key(path).write_bytes(pickle.dumps(o))
 
+    # ECGDIG_DEADLINE (epoch s): stop there and keep what is done (a pod's time limit used to lose
+    # every result: Nov 20, 3 h of a 32-vCPU pod). Progress goes to stderr once a minute.
+    deadline = float(os.environ.get("ECGDIG_DEADLINE", "0") or 0)
+    total, t_start, t_log, n_done0 = len(todo), time.time(), 0.0, len(res)
     while todo or futs:
+        now = time.time()
+        if now - t_log > 60:
+            k = len(res) - n_done0
+            eta = (total - k) * (now - t_start) / k / 60 if k else float("nan")
+            print(f"eval progress: {k} of {total} images, {now - t_start:.0f} s, ETA {eta:.0f} min",
+                  file=sys.stderr, flush=True)
+            t_log = now
+        if deadline and now > deadline:
+            print(f"deadline reached: {len(res) - n_done0} of {total} images read, "
+                  f"{len(todo) + len(futs)} not read (left out of the results)", file=sys.stderr, flush=True)
+            for ex in execs:
+                for pr in list(getattr(ex, "_processes", {}).values()):
+                    pr.kill()
+                ex.shutdown(wait=False, cancel_futures=True)
+            return res
         while todo and len(futs) < n:
             if cur is None or n_cur >= n * 4:
                 cur, n_cur = ProcessPoolExecutor(n), 0
@@ -364,7 +383,11 @@ def main():
     res = _run_all(jobs, a.jobs, a.out / "cache", a.root)
     rows = []
     m["scen"] = m["Image relative path"].str.split("/").str[0]
+    missing = 0
     for (scen, ecg, iid), g in m.groupby(["scen", "ECG ID", "Image ID"]):
+        if any(p not in res for p in g["Image relative path"]):   # not read before the deadline
+            missing += 1
+            continue
         pages = [res[p] for p in g["Image relative path"]]
         per, rhy = evaluate_ecg(L[ecg], RH[ecg], pages)
         rows.append(dict(scenario=scen, ecg=ecg, image_id=int(iid), format=g["ECG format"].iloc[0],
@@ -374,7 +397,10 @@ def main():
                          diag=[p.get("diag") for p in pages],
                          select=[p.get("select") for p in pages],
                          dewarp=[p.get("dewarp") for p in pages]))
-    (a.out / "results.json").write_text(json.dumps(dict(config=cfg, rows=rows), default=float))
+    if missing:
+        print(f"PARTIAL: {len(rows)} of {len(rows) + missing} ECGs evaluated (deadline); the rest are "
+              f"left out, not counted as failures", flush=True)
+    (a.out / "results.json").write_text(json.dumps(dict(config=cfg, rows=rows, not_read=missing), default=float))
     summarize(rows, a.out)
 
 

@@ -153,6 +153,16 @@ page is that none of these repeats.
   - The evaluator keeps every core busy (section 13).
 - **Practice.** Estimate the time from a previous run of the same configuration before choosing
   `max_hours`.
+- **Fifth case (Nov 20, 44787684688, rowheavy3e + page v3, ~3.4 USD).** Even at 3 h the PM dev
+  part did not finish (dewarp v2 on the same images took 1.7 h; the page network on CPU is
+  slower), and the run again kept nothing: the evaluator printed nothing until the end, so the
+  log could not tell slow from stuck.
+- **Prevention, now in the code (Nov 20):**
+  - `eval_pm.py` prints `eval progress: k of N images, ETA` to the log once a minute.
+  - It stops at `ECGDIG_DEADLINE`, which `podeval.sh` sets 15 min before the pod's limit (60% of
+    it when a Kaggle part follows), and writes the results of the images read so far, with
+    `PARTIAL: n of N ECGs` and `not_read` in results.json. Coverage must then be reported.
+  - The per-image cache stays on the volume under `/workspace/runs/<run>-0/pm/cache`.
 
 ## 11. The Kaggle archive answers 404 on a pod
 
