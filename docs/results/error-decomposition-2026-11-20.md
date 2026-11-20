@@ -25,10 +25,25 @@ what that error costs.
 Reading:
 
 - **Clean render (0001), 25.2 dB**: almost nothing is left to oracles (+0.5 dB in all); its remaining error is shape.
-- **Every other type loses 2.1-2.4 dB to horizontal time errors**: drift (time scale and shift per lead, +0.8-1.1 dB) and local drift (0.5 s windows, non-linear horizontal distortion, +1.2-1.5 dB). Rectification along the time axis is the largest single fixable error.
+- **Horizontal time errors are smaller than the per-lead oracles suggest.** Per lead, drift (time scale and shift) gains +0.8-1.1 dB and local drift (0.5 s windows) +1.2-1.5 dB on every degraded type, but these oracles also fit noise: on a synthetic page with noise only they gain +0.34 dB. With one shift per window shared by the leads of a page column (a geometric distortion moves them together), local drift is worth only +0.3-0.45 dB per type (run 44776638008):
+
+| Type | drift | local drift, per lead | local drift, shared by the leads of a page column |
+|---|---|---|---|
+| all | 18.40 | 19.09 (+0.69) | 18.57 (+0.17) |
+| 0001 | 25.36 | 25.45 (+0.09) | 25.37 (+0.00) |
+| 0003 | 16.63 | 17.86 (+1.24) | 16.95 (+0.32) |
+| 0004 | 15.56 | 16.98 (+1.43) | 16.01 (+0.45) |
+| 0005 | 14.60 | 15.92 (+1.31) | 14.96 (+0.36) |
+| 0006 | 13.31 | 14.66 (+1.36) | 13.63 (+0.33) |
+| 0009 | 13.85 | 15.38 (+1.54) | 14.20 (+0.36) |
+| 0010 | 15.88 | 17.12 (+1.24) | 16.22 (+0.34) |
+| 0011 | 16.81 | 18.24 (+1.43) | 17.22 (+0.41) |
+| 0012 | 15.55 | 16.74 (+1.20) | 15.88 (+0.33) |
+
+  The per-lead time-scale oracle (drift) has the same weakness; its geometric part is not measured yet.
 - **Layout, names, coverage, time origin cost little** (≤0.3 dB per type): failures are not the bottleneck on Kaggle.
 - **Gain and baseline**: 0.3-0.8 dB per type.
-- **Shape is the rest**: degraded types still end at 15.2-18.5 dB with every oracle, against 25.7 for 0001. Tracing precision on degraded images is the other large lever.
+- **Shape is the main lever**: degraded types still end at 15.2-18.5 dB with every oracle (and the oracles flatter them), against 25.7 for 0001. Tracing precision on degraded images is where the score is.
 
 The leaders score 22.6-22.9 dB on the private leaderboard. With the competition metric dominated by the
 linear mean, that requires the degraded types around 20 dB and the clean render near 28.
