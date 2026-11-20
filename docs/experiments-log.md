@@ -51,8 +51,21 @@ saw CV-to-private drops of ~4 dB.
 | 20/11 | 44653802675 | dewarp v2 (`--reuse 6`) | 3090, 0.5 | 4.8 | 2.38 | 75,827 steps (6× v1); local error 5 → 2.9 mm median; Kaggle dev 0.00 dB (flat images) |
 | 20/11 | 44653806160 | rowheavy3e (continues 3c) | 3090, 0.5 | 4.6 | 2.31 | **current best row network**: Kaggle dev 17.95 / holdout 17.67 (+0.54 / +0.95 over 3c; +0.24 / +0.53 over rowreal); PM dev 9.34 (+0.21 over rowreal); few real strips (built during training) |
 | 20/11 | 44778865703, 44786097024, 44789063535 | 2nd place solution, smoke | A4000-3090 | ~1 | ~0.3 | pipeline fixes (paths, timm version, layout); see §5 |
+| 20/11 | 44796609191 | 2nd place solution, smoke (36 images) | 3090, 0.5 | 1.2 | 0.60 | runs end to end; Kaggle dev 30.07 dB (in-sample: memorised); PM-ECG-ID 3x4+1R 0 of 18 read; see §5 |
+| 20/11 | 44797759750 | Open-ECG-Digitizer, smoke (18 images) | A4000, 0.25 | 0.4 | 0.10 | runs end to end, ~19 s per image; see §5 |
+| 20/11 | 44801827747 | Open-ECG-Digitizer, PM dev | 4000 Ada, 0.28 | 2.5 | 0.70 | 3.54 dB vs ours 9.34 (300 ECGs); see §5 |
+| 20/11 | 44801832861 | Open-ECG-Digitizer, Kaggle dev | (running) | | | |
 
 Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-models`.
+
+### CPU pods and environment checks
+
+| Date | Run | What | Pod | Hours | ~USD | Result |
+|---|---|---|---|---|---|---|
+| 20/11 | 44789056728 | real Kaggle strips, whole set (`realstrips-full`) | 32 vCPU, 1.12 | 0.8 | 0.9 | 6,447 of 6,894 pages kept (93.5%), 5.2 GB on `ecgdig-data2`; holdout excluded |
+| 20/11 | 44789252756 | PM dev: rowheavy3e + dewarp v2 | 32 vCPU, 1.12 | 2.4 | 2.7 | 9.26 dB (-0.07); not adopted (§5) |
+| 20/11 | 44787684688 | PM dev: rowheavy3e + page v3 | 32 vCPU, 1.12 | 3.0 | 3.4 | **lost**: hit the 3 h limit with nothing kept; evaluator now keeps partial results |
+| 20/11 | 44796740396 | env-check | 2 vCPU | 1.0 (queued) | 0 | cancelled: the two runs above held the account's 64 vCPUs; now fails in 5 min with that reason |
 
 ## 3. Whole-database evaluations (paired)
 
@@ -76,7 +89,7 @@ Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-
 |---|---|---|---|
 | base: rowreal 44206699093 | 9.12 | 17.71 | 17.13 |
 | + dewarp v2 (torch missing: never ran) | 9.12 | 17.71 | 17.13 |
-| + page v3 + rhythm margin | (rerunning) | 17.72 | 17.14 |
+| + page v3 + rhythm margin | (timed out: 44787684688) | 17.72 | 17.14 |
 | rowheavy3c 44523858950 | 8.95 | 17.41 | 16.71 |
 | **rowheavy3e 44653806160** | **9.34** | **17.95** | **17.67** |
 | rowheavy3e + dewarp v2 (numpy, really running) | 9.26 (-0.07) | 17.95 | 17.67 |
@@ -88,6 +101,14 @@ predicts), 0010 +0.13; every other degraded type loses 0.2-1.5 dB (0004 −1.48,
 classical thresholds were tuned at 10 px/mm. The overall gain comes from the clean renders, which
 dominate the linear mean. Resolution pays where the trace is clean; a row network trained at
 20 px/mm is the test that matters.
+
+### Other methods on the same development sets
+
+| Method | PM dev SNR (ECGs) | PM failed leads | PM Kaggle metric | Kaggle dev (images) | Note |
+|---|---|---|---|---|---|
+| ours, rowheavy3e | 9.34 (300) | 15.2% | 15.48 | 17.95 (540) | |
+| Open-ECG-Digitizer | 3.54 (300) | 24.5% | 5.37 | (running) | images fitted inside 2200x1700; size sensitivity not checked yet |
+| 2nd place Kaggle | 0.00 (18, 3x4+1R only) | 100% | 0.42 | 30.07 (18) | Kaggle records are in its training set; fails the page template on PM |
 
 ## 5. Diagnostics
 
@@ -160,10 +181,9 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
       A sensitivity check (no resize / 2200x1700 / larger) on ~30 images is the next step before
       calling this its final number.
 
-## 6. Running now (Nov 20, 18:10 UTC)
+## 6. Running now (Nov 20, 22:10 UTC)
 
-- Real Kaggle strips at scale: 6,894 pages on a 32-vCPU pod with 12 parallel readers, on the new
-  volume `ecgdig-data2` (EU-RO-1).
-- 2nd place solution, smoke test (36 images) after the timm and layout fixes.
-- PM dev: rowheavy3e + page v3; rowheavy3e + dewarp v2.
-- Kaggle dev: classical at 10 vs 20 px/mm.
+- Open-ECG-Digitizer on Kaggle dev (44801832861), ends ~23:15 UTC.
+- Waiting for RunPod credit: rowheavy4 on the full real strips (smoke first), page v3 PM dev again
+  (with the new deadline), 2nd place on every PM-ECG-ID 3x4+1R page, Open-ECG-Digitizer input-size
+  check.

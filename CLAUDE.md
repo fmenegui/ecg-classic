@@ -67,7 +67,9 @@ code on every push.
 - A result of exactly 0.00 dB change is a bug until the per-image fields show the component ran.
 - Every adapter, converter or duplicated list gets a test.
 - Calibrate any oracle on a case with no error of its kind before trusting its gain.
-- After each result: update `docs/experiments-log.md` (and the leaderboard) the same day.
+- `docs/experiments-log.md` is the experiment diary: every run gets a line the same day it ends,
+  including smoke tests, failed, cancelled and lost runs (run id, card or pod, hours, USD, result
+  or cause). Update the leaderboard with every development result.
 
 ## Git
 
