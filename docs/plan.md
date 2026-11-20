@@ -1,5 +1,8 @@
 # Plan: format and structure first (from 16/11/2026)
 
+> **Superseded on Nov 20, 2026 by [`roadmap.md`](roadmap.md).** Kept as the plan of Nov 16 (classical, format first).
+
+
 **Goal.** Beat the published PMcardio numbers on the whole PM-ECG-ID database and then the Kaggle PhysioNet leaders, with a classical method only (the hybrid waits).
 
 | Target | Now (`43cb3a6`) | Goal |

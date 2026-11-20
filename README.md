@@ -6,16 +6,34 @@ ecgdig turns a picture of a paper ECG (scan, rasterized PDF or phone photo) into
 
 ## Results
 
-| Benchmark | ecgdig | Reference |
-|---|---|---|
-| [PM-ECG-ID](benchmarks/pmcardio/), whole database: 6,000 ECGs, 60 capture scenarios | SNR **8.51 dB**, PCC **0.686**, failed leads **13.6%** | PMcardio (published, deep learning): SNR > 12.5 dB, PCC > 0.91, 6.62% |
-| PM-ECG-ID, pages whose format was read correctly (74% of single-page ECGs) | SNR 11.7 dB, PCC 0.864 | |
-| PM-ECG-ID, `photos_scans` (100 desk scans) | SNR 14.8 dB, PCC 0.917 | |
-| [PhysioNet (Kaggle)](benchmarks/physionet/) training images, 135 local (15 records × 9 captures) | SNR **14.70 dB** | a deep-learning entry ranked 24th of 1,425: 19.7 dB (private leaderboard) |
-| [LITFL](benchmarks/litfl/), real pages without a signal ground truth (70 of the 102 that the site served to CI) | layout 93%, rhythm strips 94%, layout + speed + duration + gain 91%; Einthoven residual 0.45 | hand-reviewed reference |
-| Synthetic pages with exact ground truth: medium / heavy degradation / creased paper | 21.6 / 19.4 / 18.1 dB | |
+Current numbers (Nov 20, 2026), classical pipeline with the learned row network (hybrid), and the
+classical pipeline alone:
 
-SNR and PCC follow each benchmark's own metric: per lead, with a small time alignment and the offset removed; on PM-ECG-ID a lead that is missing or less than half covered counts as SNR 0 and PCC 0. Where the format is read correctly, the classical pipeline is close to PMcardio; the remaining gap is mostly pages whose format is misread (crossing traces, unreadable labels) and the hardest degradations (blur 31/41, resolution 1/16–1/32, near-invisible traces). Details, history and next steps: [`docs/evaluation-and-roadmap.md`](docs/evaluation-and-roadmap.md).
+| Benchmark | ecgdig hybrid | ecgdig classical | Reference |
+|---|---|---|---|
+| [PM-ECG-ID](benchmarks/pmcardio/), whole database (6,000 ECGs, 60 capture scenarios), PMcardio-style SNR | **9.71 dB** | 8.51 dB (PCC 0.686, 13.6% failed leads) | PMcardio: 14.48 dB (60-subset mean of its paper); 14.05 dB, PCC 0.885, 6.62% failed in its supplementary table |
+| [PhysioNet (Kaggle)](benchmarks/physionet/) training records, all 8,793 images, official metric | **18.12 dB** (holdout records never trained on: 18.04) | 17.58 dB (8,352 images, 95%) | leaders 22.6-23.3 dB on the hidden test (other images) |
+| Kaggle hidden test, official late submission | not submitted yet | 13.03 dB (private) | 1st place 23.33 dB |
+| [LITFL](benchmarks/litfl/), real pages without a signal ground truth (70 of the 102 the site served to CI) | | layout 93%, rhythm strips 94%, layout + speed + duration + gain 91% | hand-reviewed reference |
+
+SNR and PCC follow each benchmark's own metric: per lead, with a small time alignment and the
+offset removed; on PM-ECG-ID a lead that is missing or less than half covered counts as SNR 0 and
+PCC 0. The Kaggle metric is the competition's (mean of linear image SNRs, then dB).
+
+Documentation:
+
+| Document | What |
+|---|---|
+| [`docs/experiments-log.md`](docs/experiments-log.md) | every training and evaluation, with coverage, card, hours and cost |
+| [`docs/leaderboard.md`](docs/leaderboard.md) | the development leaderboard (same sets for every experiment) |
+| [`docs/roadmap.md`](docs/roadmap.md) | what comes next |
+| [`docs/lessons.md`](docs/lessons.md) | what worked, what did not, mistakes not to repeat |
+| [`docs/infrastructure.md`](docs/infrastructure.md) | GitHub Actions + RunPod: architecture, rebuild from zero, recipes, costs |
+| [`docs/runpod-troubleshooting.md`](docs/runpod-troubleshooting.md) | every RunPod problem met, how to recognise it, what it cost, the safeguard |
+| [`docs/kaggle-insights.md`](docs/kaggle-insights.md) | what the top Kaggle solutions did |
+| [`docs/hybrid.md`](docs/hybrid.md) | the learned components inside the classical pipeline |
+| [`docs/evaluation-and-roadmap.md`](docs/evaluation-and-roadmap.md) | history of the classical pipeline (Nov 12-16) |
+| [`docs/results/`](docs/results/) | per-scenario and per-type tables of each whole-database run |
 
 ## Examples on PM-ECG-ID
 

@@ -1,5 +1,8 @@
 # ecgdig: evaluation and roadmap
 
+> **Historical (Nov 12-16, 2026, classical pipeline).** Current status: [`experiments-log.md`](experiments-log.md); next steps: [`roadmap.md`](roadmap.md).
+
+
 *Classical ECG digitizer (no deep learning). History of the evaluations from 12/11/2026 to 16/11/2026, what each change bought, what still fails and what comes next.*
 
 ## 1. Where it stands

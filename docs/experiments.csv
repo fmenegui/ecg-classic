@@ -3,7 +3,7 @@ dev2-base,row network 44206699093 (rowreal); classical layout; no page or dewarp
 dev2-page3,base + page network v3 (44560948929) with page select and the rhythm margin
 dev2-dewarp2,base + dewarp v2 (44653802675); before Nov 20 the dewarp reading failed on hosts without torch
 dev2-row3e,row network rowheavy3 continued (44653806160)
-dev2-rowheavy,row network rowheavy (44523858950)
+dev2-rowheavy,row network rowheavy3c (44523858950; the init of rowheavy3e)
 dev3-row3e-dewarp2,rowheavy3 + dewarp v2 (numpy flatten)
 dev3-row3e-page3,rowheavy3 + page v3
 dev3-classical,classical reader only (no network)
