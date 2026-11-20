@@ -53,9 +53,9 @@ on:
         default: ''
         type: string
       volume:
-        description: run on the data volume (EUR-IS-1); off = any other data center, data downloaded on the pod
+        description: run on the data volume (EUR-IS-1, data already there); off = any other data center, data downloaded on the pod
         type: boolean
-        default: false
+        default: true
       tag:
         description: 'Label'
         required: false

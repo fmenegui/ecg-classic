@@ -23,9 +23,10 @@ import urllib.request
 from pathlib import Path
 
 API = "https://api.runpod.io/v2"
-# CPU pods need Python, git and curl only: a small image starts in minutes on any host (the
-# 8 GB CUDA image kept two 32-vCPU pods from serving for an hour)
-IMAGE = os.environ.get("CPU_IMAGE", "python:3.11-bookworm")
+# The RunPod PyTorch image. Tried python:3.11-bookworm on Nov 20: the Kaggle archive answers 404 to
+# pods on that image in every data center (dc-probe runs 44772888742 and 44774777374), and the
+# pods that "did not start" the day before were the EUR-IS-1 proxy outage, not the image size.
+IMAGE = os.environ.get("CPU_IMAGE", "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04")
 DATA_CENTERS = os.environ.get("DATA_CENTERS", "EUR-IS-1,EU-RO-1,EU-SE-1,CA-MTL-3,EU-CZ-1,EUR-NO-1").split(",")
 NAME = "ecgdig-eval-" + os.environ.get("GITHUB_RUN_ID", "local") + "-" + os.environ.get("SHARD", "0")
 MAX_USD_H = float(os.environ.get("MAX_USD_H", "1.2"))

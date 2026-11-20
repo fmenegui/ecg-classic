@@ -25,8 +25,10 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent)); sys.path.insert(0, str(HERE.parent / "benchmarks" / "physionet"))
 
+# the 15 local evaluation records (same list as benchmarks/compare.py and merge_shards.py). Until
+# Nov 20 this list stopped after 8 ids, so 5 of them (not id % 5 == 0) could become real strips
 LOCAL15 = set(("1257259783,2587667307,3042142152,426433979,994226251,119693645,1449491391,1962423499,"
-               ).strip(",").split(","))
+               "235672018,2841936136,3574249147,3646789790,3879757040,4050029009,644026427").split(","))
 
 
 def is_holdout(rid: str) -> bool:
