@@ -52,6 +52,7 @@ jobs:
       WAIT_MIN: '15'
       BALANCE_RESERVE: '1'
       BOOT_MIN: '25'
+      QUEUE_MIN: '5'   # the account's 64-vCPU limit: our own CPU pods can hold it for hours; report, do not wait
     steps:
       - name: Job start time
         run: echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"
@@ -86,6 +87,9 @@ jobs:
         if: always()
         run: |
           L=result/log.txt
+          if grep -q "concurrent vCPUs" start.txt 2>/dev/null; then
+            echo "FAIL no CPU pod could start: the account's 64 vCPUs are in use (running pod-eval / pod-job runs); rerun when they finish" >> "$GITHUB_STEP_SUMMARY"; exit 1
+          fi
           if [ ! -s "$L" ]; then echo "FAIL pod did not answer through the proxy" >> "$GITHUB_STEP_SUMMARY"; exit 1; fi
           echo "OK pod answered through the proxy" >> "$GITHUB_STEP_SUMMARY"
           grep -q "volume writable" "$L" && echo "OK volume writable" >> "$GITHUB_STEP_SUMMARY" || echo "FAIL volume not writable" >> "$GITHUB_STEP_SUMMARY"

@@ -128,6 +128,10 @@ page is that none of these repeats.
   `allows 64 concurrent vCPUs`.
 - **Prevention, now in the code.** On that answer the pod waits in line up to `QUEUE_MIN` = 150 min.
 - **Practice.** Plan at most two 32-vCPU pods at a time, or use 16 vCPU each.
+- **Second case (Nov 20).** `env-check.yml` was started while two PM dev evaluations held 2 x 32
+  vCPU. Its 2-vCPU test pod waited in line for 60 min and the job was cancelled without a verdict.
+  Now env-check waits only 5 min (`QUEUE_MIN=5`) and reports `FAIL ... 64 vCPUs are in use`.
+  Run env-check when no 32-vCPU pod is running (GPU pods do not count toward the limit).
 
 ## 9. No machine available
 

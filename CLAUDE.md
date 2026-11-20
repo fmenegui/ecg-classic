@@ -20,6 +20,7 @@ code on every push.
 1. `gh workflow run env-check.yml` (~10 min, cents). Every line of its summary must be OK: tests,
    Kaggle archive from GitHub, RunPod balance and volume, a pod on the volume answering through the
    proxy, the volume writable, and the Kaggle archive reachable from the pod.
+   It needs 2 free vCPU: do not run it while two 32-vCPU pods are running.
 2. Smoke-test each new or changed job for 10-20 minutes (same job, small inputs: `TS_LIMIT`,
    `per_scenario=1`, `--minutes 10`) and read its log before the long run.
 
