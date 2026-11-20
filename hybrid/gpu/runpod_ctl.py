@@ -164,6 +164,8 @@ def _try_cards(gpus, asked, q, cloud, env, cmd, vol=None):
         if d and d.get("id"):
             print(f"started {d['id']} on {g} (>= {vcpu} vCPU, {cloud} cloud), {d.get('costPerHr')} USD/h", file=sys.stderr)
             print(f"pod_id={d['id']}")
+            # an annotation: the pod id is visible on the run while it runs (to look at its log)
+            print(f"::notice title=pod::{d['id']} {g}", flush=True)
             print(f"gpu={g}")
             return d["id"], g
     return last

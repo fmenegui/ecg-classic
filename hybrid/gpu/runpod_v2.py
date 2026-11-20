@@ -131,6 +131,7 @@ def cpu_start():
                 print(f"started {d['id']} {flavor} x{vcpu} vCPU in {d.get('dataCenterId') or dc or 'any'}, "
                       f"{cost} USD/h{'' if vol else ', no volume'}", file=sys.stderr)
                 out("pod_id", d["id"])
+                print(f"::notice title=pod::{d['id']} {flavor}", flush=True)
                 return
             last = f"{flavor}: {s} {str(d.get('error', ''))[:200]}"
             print(last, file=sys.stderr)
