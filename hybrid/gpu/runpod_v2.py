@@ -6,7 +6,7 @@ mount it, model upload, follow and terminate. Used by .github/workflows/pod-eval
     python hybrid/gpu/runpod_v2.py put FILE [FILE ...]     # sends files to the pod's /workspace/in
     python hybrid/gpu/runpod_v2.py stop                    # terminates POD_ID
 
-The volume (VOLUME_NAME, default ecgdig-data, VOLUME_GB) is created once in the first data center
+The volume (VOLUME_NAME, default ecgdig-data2, VOLUME_GB) is created once in the first data center
 of DATA_CENTERS that accepts it and is reused; the datasets on it are downloaded once (PM-ECG-ID
 from Zenodo, the Kaggle training records) and never leave it: the pod's HTTP port serves only its
 per-run output folder (logs, results.json, report.md). Never prints a pod's environment.
@@ -27,7 +27,11 @@ API = "https://api.runpod.io/v2"
 # pods on that image in every data center (dc-probe runs 44772888742 and 44774777374), and the
 # pods that "did not start" the day before were the EUR-IS-1 proxy outage, not the image size.
 IMAGE = os.environ.get("CPU_IMAGE", "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04")
-DATA_CENTERS = os.environ.get("DATA_CENTERS", "EUR-IS-1,EU-RO-1,EU-SE-1,CA-MTL-3,EU-CZ-1,EUR-NO-1").split(",")
+# ecgdig-data (EUR-IS-1) stopped answering: pods with it mounted gave 404/520 through the proxy
+# for hours on Nov 19-20 while pods there without it answered. The data volume is now
+# ecgdig-data2, created in the first data center below that accepts it (CPU pods, the proxy and
+# the Kaggle archive all worked in EU-RO-1 on Nov 20, dc-probe 44774777374).
+DATA_CENTERS = os.environ.get("DATA_CENTERS", "EU-RO-1,EU-CZ-1,US-KS-2").split(",")
 NAME = "ecgdig-eval-" + os.environ.get("GITHUB_RUN_ID", "local") + "-" + os.environ.get("SHARD", "0")
 MAX_USD_H = float(os.environ.get("MAX_USD_H", "1.2"))
 CPU_DCS = os.environ.get("CPU_DCS", "EU-RO-1,EU-SE-1,EUR-NO-1,EU-CZ-1,CA-MTL-3,US-KS-2,US-GA-1,US-TX-3,EUR-IS-1").split(",")
@@ -58,7 +62,7 @@ def out(k, v):
 
 
 def volume():
-    name = os.environ.get("VOLUME_NAME", "ecgdig-data")
+    name = os.environ.get("VOLUME_NAME", "ecgdig-data2")
     s, d = call("GET", "/network-volumes")
     for v in d.get("networkVolumes", []):
         if v.get("name") == name:

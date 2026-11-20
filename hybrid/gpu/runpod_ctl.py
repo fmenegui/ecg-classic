@@ -190,6 +190,7 @@ def _get(url, timeout=30, total=None):
 
 
 LOST_MIN = 20
+BOOT_MIN = float(os.environ.get("BOOT_MIN", "35"))   # image pull + setup took up to ~25 min on slow hosts
 STALL_MIN = 25     # pod.sh logs the GPU use every 2 min: a log that stops growing means a dead job
 CKPT_MIN = 30
 CKPT_FILES = ["page_best.onnx", "page_best.pt", "unet_best.pt", "trace_seg_best.onnx", "dewarp_best.onnx",
@@ -225,6 +226,7 @@ def follow(out: Path):
     status = ""
     out.mkdir(parents=True, exist_ok=True)
     last_ok, last_ckpt, last_grow = time.time(), time.time(), time.time()
+    t_start = time.time()
     while time.time() < limit:
         try:
             status = _get(base + "/status.txt").decode().strip()
@@ -237,6 +239,12 @@ def follow(out: Path):
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:   # pod still booting
             print(f"[waiting: {getattr(e, 'code', '')} {type(e).__name__}]", flush=True)
         if status in ("done", "nogpu"):
+            break
+        if not seen and time.time() - t_start > BOOT_MIN * 60:
+            # a pod that never answered (EUR-IS-1 pods with the volume, Nov 19-20) will not:
+            # stop paying for it
+            print(f"the pod never answered in {BOOT_MIN} min: giving up on it", flush=True)
+            status = "lost"
             break
         if seen and time.time() - last_ok > LOST_MIN * 60:
             # the pod answered before and has not for LOST_MIN minutes (host reset or lost):
