@@ -15,6 +15,14 @@ code on every push.
 - Never compare our local Kaggle numbers with the leaders' private-leaderboard score as if they
   were on the same images.
 
+## Before a batch of experiments
+
+1. `gh workflow run env-check.yml` (~10 min, cents). Every line of its summary must be OK: tests,
+   Kaggle archive from GitHub, RunPod balance and volume, a pod on the volume answering through the
+   proxy, the volume writable, and the Kaggle archive reachable from the pod.
+2. Smoke-test each new or changed job for 10-20 minutes (same job, small inputs: `TS_LIMIT`,
+   `per_scenario=1`, `--minutes 10`) and read its log before the long run.
+
 ## Money (RunPod)
 
 - GPUs: cheap cards only (≤ 0.5 USD/h: A5000, 3090, A4500, 4000 Ada, A4000, L4). Never 4090, L40S,

@@ -219,6 +219,7 @@ Behaviour and settings:
 | `volume-fetch.yml` | checkpoints of a run left on the volume → artifact usable as `init_run` | 2-vCPU pod | cents |
 | `dc-probe.yml` | which data centers answer, and reach Kaggle | 2-vCPU pods | cents |
 | `topsol-survey.yml` | public notebooks and code datasets of the top Kaggle solutions | GitHub | free |
+| `env-check.yml` | is everything ready: tests, Kaggle from GitHub, RunPod balance and volume, a pod on the volume answering, writing and reaching Kaggle | GitHub + 2-vCPU pod | cents, ~10 min |
 | `gpu-stop-all.yml` | terminate every training pod of the account (emergency only: also kills parallel runs) | GitHub | — |
 | `kaggle-zip-probe.yml` | Kaggle archive reachable from a runner | GitHub | free |
 
