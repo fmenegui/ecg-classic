@@ -181,9 +181,15 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
       A sensitivity check (no resize / 2200x1700 / larger) on ~30 images is the next step before
       calling this its final number.
 
-## 6. Running now (Nov 20, 22:10 UTC)
+## 6. Running now (Nov 20, 23:12 UTC; credit added)
 
-- Nothing on RunPod.
-- Waiting for RunPod credit: rowheavy4 on the full real strips (smoke first), page v3 PM dev again
-  (with the new deadline), 2nd place on every PM-ECG-ID 3x4+1R page, Open-ECG-Digitizer input-size
-  check and its Kaggle dev scoring again.
+| Run | What | Limit | Worst case |
+|---|---|---|---|
+| 44834948746 | env-check | 1 h | cents |
+| 44834954765 | rowheavy4 smoke: full real strips from the volume, init rowheavy3e, 10 min | 0.7 h | 0.35 USD |
+| 44834958768 | PM dev, rowheavy3e + page v3, on free GitHub runners (pmcardio.yml, 20 shards) | 5 h | free |
+| 44834962498 | Open-ECG-Digitizer, Kaggle dev again (scoring fixed) | 4 h | 2.0 USD |
+| 44834966288 / 44834969780 / 44834973129 | Open-ECG-Digitizer input size: none / 2200x1700 / 3300x2550, 1 PM-ECG-ID ECG per scenario | 1 h each | 1.5 USD |
+| 44834976689 | 2nd place, PM-ECG-ID 3x4+1R pages, 5 per scenario | 1.5 h | 0.75 USD |
+
+After the smoke: rowheavy4, 285 min on the volume (`use_volume=true`).
