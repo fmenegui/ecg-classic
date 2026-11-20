@@ -144,6 +144,11 @@ jobs:
           [ -f model/page.onnx ] && ARGS="$ARGS --config page_model=$PWD/model/page.onnx"
           [ -f model/dewarp.onnx ] && ARGS="$ARGS --config dewarp_model=$PWD/model/dewarp.onnx"
           python benchmarks/physionet/run.py eval --n 1000 --jobs 4 --keep-raw 0 --ids "$ID" --out results/physionet $ARGS
+      - name: Error decomposition (numbers only; the signals stay on the runner)
+        if: always()
+        run: |
+          [ -d results/physionet/sig ] && python benchmarks/physionet/diagnose.py results/physionet > /dev/null || true
+          rm -rf results/physionet/sig
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -151,6 +156,7 @@ jobs:
           path: |
             results/physionet/results.json
             results/physionet/report.md
+            results/physionet/decomposition.json
           retention-days: 30
   merge:
     needs: shard
@@ -167,6 +173,10 @@ jobs:
           pattern: kfull-${{ inputs.tag }}-*
           path: shards
       - run: python benchmarks/physionet/merge_shards.py shards merged | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Error decomposition per type
+        run: |
+          python -c "import glob,json; json.dump(sum((json.load(open(f)) for f in glob.glob('shards/*/decomposition.json')), []), open('merged/decomposition.json','w'))"
+          python benchmarks/physionet/decomp_summary.py merged/decomposition.json --md merged/decomposition.md | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: kfull-${{ inputs.tag }}-merged
