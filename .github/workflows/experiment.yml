@@ -1,0 +1,56 @@
+# One experiment, Kaggle style: the same development sets for every candidate, one tag, one row
+# on the leaderboard (benchmarks/leaderboard.py -> docs/leaderboard.md).
+#
+#   PM-ECG-ID: 300 ECGs (5 per scenario, seed 0) on a RunPod CPU pod (pod-eval.yml), ~40 min.
+#   Kaggle:    every 20th training record of each of the 20 shards (60 records, 540 images) on
+#              free GitHub runners (kaggle-full.yml stride=20), with the error decomposition.
+# Tags start with "dev-"; the leaderboard pairs the two results by tag.
+name: Experiment (development leaderboard)
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'experiment name, e.g. dev-row3e-page3 (must start with dev-)'
+        required: true
+      models:
+        description: '"row=RUN page=RUN dewarp=RUN ink=RUN" (training runs)'
+        default: ''
+      config:
+        description: 'ecgdig Config overrides, space separated k=v'
+        default: ''
+      pm:
+        description: run the PM-ECG-ID part
+        type: boolean
+        default: true
+      kaggle:
+        description: run the Kaggle part
+        type: boolean
+        default: true
+      pm_hours:
+        description: time limit of the PM pod (page network readings take longer)
+        default: '2.5'
+permissions:
+  contents: read
+  actions: write
+jobs:
+  start:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Start both parts
+        run: |
+          T="${{ inputs.tag }}"
+          case "$T" in (dev-*) ;; (*) echo "the tag must start with dev-"; exit 1;; esac
+          M="${{ inputs.models }}"
+          if [ "${{ inputs.pm }}" = "true" ]; then
+            gh workflow run pod-eval.yml -R "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}" -f what=pm -f per_scenario=5 \
+              -f models="$M" -f config="${{ inputs.config }}" -f pods=1 -f max_hours="${{ inputs.pm_hours }}" -f tag="$T"
+          fi
+          if [ "${{ inputs.kaggle }}" = "true" ]; then
+            F=""
+            for kv in $M; do F="$F -f ${kv%%=*}_model_run=${kv#*=}"; done
+            gh workflow run kaggle-full.yml -R "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}" -f stride=20 -f tag="$T" \
+              -f config="${{ inputs.config }}" $F
+          fi
+          echo "experiment $T started: models '$M', config '${{ inputs.config }}'" >> "$GITHUB_STEP_SUMMARY"

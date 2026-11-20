@@ -68,6 +68,19 @@ python benchmarks/compare.py kaggle BASE_RESULTS NEW_RESULTS
 the 60-scenario mean next to PMcardio's 14.48 dB; the Kaggle table splits the holdout
 (id % 5 == 0 plus the 15 local records, never trained on) from the rest.
 
+### `experiment.yml` and the development leaderboard (the Kaggle-style loop)
+
+Every candidate is scored on the same two development sets, under one tag starting with `dev-`:
+
+```
+gh workflow run experiment.yml -f tag=dev-row3e-page3 -f models="row=44653806160 page=44560948929" [-f config="k=v ..."]
+```
+
+- PM-ECG-ID: 300 ECGs (5 per scenario, seed 0) on a RunPod CPU pod, ~40 min (~0.7 USD); longer with the page network (`pm_hours`).
+- Kaggle: 60 records, 540 images (`kaggle-full.yml stride=20`), free, ~25 min, with the error decomposition per type.
+
+`python benchmarks/leaderboard.py` collects every `dev*` result, compares them on the images all of them have and writes `docs/leaderboard.md` (PMcardio-style SNR, failed leads, 60-scenario mean; official Kaggle metric on all images, the holdout and per type). One line per tag in `docs/experiments.csv` says what the experiment is. A candidate that wins on the development sets is then confirmed on the whole databases (`pmcardio.yml per_scenario=0`, `kaggle-full.yml stride=1`) before it becomes the default.
+
 ### `pod-eval.yml`: evaluation on RunPod CPU pods
 
 Same evaluations on 32-vCPU pods (`pods` = 1-4 in parallel). Use it only when a result is needed
@@ -84,6 +97,20 @@ faster than the free runners give it.
 
 The pod returns only `pm_results.json`, `pm_report.md`, `kaggle_results.json`, `kaggle_report.md`
 and its log.
+
+### `pod-job.yml`: a command next to the data
+
+Runs `job` on one CPU pod with the data volume at `/workspace` (`$CACHE` = `/workspace/cache`); only the log comes back. Used to build the real Kaggle strips once for all training runs:
+
+```
+gh workflow run pod-job.yml -f kaggle=true -f vcpu=32 -f job='OMP_NUM_THREADS=1 python hybrid/realstrips_build.py --out /workspace/realstrips --cache $CACHE --max-pages 7000 --workers 30 --chunk 400'
+```
+
+A training run that passes the same `--max-pages --chunk --seed` with `--cache $CACHE` reuses that set (the cache key also covers the code of the builder).
+
+### `dc-probe.yml`: which data centers work
+
+One 2-vCPU pod per data center: does it answer through the RunPod proxy, does the Kaggle archive answer from there. On Nov 20: CPU pods exist in EU-RO-1, EU-CZ-1, US-KS-2 and EUR-IS-1; all four answered. The Kaggle archive answers 404 to pods on the `python:3.11-bookworm` image everywhere and 302 to pods on the RunPod PyTorch image, so every pod uses the PyTorch image.
 
 ### `volume-fetch.yml`: checkpoints left on the data volume
 
