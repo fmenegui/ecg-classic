@@ -228,6 +228,8 @@ def main():
     ap.add_argument("--init", type=Path, default=None, help="state_dict to start from (e.g. the ink model's unet.pt)")
     ap.add_argument("--render-frac", type=float, default=0.0,
                     help="rowgen only: share of each batch rendered on the GPU by ecg-torch-renderer (hybrid/rendergen.py)")
+    ap.add_argument("--real-cap", type=int, default=20000,
+                    help="real strips kept in memory (the most recent); the full Nov 20 set has ~50,000 (125 chunks of 400)")
     ap.add_argument("--real-dir", default="", help="rowgen: directory where realstrips_build.py writes real strips")
     ap.add_argument("--real-frac", type=float, default=0.0, help="share of each batch from real strips (once available)")
     ap.add_argument("--render-photo", type=float, default=0.0,
@@ -387,7 +389,7 @@ def main():
         except Exception as e:  # noqa: BLE001
             print("ecg-torch-renderer not available, CPU strips only:", e, flush=True)
     t_render = 0.0
-    real = RealPool(a.real_dir) if (a.real_dir and a.real_frac > 0) else None
+    real = RealPool(a.real_dir, cap=a.real_cap) if (a.real_dir and a.real_frac > 0) else None
     t0 = time.time(); log = []; it = iter(dl); best = None; t_wait = 0.0
     g_aug = torch.Generator().manual_seed(7)
     for step in range(1, a.steps + 1):
