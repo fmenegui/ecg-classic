@@ -148,6 +148,17 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
     8.59 dB; 9 Kaggle images (one record): Kaggle score 10.95 dB, with 0006 (a photo) matched to
     the 12x1 layout and scored 0 dB. Too few images to compare; full runs 44801827747 (PM dev)
     and 44801832861 (Kaggle dev) started.
+  - PM dev (run 44801827747, A4000-class card, 8,072 s for 331 images, ~24 s each; 300 of 6,000
+    ECGs, 5%; images fitted inside 2200x1700): **3.54 dB** PMcardio-style SNR (ours, rowheavy3e,
+    on the same ECGs: 9.34), PCC 0.476 (0.687), failed leads 24.5% (15.2%), Kaggle metric 5.37 dB
+    (15.48). It is better only on bent and crumpled photos (+2.5 / +2.8 dB; both methods below
+    2.3 dB there).
+    - By its layout match: on the 156 ECGs where it named the right layout it scores 5.92 dB
+      (ours 12.19); 77 got no layout (1.03 dB) and 67 a wrong layout or were multi-page (0.88 dB).
+    - Rotation (0.54 dB, 53% failed leads) and padding (0.16 dB, 55%) break it; padding plus our
+      fit-inside resize shrinks the grid, so the input size may matter more than the page size.
+      A sensitivity check (no resize / 2200x1700 / larger) on ~30 images is the next step before
+      calling this its final number.
 
 ## 6. Running now (Nov 20, 18:10 UTC)
 
