@@ -27,9 +27,9 @@ on:
         default: 'python hybrid/train_gpu.py --minutes 45 --out /workspace/out'
         type: string
       use_volume:
-        description: 'Try the data center of the data volume first (cached bank and real strips; JOB uses $CACHE and $OUT_DIR)'
+        description: 'Try the data center of the data volume first (cached bank and real strips; JOB uses $CACHE and $OUT_DIR). Off by default: since Nov 19 ~15:20 UTC pods in EUR-IS-1 do not answer through the RunPod HTTP proxy'
         required: false
-        default: true
+        default: false
         type: boolean
       init_run:
         description: 'An earlier gpu-train run to continue from: its *_best.pt checkpoints are sent to the pod as /workspace/in/<name> (use --init there)'

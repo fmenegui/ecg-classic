@@ -52,6 +52,10 @@ on:
         required: false
         default: ''
         type: string
+      volume:
+        description: run on the data volume (EUR-IS-1); off = any other data center, data downloaded on the pod
+        type: boolean
+        default: false
       tag:
         description: 'Label'
         required: false
@@ -123,6 +127,7 @@ jobs:
           ls -la model
       - name: Volume
         id: vol
+        if: ${{ inputs.volume }}
         run: python hybrid/gpu/runpod_v2.py volume
       - name: Start the CPU pod
         id: pod

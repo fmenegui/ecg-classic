@@ -29,6 +29,7 @@ IMAGE = os.environ.get("CPU_IMAGE", "python:3.11-bookworm")
 DATA_CENTERS = os.environ.get("DATA_CENTERS", "EUR-IS-1,EU-RO-1,EU-SE-1,CA-MTL-3,EU-CZ-1,EUR-NO-1").split(",")
 NAME = "ecgdig-eval-" + os.environ.get("GITHUB_RUN_ID", "local") + "-" + os.environ.get("SHARD", "0")
 MAX_USD_H = float(os.environ.get("MAX_USD_H", "1.2"))
+CPU_DCS = os.environ.get("CPU_DCS", "EU-RO-1,EU-SE-1,EUR-NO-1,EU-CZ-1,CA-MTL-3,US-KS-2,US-GA-1,US-TX-3,EUR-IS-1").split(",")
 
 
 def call(method, path, body=None, timeout=60):
@@ -89,7 +90,10 @@ def balance_guard(vcpu):
 
 
 def cpu_start():
-    vol, dc = os.environ["VOLUME_ID"], os.environ["DATA_CENTER"]
+    # without a volume (VOLUME_ID empty) the pod runs in any data center but EXCLUDE_DCS and keeps
+    # the data on its container disk: since ~15:20 UTC on Nov 19 no pod in EUR-IS-1, the volume's
+    # data center, answered through the RunPod HTTP proxy (404/502/520 for hours)
+    vol, dc = os.environ.get("VOLUME_ID", ""), os.environ.get("DATA_CENTER", "")
     balance_guard(int(os.environ.get("VCPU", "32")))
     run_dir = f"/workspace/runs/{os.environ.get('GITHUB_RUN_ID', 'local')}-{os.environ.get('SHARD', '0')}"
     env = {"REF": os.environ["REF"], "JOB": os.environ["JOB"], "MAX_HOURS": os.environ.get("MAX_HOURS", "3"),
@@ -108,22 +112,30 @@ def cpu_start():
             body = {"name": NAME, "image": IMAGE, "cpu": {"id": flavor, "vcpuCount": vcpu},
                     # container disk cap: 10 GB per vCPU on cpu3*, 15 on cpu5* (2 vCPU: 20 GB)
                     "disk": min(40, 10 * vcpu),
-                    "cloud": "SECURE", "dataCenterIds": [dc], "ports": ["8000/http"], "env": env, "args": args,
-                    "mounts": {"network": [{"volumeId": vol, "path": "/workspace"}]}}
+                    "cloud": "SECURE", "ports": ["8000/http"], "env": env, "args": args}
+            if vol:
+                body.update(dataCenterIds=[dc], mounts={"network": [{"volumeId": vol, "path": "/workspace"}]})
+            else:
+                excl = set(os.environ.get("EXCLUDE_DCS", "EUR-IS-1").split(","))
+                body["dataCenterIds"] = [d_ for d_ in CPU_DCS if d_ not in excl]
             s, d = call("POST", "/pods", body)
+            if s == 400 and not vol and "ata" in str(d.get("detail") or d.get("error") or "") and "enter" in str(d):
+                body.pop("dataCenterIds", None)   # a data center id the API does not know: any one
+                s, d = call("POST", "/pods", body)
             if s in (200, 201) and d.get("id"):
                 cost = float(d.get("cost") or 0)
                 if cost > MAX_USD_H:
                     call("DELETE", f"/pods/{d['id']}")
                     print(f"{flavor} x{vcpu}: {cost} USD/h above {MAX_USD_H}, terminated", file=sys.stderr)
                     continue
-                print(f"started {d['id']} {flavor} x{vcpu} vCPU in {dc}, {cost} USD/h", file=sys.stderr)
+                print(f"started {d['id']} {flavor} x{vcpu} vCPU in {d.get('dataCenterId') or dc or 'any'}, "
+                      f"{cost} USD/h{'' if vol else ', no volume'}", file=sys.stderr)
                 out("pod_id", d["id"])
                 return
             last = f"{flavor}: {s} {str(d.get('error', ''))[:200]}"
             print(last, file=sys.stderr)
         if time.time() > t_end:
-            sys.exit(f"no CPU pod in {dc}: {last}")
+            sys.exit(f"no CPU pod in {dc or 'any data center'}: {last}")
         time.sleep(120)
 
 
