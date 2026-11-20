@@ -29,6 +29,8 @@ GENS = {"gen": gen.sample, "rowgen": rowgen.sample}
 sample = gen.sample
 
 
+SELECT_BY_IOU = [False]   # True: the former rule (mask IoU) for the best checkpoint
+
 def _cpus():
     """CPUs this container may really use: the cgroup quota (a RunPod pod sees all the host's
     cores in os.cpu_count(), e.g. 94, but gets ~16), else the affinity mask."""
@@ -455,7 +457,16 @@ def main():
                      if np.isfinite(getattr(validate, "real_err", float("nan"))) else ""), flush=True)
             (a.out / "train_log.json").write_text(json.dumps(log))
             torch.save(net.state_dict(), a.out / "unet.pt")
-            score = -np.nan_to_num(validate.e5, nan=9.0) - np.nan_to_num(validate.col_err, nan=9.0) if PHASE else iou
+            # keep the checkpoint that reads the trace best (column error in px, real strips when
+            # there are any), not the one with the best mask IoU: the IoU rewards the mask, the
+            # signal is read from the column positions
+            rerr = getattr(validate, "real_err", float("nan"))
+            if PHASE:
+                score = -np.nan_to_num(validate.e5, nan=9.0) - np.nan_to_num(validate.col_err, nan=9.0)
+            elif SELECT_BY_IOU[0]:
+                score = iou
+            else:
+                score = -(rerr if np.isfinite(rerr) else validate.col_err) - 0.25 * np.nan_to_num(validate.col_err90, nan=9.0)
             if best is None or score > best:
                 best = score
                 torch.save(net.state_dict(), a.out / "unet_best.pt")
