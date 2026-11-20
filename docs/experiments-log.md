@@ -79,7 +79,7 @@ Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-
 | + page v3 + rhythm margin | (rerunning) | 17.72 | 17.14 |
 | rowheavy3c 44523858950 | 8.95 | 17.41 | 16.71 |
 | **rowheavy3e 44653806160** | **9.34** | **17.95** | **17.67** |
-| rowheavy3e + dewarp v2 (numpy, really running) | (rerunning) | 17.95 | 17.67 |
+| rowheavy3e + dewarp v2 (numpy, really running) | 9.26 (-0.07) | 17.95 | 17.67 |
 | classical only (no network) | — | 17.22 | 17.15 |
 | classical at 20 px/mm (rectified frame; same rules) | — | 17.51 (+0.29) | 17.79 (+0.64) |
 
@@ -115,6 +115,12 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
     homography to a reference page.
   - Running them on PM-ECG-ID (out of their distribution) and on our Kaggle dev set (in-sample for
     them: they trained on all training records) is in progress (`benchmarks/topsol/`).
+- **Dewarp v2 with rowheavy3e (Nov 20, pod-eval 44789252756, 32 vCPU, 1.7 h, ~1.9 USD).** PM dev
+  300 of 6,000 ECGs (5%): 9.34 -> 9.26 dB, failed leads 15.2% -> 15.9%; Kaggle dev (540 images,
+  6.1%) unchanged (17.95). It changed only blur, brightness and contrast images (-0.13 to -0.36 dB)
+  and photos_bents (+0.09 dB SNR but failed leads 0% -> 18.3%); crumbled photos, where it should
+  help, did not change. Not adopted: the gate that decides when to flatten fires on the wrong
+  images. Next: gate on the measured local residual of the grid, not on the page network's warp.
   - Their methods are summarised in [`kaggle-insights.md`](kaggle-insights.md).
   - 2nd place smoke test (run 44796609191, 24 GB card, 185 s for 36 images,
     `TS_LIMIT=18 TS_PM_FORMATS=3x4+1R`):
