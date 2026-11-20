@@ -8,6 +8,9 @@ on:
       search:
         description: regular expression on notebook titles
         default: 'place|solution|winner|1st|2nd|3rd'
+      download:
+        description: public code datasets to download whole (space separated owner/slug; code only, small)
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -52,6 +55,16 @@ jobs:
           grep "dataset_sources" out/sources.txt | awk '{print $2}' | sort -u | while read ds; do
             echo "== $ds"; kaggle datasets files "$ds" -v 2>&1 | head -30
           done | tee out/dataset_files.txt
+      - name: Download code datasets
+        if: inputs.download != ''
+        run: |
+          for ds in ${{ inputs.download }}; do
+            d="out/datasets/${ds//\//__}"; mkdir -p "$d"
+            kaggle datasets download "$ds" -p "$d" --unzip -q || echo "could not download $ds"
+            du -sh "$d"
+          done
+          # keep code and configs only
+          find out/datasets -type f \( -size +20M -o -name '*.pth' -o -name '*.pt' -o -name '*.ckpt' -o -name '*.onnx' -o -name '*.whl' -o -name '*.bin' \) -delete
       - uses: actions/upload-artifact@v4
         with:
           name: topsol-survey
