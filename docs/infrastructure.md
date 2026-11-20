@@ -1,109 +1,186 @@
 # Compute infrastructure
 
-Two places run the work: GitHub Actions (free; CI, small jobs, the original 20-shard evaluations) and RunPod.
+How the experiments run, what they cost, and what protects them. Every workflow named here is in
+`.github/workflows/`; every script in `hybrid/gpu/` or `benchmarks/`.
 
-## Training: `gpu-train.yml` → one RunPod GPU pod
+## 1. The rule: pay only for GPUs
 
-The workflow starts a GPU pod (`hybrid/gpu/runpod_ctl.py`). The pod is a cheap card (A5000, 3090, A4500, 4000 Ada, A4000, L4) at no more than 0.5 USD/h.
+| Work | Where | Cost |
+|---|---|---|
+| Training (GPU) | RunPod, one pod per run (`gpu-train.yml`) | 0.2-0.3 USD/h (cap 0.5) |
+| Development benchmark (300 PM ECGs, ~440 Kaggle images) | GitHub Actions, 20 free runners per database | free |
+| Whole-database evaluation (6,000 PM ECGs; 8,793 Kaggle images) | GitHub Actions, 20 free runners per database | free |
+| Fast evaluation, when waiting is costly | RunPod CPU pods (`pod-eval.yml`) | ~1 USD/h per 32-vCPU pod |
+| Recovering checkpoints from the data volume | RunPod, 2-vCPU pod (`volume-fetch.yml`) | ~0.07 USD/h, minutes |
+| Data volume `ecgdig-data` (60 GB, EUR-IS-1) | RunPod | ~4 USD/month |
 
-The pod runs `hybrid/gpu/pod.sh`, which clones the code at the ref, installs, checks CUDA and runs the command. The workflow follows the log and brings the result back as an artifact. It always terminates the pod at the end, even on error or cancellation.
+The repository is public, so GitHub Actions runners cost nothing. RunPod is used where a GPU is
+needed, or where the free runners are too slow for the question at hand.
 
-Safeguards added after losses:
+Typical spend: a 5 h training on an RTX 4000 Ada or 3090 is 1.1-1.5 USD; its development benchmark
+is free.
+
+## 2. Workflows
+
+### `gpu-train.yml`: a training run on one GPU pod
+
+| Input | Meaning |
+|---|---|
+| `job` | The command run on the pod (see section 3 for examples). |
+| `max_hours` | Hard limit of the job on the pod; also sizes the balance check. Keep it at 5.8 or below. |
+| `gpu` | Optional card name. Empty = the cheapest card free among A5000, 3090, A4500, 4000 Ada, A4000, L4, at no more than 0.5 USD/h. |
+| `init_run` | Continue from the `*_best.pt` of an earlier run (sent to `$IN_DIR` before the job starts). |
+| `eval_models` | After a successful training, start the free development benchmark with these models, e.g. `page=THIS row=44206699093` (`THIS` = this run). |
+| `kaggle` | Give the pod the Kaggle token (only for jobs that read real Kaggle pages). |
+| `use_volume` | Look for the pod in the data volume's data center first. **Off by default** (section 6, incident of Nov 19). |
+| `tag` | Name of the artifact `gpu-<tag>-<run>`. |
+
+What a run does:
+
+1. `runpod_ctl.py` checks that the RunPod balance covers `max_hours` × 0.5 USD/h, then starts the cheapest free card with at least 46 GB RAM (`MIN_RAM_GB`).
+2. The pod runs `pod.sh`: clone at the ref, install, check CUDA, start the HTTP server (`podserve.py`), wait for the init checkpoints if any, run `job` under `timeout`.
+3. The runner follows the log, copies the best checkpoints every 30 min, fetches the result archive at the end, uploads it as an artifact and terminates the pod (always, even on failure or cancellation).
+4. With `eval_models`, it starts `pmcardio.yml` (5 ECGs per scenario) and `kaggle-full.yml` (`stride=20`) with tag `dev-<tag>`.
+
+The pod receives no GitHub token and no RunPod key. Results leave only through its HTTP port, which
+serves its output folder (`$OUT_DIR`); uploads to it need the run's one-time token.
+
+### `pmcardio.yml` and `kaggle-full.yml`: evaluation on free runners
+
+Both shard the database over 20 runners and merge the shards.
+
+| Workflow | Subset input | Development benchmark | Whole database |
+|---|---|---|---|
+| `pmcardio.yml` | `per_scenario` (ECGs per scenario, 0 = all) | `per_scenario=5`: 300 ECGs | `per_scenario=0`: 6,000 ECGs |
+| `kaggle-full.yml` | `stride` (every k-th record of each shard) | `stride=20`: ~49 records, ~440 images | `stride=1`: 977 records, 8,793 images |
+
+Models come from training runs: `row_model_run`, `page_model_run`, `dewarp_model_run`, `ink_model_run`
+(and `grid_model_run` for PM). A checkpoint-only network is converted to ONNX in the workflow.
+
+Compare two evaluations with both metrics and the coverage:
+
+```
+python benchmarks/compare.py pm     BASE_RESULTS NEW_RESULTS
+python benchmarks/compare.py kaggle BASE_RESULTS NEW_RESULTS
+```
+
+(`BASE`/`NEW`: `results.json` files, folders or globs of downloaded artifacts.) The PM table includes
+the 60-scenario mean next to PMcardio's 14.48 dB; the Kaggle table splits the holdout
+(id % 5 == 0 plus the 15 local records, never trained on) from the rest.
+
+### `pod-eval.yml`: evaluation on RunPod CPU pods
+
+Same evaluations on 32-vCPU pods (`pods` = 1-4 in parallel). Use it only when a result is needed
+faster than the free runners give it.
+
+| Input | Meaning |
+|---|---|
+| `models` | `"row=RUN page=RUN dewarp=RUN ink=RUN"` |
+| `what` | `pm`, `kaggle` or `both` |
+| `per_scenario`, `kaggle_nparts` | Subsets, as above (`kaggle_nparts=20` = part 0 of 20) |
+| `volume` | Use the data volume. Off by default: the data is downloaded on the pod. |
+| `data_only` | Only download to the volume (4 vCPU) |
+| `base_run` | A previous `pod-eval` run to pair with |
+
+The pod returns only `pm_results.json`, `pm_report.md`, `kaggle_results.json`, `kaggle_report.md`
+and its log.
+
+### `volume-fetch.yml`: checkpoints left on the data volume
+
+A training pod on the volume writes to `/workspace/runs/<run>/out`. If its job ended without an
+artifact, `run_id=<run>` copies the checkpoints back with a 2-vCPU pod into an artifact
+`gpu-<tag>-<fetch run>`; `init_run=<fetch run>` then continues from it. Only `*_best.pt`,
+`*_best.onnx`, `val.json` and the log leave the volume. It needs the volume's data center to answer
+(section 6).
+
+## 3. Training jobs
+
+Each job builds the PTB-XL signal bank first (PM-ECG-ID source ECGs and Kaggle evaluation records
+excluded; `ptbxl_bank.py` refuses to run without the exclusion list), then trains.
+
+```
+# page-structure network, continued from an earlier run
+pip install -q pandas && python hybrid/ptbxl/ptbxl_bank.py --out /root/bank.npy --work /root/ptbxl --cache $CACHE \
+  && ECG_BANK=/root/bank.npy python hybrid/train_page.py --minutes 285 --pages 4 --reuse 4 --lr 3e-4 \
+     --init $IN_DIR/page_best.pt --out $OUT_DIR
+
+# dewarp network
+... python hybrid/train_dewarp.py --minutes 280 --pages 6 --reuse 6 --lr 3e-4 --init $IN_DIR/dewarp_best.pt --out $OUT_DIR
+
+# row network with real Kaggle strips (kaggle=true)
+pip install -q remotezip pandas \
+  && (OMP_NUM_THREADS=1 nohup python hybrid/realstrips_build.py --out /root/real --cache $CACHE --max-pages 4000 \
+      --workers 3 > $OUT_DIR/realstrips.log 2>&1 &) \
+  && python hybrid/ptbxl/ptbxl_bank.py --out /root/bank.npy --work /root/ptbxl --cache $CACHE \
+  && ECG_BANK=/root/bank.npy python hybrid/train_gpu.py --gen rowgen --render-frac 0.5 --render-photo 0.7 \
+     --real-dir /root/real --real-frac 0.35 --heavy 0.3 --size 512 --batch 32 --reuse 3 --val 256 \
+     --minutes 270 --init $IN_DIR/unet_best.pt --out $OUT_DIR
+```
+
+Rules for jobs:
+
+- **Write to `$OUT_DIR`, read init files from `$IN_DIR`, cache to `$CACHE`.** Keep big temporary files (the bank) on the container disk (`/root`): `/workspace` may be a volume shared with other runs.
+- **Budget the time.** Setup (bank, install) takes 5-20 min; GitHub ends the job at 355 min and the follower stops at 340. So `--minutes` ≤ 285 for a 5.8 h run.
+- **Use `--reuse`** for page and dewarp. Measured on an RTX 4000 Ada (`profile_gen.py`): rendering takes 80-90% of a step (page 1.14 s per 4 pages against a 0.27 s network step; dewarp 1.28 s per 6 photos against 0.13 s). Page v3 with `--reuse 4` ran 38,190 steps in 290 min, against 18,593 for page v2 without it: twice the training for the same cost.
+- **Continue instead of restarting.** `init_run` + `--init $IN_DIR/<name>_best.pt` and a lower `--lr` (3e-4).
+- **Validation decides the checkpoint kept**, so it must measure what ecgdig uses: page rows go through ecgdig's length and edge filters (`rows`; `rows_raw` before them); dewarp keeps the checkpoint with the lowest local error after the best affine map per photo (`err_local_median`), since ecgdig's own rectification removes global shift, scale and shear.
+
+## 4. Data and secrets
+
+- **RunPod key**: only in the GitHub secret `RUNPOD_API_KEY`, used by the runner. Pods never get it.
+- **Kaggle token**: in the secret `KAGGLE_API_TOKEN`; reaches a pod only with `kaggle=true` (training on real pages) or a Kaggle evaluation.
+- **Never print a pod listing or a pod's environment.** A listing returns each pod's environment, which holds the Kaggle token (a probe once printed it to a public log; the run was deleted at once). The tools print only ids, prices and status lines; `runpod_v2.py stop` looks up its run's pods by name in memory and prints nothing else.
+- **Kaggle competition data is never published**: not in the repository, not in artifacts. Evaluation artifacts hold only `results.json` and `report.md`; the read signals written next to the ground truth (`sig/`) are deleted on the pod. Weights trained on Kaggle pages stay in run artifacts, never in releases.
+- **PM-ECG-ID and LITFL are never used for training.** The PM source ECGs are excluded from the PTB-XL bank (by id, and by lead-II match against `eval_pm_lead2.npz`).
+- **Kaggle split by record**: the holdout (id % 5 == 0, plus the 15 local records) never enters training.
+
+## 5. Safeguards, and the loss that made each one
 
 | Safeguard | Why |
 |---|---|
-| Refuses to start a pod the RunPod balance cannot pay for (hours × 0.5 USD/h) | A zero balance stopped two runs after 3-4 h. |
-| Copies the best checkpoints (`*_best.onnx/.pt`, `val.json`) to the runner every 30 min | |
-| Gives up on a pod silent for 20 min and keeps the last checkpoints | |
-| Retries the clone; replaces a pod whose CUDA or network to GitHub is broken | |
-| Asks for at least 46 GB of RAM (`MIN_RAM_GB`) | The row network was killed for memory twice (exit 137) while building real strips on 8-vCPU hosts. |
-| Never lists pods | A pod listing carries the pod's environment, which holds the Kaggle token of runs with `kaggle=true`. |
-| Every request to the pod has a hard limit on the whole transfer | A response trickling through the proxy hung the follower for 5 h: the run saw neither the log nor the checkpoints of a pod that kept training. |
-| Gives up on a job whose log stops growing for 25 min, after a last checkpoint copy | `pod.sh` logs GPU use (training) or load and free space (CPU pods) every 2 min, so a silent log means a dead job. |
-| Stops following 340 min after the job started, copies the checkpoints and fails the run | GitHub cancels a job at 355 min, and a cancelled job uploaded nothing (row network, run 44546313205). |
-| Fails the run when the job on the pod exits non-zero | A training that crashed was reported as a success and started its benchmark. |
+| Refuse a GPU pod the balance cannot pay for (`max_hours` × 0.5 USD/h) | At 0 USD RunPod stops every pod: two runs were lost at 3-4 h. |
+| Refuse a CPU pod unless the balance covers its hours plus a 2 USD reserve | Same, and other pods may be running. |
+| Copy the best checkpoints to the runner every 30 min, and once more before giving up | A pod lost late in a run no longer takes the run with it. |
+| Hard limit on every whole transfer from the pod | A response trickling through the proxy hung the follower for 5 h. |
+| Give up on a pod unreachable for 20 min, or whose log has not grown for 25 min | `pod.sh` logs GPU use (training) or load and free space (CPU pods) every 2 min, so a silent log means a dead job. |
+| Stop following at 340 min of the job | GitHub cancels at 355 min, and a cancelled job uploaded nothing (row network, run 44546313205). |
+| Fail the run when the job on the pod exits non-zero | A crashed training was reported as a success and started its benchmark. |
+| Upload to pods in 16 MB chunks | 98 MB uploads failed with HTTP 502. |
+| Retry the clone; replace a pod whose CUDA or network is broken | Some hosts had broken DNS or GPUs. |
+| At least 46 GB RAM on training pods | The row network was killed for memory (exit 137) on small hosts. |
+| Small Python image for CPU pods, container disk within the per-vCPU cap | CPU pods do not need the 8 GB CUDA image; RunPod refuses 40 GB on 2 vCPU. |
+| A prefill pod (only downloads) gets 4 vCPU | A 32-vCPU pod downloaded for 1.5 h at 1.13 USD/h. |
+| Pod id as a run annotation | A running pod's log can be read from outside (`https://<pod>-8000.proxy.runpod.net/log.txt`). |
+| Atomic, per-writer temporary files for downloads; truncated PNGs fetched again | Cancelled downloads and pods sharing the volume. |
 
-GitHub stops a job after 6 h. A training run should end within about 5 h 30 min of training, including setup.
+## 6. Incidents
 
-### Longer runs: `init_run`
+**Nov 19, from ~15:20 UTC: the data volume's data center (EUR-IS-1) stopped answering through the
+RunPod HTTP proxy.** Every pod there gave 404, 502 or 520 for hours: the row network's log stopped at
+15:19 (its 5 h of training are on the volume), two evaluation pods and a 2-vCPU fetch pod never
+answered, and dewarp v2 could not receive its init checkpoint. A pod elsewhere (page v3) worked
+throughout. Since then `use_volume` (training) and `volume` (evaluation) are off by default: pods run
+in any other data center and fetch their data themselves. About 3-4 USD went to pods that never
+answered. Turn the volume back on once a `volume-fetch` run succeeds.
 
-A training longer than one job, or one whose pod was lost, continues in a new run:
+Lessons kept in the tools: read the run annotations for the pod id and look at its log early; a pod
+that does not answer within 15-20 min will not, and should be cancelled.
 
-- set `init_run=<earlier run>`;
-- put `--init /workspace/in/<checkpoint>` (or `$IN_DIR/<checkpoint>`) in the job.
+## 7. Costs to expect
 
-The runner downloads the earlier run's `*_best.pt` and sends it with a one-time upload token. The pod waits for it before starting the job.
+| Item | Cost |
+|---|---|
+| Training, 5 h, RTX 4000 Ada / 3090 / A5000 | 1.1-1.5 USD |
+| Development benchmark (free runners) | 0 USD; expected ~20-40 min (queue plus setup dominate) |
+| Whole-database evaluation (free runners) | 0 USD; Kaggle took 4 h 40 min (run 44526678562) |
+| Same on RunPod (`pod-eval`, 3 pods × 32 vCPU) | ~5 USD, ~2 h |
+| Data volume | ~4 USD/month |
 
-### Checkpoints left on the volume: `volume-fetch.yml`
+Before a batch of runs: the balance must cover the GPU runs at 0.5 USD/h × `max_hours` each, plus
+2 USD of reserve.
 
-A training pod on the volume writes to `/workspace/runs/<run>/out`. If its job ended without the artifact, `volume-fetch.yml` with `run_id=<run>` copies the checkpoints back with a 2-vCPU pod (a few minutes, ~0.07 USD/h). The result is an artifact `gpu-<tag>-<fetch run>`, so `init_run=<fetch run>` continues from it. Only `*_best.pt`, `*_best.onnx`, `val.json` and the log leave the volume.
+## 8. Not done, on purpose
 
-### Data volume and caches: `use_volume`, on by default
-
-The pod is first sought in the data center of the data volume, among cheap secure cards there. If none is free, it runs anywhere as before.
-
-On the volume, the job finds `$CACHE`:
-
-- `ptbxl_bank.py --cache $CACHE` reuses a bank built with the same builder, exclusions and folds. Building one took up to 1 h.
-- `realstrips_build.py --cache $CACHE` reuses a finished set of real Kaggle strips from the same code and settings. These strips are kept only on the volume.
-
-Jobs write to `$OUT_DIR`, the per-run folder the pod serves, not to `/workspace/out`.
-
-### Faster steps: `--reuse` (page and dewarp networks)
-
-Measured on an RTX 4000 Ada (`hybrid/gpu/profile_gen.py`, run 44543053782):
-
-| Network | Rendering | Network step |
-|---|---|---|
-| Page | 1.14 s per 4 pages | 0.27 s |
-| Dewarp | 1.28 s per 6 photos | 0.13 s |
-| Row (strips rendered on the GPU) | 0.51 s per 13 strips | |
-
-So the GPU spends 80-90% of a step rendering. With `--reuse N`, the generator keeps the last renders in a CPU buffer and draws each page about N times, each time with a new placement, crop and degradation. `--reuse 4` should make the page network about 2.5 times faster, and `--reuse 6` the dewarp network about 3.5 times faster.
-
-The row network has `--reuse` already. Its bottleneck is the CPU strip generator: the GPU sits idle about half the time. A larger `--render-frac`, which renders strips on the GPU, shifts that work to the GPU.
-
-### Automatic development benchmark: `eval_models`
-
-After a training run, `eval_models="page=THIS row=<run>"` starts `pod-eval` with the development set (300 PM ECGs, about 440 Kaggle images). `THIS` stands for the run itself. `eval_base=<pod-eval run>` pairs the result with a baseline. The paired table goes into that run's summary.
-
-### Not done, on purpose
-
-- **No image of our own for the pods.** The setup takes about 3 min on most hosts; the slow ones were slow at pulling any image. The image would hold the private renderer, so it would need a private registry and an access token on RunPod.
-- **No render cache shared between runs.** Cheap cards are often unavailable in the volume's data center, and training must not wait for them. Reuse inside a run takes most of the gain.
-
-## Evaluation: `pod-eval.yml` → RunPod CPU pods on a network volume
-
-The datasets live on the network volume `ecgdig-data`: 60 GB in EUR-IS-1, about 4 USD/month.
-
-- `/workspace/data/pm` holds PM-ECG-ID from Zenodo.
-- `/workspace/data/kaggle` holds the Kaggle training records.
-- Each is downloaded once, only what is missing.
-- Neither ever leaves the volume.
-
-Each run:
-
-1. Fetches the models from their training runs: `models: "row=RUN page=RUN dewarp=RUN ink=RUN"`. A checkpoint-only row or ink network is converted to ONNX.
-2. Starts one CPU pod per shard (`pods`, 1-4). Each pod is a cpu3c/cpu5c with 32 vCPU, about 1 USD/h (cap 1.2), mounting the volume; a prefill (`data_only`) uses 4 vCPU (~0.14 USD/h), since it only downloads. The pod is refused when the RunPod balance does not cover its hours plus a 2 USD reserve for the pods already running: at 0 USD RunPod stops every pod.
-3. Sends the models with a one-time upload token. The pod gets no GitHub token.
-4. Runs `benchmarks/podeval.sh`:
-   - PM: `eval_pm.py` on `PER_SCENARIO` ECGs per scenario.
-   - Kaggle: `run.py eval` on part 0 of `kaggle_nparts` parts of the training records.
-   - The work files stay in the run's folder on the volume. The read signals stored next to the ground truth are deleted.
-5. Returns only `pm_results.json`, `pm_report.md`, `kaggle_results.json`, `kaggle_report.md` and the log. It always terminates the pod.
-
-Shapes of run:
-
-| Use | Inputs | Size | Cost |
-|---|---|---|---|
-| Development benchmark | `per_scenario=5`, `kaggle_nparts=20` | 300 PM ECGs, ~49 Kaggle records (~440 images) | ~15-20 min, ~0.3 USD |
-| Whole databases | `per_scenario=0`, `kaggle_nparts=1`, `pods=3` | 6,000 PM ECGs, 977 Kaggle records | ~1.5-2 h per pod |
-| Prefill | `data_only=true` | Downloads what is missing, evaluates nothing | 4 vCPU |
-
-PM-ECG-ID is on the volume in full (74 min the first time, limited by Zenodo answering 429). The Kaggle records are fetched by range reads from the competition archive, 8 in parallel (`kaggle_zip.py --threads`). A single stream did not fetch the 977 records in 4.5 h, so the whole Kaggle set is not on the volume yet; the development benchmark fetches its ~49 records itself. The whole-database Kaggle evaluation stays on the free 20-runner workflow until a parallel prefill has filled the volume.
-
-Smoke test (run 44532635331): 60 PM ECGs plus 10 Kaggle records, end to end in about 8 minutes on cpu3c × 32 (0.96 USD/h).
-
-The free 20-shard workflows (`pmcardio.yml`, `kaggle-full.yml`) stay available. They are slower: queue, 6 h per job, a download per shard.
-
-The paired comparison scripts read the pod results like the shard results: `pmpair.py` takes the PM `results.json` and `kpair.py` takes the Kaggle results.
+- **No pod image of our own.** Setup takes about 3 min on most hosts. The image would hold the private renderer, so it would need a private registry and a token on RunPod.
+- **No render cache shared between runs.** `--reuse` inside a run takes most of the gain.
+- **The whole Kaggle set is not on the volume.** A single download stream did not fetch the 977 records in 4.5 h; `kaggle_zip.py --threads` now reads in parallel, but the free 20-runner workflow already evaluates the whole set at no cost.

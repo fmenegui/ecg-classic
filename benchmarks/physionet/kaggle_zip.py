@@ -132,6 +132,7 @@ def main():
     ap.add_argument("--types", default=",".join(TYPES))
     ap.add_argument("--ids-file", default="", help="where to write the record ids (default OUT/ids.txt)")
     ap.add_argument("--threads", type=int, default=1, help="parallel range readers (shard)")
+    ap.add_argument("--stride", type=int, default=1, help="every k-th record of the shard (development subset)")
     a = ap.parse_args()
     if a.cmd == "probe":
         u = signed_url()
@@ -176,7 +177,7 @@ def main():
         ids = [x for x in a.ids.split(",") if x]
     else:
         all_ids, _ = train_ids(z)
-        ids = all_ids[a.part::a.nparts]
+        ids = all_ids[a.part::a.nparts][::a.stride]
         (a.out).mkdir(parents=True, exist_ok=True)
         tmp = a.out / f"train.csv.{os.getpid()}"
         tmp.write_bytes(_read(z, "train.csv"))
