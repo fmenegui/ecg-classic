@@ -148,6 +148,7 @@ def decompose(G, P, fs, return_signals=False):
     out["origin_s"] = best[1] / fs
     # 3 drift: time scale per lead anchored at the start of the shown stretch
     P3 = np.full_like(P2, np.nan)
+    out["drift_a"] = [None] * 12; out["drift_s"] = [None] * 12; out["local_ms"] = [[] for _ in range(12)]
     for i in range(12):
         g = G[i]
         m = np.isfinite(g)
@@ -177,6 +178,7 @@ def decompose(G, P, fs, return_signals=False):
             P3[i] = p
             continue
         a, s = best[1]
+        out["drift_a"][i] = float(a); out["drift_s"][i] = float(s / fs)
         q = np.interp(t0 + (x - t0) * a, x[okp], p[okp], left=np.nan, right=np.nan)
         P3[i] = _shift(q, s)
     out["drift"] = _snr(G, _metric_align(G, P3, fs))
@@ -206,7 +208,35 @@ def decompose(G, P, fs, return_signals=False):
             j = sl - best[1]
             ok = (j >= 0) & (j < len(G[i]))
             P3b[i][sl[ok]] = Q3[i][j[ok]]
+            out["local_ms"][i].append([round(a0 / fs, 2), round(1000 * best[1] / fs, 1)])
     out["local drift"] = _snr(G, P3b)
+    # the same with one shift per 0.5 s window shared by every lead shown at that time (the
+    # leads of one page column): a geometric horizontal distortion moves them together, while
+    # the per-lead oracle above can also buy back some shape error
+    Psh = Q3.copy()
+    L = Q3.shape[1]
+    for a0 in range(0, L, win):
+        sl = np.arange(a0, min(a0 + win, L))
+        leads = [i for i in range(12) if np.isfinite(G[i][sl]).mean() > 0.6 and np.isfinite(Q3[i][sl]).mean() > 0.6]
+        if not leads:
+            continue
+        best = (np.inf, 0)
+        for s_ in range(-ms, ms + 1):
+            j = sl - s_
+            ok = (j >= 0) & (j < L)
+            e = 0.0
+            for i in leads:
+                q = np.full(len(sl), np.nan)
+                q[ok] = Q3[i][j[ok]]
+                m = np.isfinite(G[i][sl])
+                e += float(((G[i][sl][m] - np.nan_to_num(q[m], nan=0.0)) ** 2).sum())
+            if e < best[0]:
+                best = (e, s_)
+        j = sl - best[1]
+        ok = (j >= 0) & (j < L)
+        for i in leads:
+            Psh[i][sl[ok]] = Q3[i][j[ok]]
+    out["local drift shared"] = _snr(G, Psh)
     Q3 = P3b
     # 4 gain per lead
     P4 = Q3.copy()

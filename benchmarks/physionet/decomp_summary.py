@@ -37,6 +37,22 @@ def table(rows):
     return "\n".join(L)
 
 
+def shared(rows):
+    """The local-drift step with one shift per window shared by the leads shown at that time,
+    against the per-lead oracle: the part of local drift that is geometric."""
+    L = ["| Type | drift | local drift, per lead | local drift, shared by the leads of a page column |", "|---|---|---|---|"]
+    groups = {"all": rows}
+    for r in rows:
+        groups.setdefault(r["type"], []).append(r)
+    for g in ["all"] + sorted(k for k in groups if k != "all"):
+        rs = [r for r in groups[g] if "local drift shared" in r]
+        if not rs:
+            continue
+        d, a, b = (score([r[k] for r in rs]) for k in ("drift", "local drift", "local drift shared"))
+        L.append(f"| {g} | {d:.2f} | {a:.2f} ({a - d:+.2f}) | {b:.2f} ({b - d:+.2f}) |")
+    return "\n".join(L) if len(L) > 2 else ""
+
+
 def main(argv):
     md = None
     if "--md" in argv:
@@ -46,6 +62,9 @@ def main(argv):
         rows += json.load(open(f))
     out = (f"Error decomposition, {len(rows)} images (score after each cumulative oracle correction; "
            f"in brackets the gain of that step = what that error costs)\n\n" + table(rows))
+    sh = shared(rows)
+    if sh:
+        out += "\n\nGeometric part of the local drift:\n\n" + sh
     print(out)
     if md:
         open(md, "w").write(out + "\n")
