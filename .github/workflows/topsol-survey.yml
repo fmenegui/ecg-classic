@@ -1,0 +1,59 @@
+# Survey of the published top solutions of the Kaggle competition: their public submission
+# notebooks (code and metadata: which datasets and models they load) and the size of those
+# datasets. Only public Kaggle content; nothing of the competition data.
+name: Top Kaggle solutions, survey
+on:
+  workflow_dispatch:
+    inputs:
+      search:
+        description: regular expression on notebook titles
+        default: 'place|solution|winner|1st|2nd|3rd'
+permissions:
+  contents: read
+jobs:
+  survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ vars.KAGGLE_USERNAME }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q "kaggle>=1.7"
+      - name: Notebooks of the competition
+        run: |
+          mkdir -p out/code
+          for p in 1 2 3; do
+            kaggle kernels list --competition physionet-ecg-image-digitization --sort-by voteCount --page-size 100 --page $p -v || true
+          done | grep -v '^ref,' | sort -u > out/kernels.csv
+          wc -l out/kernels.csv
+          grep -iE "${{ inputs.search }}" out/kernels.csv | tee out/selected.csv
+      - name: Pull the selected notebooks (code and metadata)
+        run: |
+          cut -d, -f1 out/selected.csv | head -25 | while read ref; do
+            d="out/code/${ref//\//__}"
+            kaggle kernels pull "$ref" -p "$d" -m > /dev/null 2>&1 || echo "could not pull $ref"
+          done
+          ls out/code | head -40
+      - name: Datasets and models they load
+        run: |
+          python - <<'EOF' > out/sources.txt
+          import glob, json
+          for f in sorted(glob.glob("out/code/*/kernel-metadata.json")):
+              m = json.load(open(f))
+              print(m.get("id"), "|", m.get("title"))
+              for k in ("dataset_sources", "model_sources", "kernel_sources", "competition_sources"):
+                  for s in m.get(k) or []:
+                      print("   ", k, s)
+          EOF
+          cat out/sources.txt
+          grep "dataset_sources" out/sources.txt | awk '{print $2}' | sort -u | while read ds; do
+            echo "== $ds"; kaggle datasets files "$ds" -v 2>&1 | head -30
+          done | tee out/dataset_files.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: topsol-survey
+          path: out/
+          retention-days: 30
