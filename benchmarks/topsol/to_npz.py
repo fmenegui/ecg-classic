@@ -45,7 +45,11 @@ def main():
         S = np.load(f).astype(np.float64)
         out = np.full((12, 5000), np.nan, np.float32)
         for r, names in enumerate(ROWS):
-            lens = [nr[names[0]] - sum(nr[n] for n in names[1:])] + [nr[n] for n in names[1:]]
+            # as the notebooks' make_submission: the row holds its four leads one after the other;
+            # only lead II is asked for whole (10 s), so its own quarter is II minus the other three
+            lens = [nr[n] for n in names]
+            if names[0] == "II":
+                lens[0] = nr["II"] - sum(lens[1:])
             parts = np.split(S[r][: sum(lens)], np.cumsum(lens)[:-1])
             for c, (name, y) in enumerate(zip(names, parts)):
                 if len(y) < 2:

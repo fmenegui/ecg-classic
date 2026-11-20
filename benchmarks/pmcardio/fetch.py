@@ -36,6 +36,8 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--threads", type=int, default=6)
     ap.add_argument("--sel-out", default="", help="where to write the selection (default OUT/sel.csv)")
+    ap.add_argument("--formats", default="", help="only these ECG formats (metadata 'ECG format'), comma separated")
+    ap.add_argument("--pages", type=int, default=0, help="with --formats: only ECGs printed on this many pages")
     a = ap.parse_args()
     import numpy as np
     import pandas as pd
@@ -46,6 +48,11 @@ def main():
                 z.extract(n, a.out)
     m = pd.read_csv(os.path.join(a.out, "final_data/metadata.csv"))
     m["scen"] = m["Image relative path"].str.split("/").str[0]
+    if a.formats:
+        # e.g. "3x4+1R" with --pages 1: the images printed like the Kaggle sheet
+        m = m[m["ECG format"].isin(a.formats.split(","))]
+        if a.pages:
+            m = m[m["ECG number of pages"] == a.pages]
     if a.per_scenario:
         rng = np.random.default_rng(a.seed); keep = []
         for _, g in m.groupby("scen"):

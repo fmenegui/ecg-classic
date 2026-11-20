@@ -6,6 +6,7 @@
 # kaggle_results.json and their reports to $OUT_DIR.
 #   TS_PM=1 / TS_KAGGLE=1   which sets (both by default)
 #   TS_LIMIT=N              at most N images per set (smoke test)
+#   TS_PM_FORMATS, TS_PM_PER PM-ECG-ID selection (see the fetch line)
 set -u
 SOL=${SOL:-takashisomeya/physionet-2nd-place-submission}
 W=/root/ts; mkdir -p "$W/input" "$W/work" "$W/data" "$W/nb"
@@ -28,7 +29,11 @@ python benchmarks/topsol/make_run.py "$NB" "$W/run.py"
 
 PREP=""
 if [ "${TS_PM:-1}" = "1" ]; then
-  python benchmarks/pmcardio/fetch.py --out /root/pm --per-scenario 5 --threads 8 --seed 0 --sel-out "$W/pm_sel.csv" | tail -2
+  # TS_PM_FORMATS=3x4+1R: only ECGs printed like the Kaggle sheet (one page); TS_PM_PER: ECGs per
+  # scenario (0 = every one of those formats)
+  F=""; [ -n "${TS_PM_FORMATS:-}" ] && F="--formats $TS_PM_FORMATS --pages 1"
+  python benchmarks/pmcardio/fetch.py --out /root/pm --per-scenario "${TS_PM_PER:-5}" --threads 8 --seed 0 $F \
+    --sel-out "$W/pm_sel.csv" | tail -2
   if [ -n "${TS_LIMIT:-}" ]; then head -n $(( TS_LIMIT + 1 )) "$W/pm_sel.csv" > "$W/pm_sel_l.csv"; mv "$W/pm_sel_l.csv" "$W/pm_sel.csv"; fi
   PREP="$PREP --pm-root /root/pm/visual_data --pm-list $W/pm_sel.csv"
 fi
