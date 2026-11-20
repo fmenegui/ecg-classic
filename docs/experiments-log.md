@@ -116,6 +116,17 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
   - Running them on PM-ECG-ID (out of their distribution) and on our Kaggle dev set (in-sample for
     them: they trained on all training records) is in progress (`benchmarks/topsol/`).
   - Their methods are summarised in [`kaggle-insights.md`](kaggle-insights.md).
+  - 2nd place smoke test (run 44796609191, 24 GB card, 185 s for 36 images,
+    `TS_LIMIT=18 TS_PM_FORMATS=3x4+1R`):
+    - Kaggle dev, 18 images (2 records): Kaggle score 30.07 dB, PCC 0.999, every type including
+      the 0006 photo at 27.9 dB. These records are in its training set (the solution trained on
+      every training record), so this measures memorisation, not reading; its private-leaderboard
+      score on unseen pages is ~22.6 dB. Our Kaggle dev numbers for the top solutions are
+      therefore not comparable to ours; only the hidden test is.
+    - PM-ECG-ID, 18 images printed like the Kaggle sheet (3x4 plus a rhythm strip, one page):
+      0 of 18 read (100% failed leads, 0.00 dB). Stage 0 (homography to the Kaggle reference
+      page) failed on 17 and stage 1 on the last one. Same layout, different printer: the
+      solution depends on the Kaggle page template, not only on the lead layout.
 - **Open-ECG-Digitizer (Nov 20).** Ahus-AIM (Stenhede et al., CC BY-SA 4.0) added as a
   comparison: a generic pipeline (U-Net segmentation, perspective, dewarp, grid size, lead-name
   U-Net, 13 layouts). Its weights were trained on full pages, so the runner fits every image inside
