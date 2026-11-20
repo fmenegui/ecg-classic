@@ -121,6 +121,11 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
   U-Net, 13 layouts). Its weights were trained on full pages, so the runner fits every image inside
   2200x1700 px (aspect kept, white padding; `TS_OED_SIZE`) before it reads them
   (`benchmarks/topsol/run_oed.sh`, adapter `to_npz_oed.py`, `tests/test_topsol_oed.py`).
+  - Smoke test (run 44797759750, RTX A4000, ~25 min including setup, < 0.15 USD): 18 of 18
+    images read in 349 s (~19 s per image). 9 PM-ECG-ID images: SNR 6.27 dB, Kaggle score
+    8.59 dB; 9 Kaggle images (one record): Kaggle score 10.95 dB, with 0006 (a photo) matched to
+    the 12x1 layout and scored 0 dB. Too few images to compare; full runs 44801827747 (PM dev)
+    and 44801832861 (Kaggle dev) started.
 
 ## 6. Running now (Nov 20, 18:10 UTC)
 
