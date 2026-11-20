@@ -116,6 +116,11 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
   - Running them on PM-ECG-ID (out of their distribution) and on our Kaggle dev set (in-sample for
     them: they trained on all training records) is in progress (`benchmarks/topsol/`).
   - Their methods are summarised in [`kaggle-insights.md`](kaggle-insights.md).
+- **Open-ECG-Digitizer (Nov 20).** Ahus-AIM (Stenhede et al., CC BY-SA 4.0) added as a
+  comparison: a generic pipeline (U-Net segmentation, perspective, dewarp, grid size, lead-name
+  U-Net, 13 layouts). Its weights were trained on full pages, so the runner fits every image inside
+  2200x1700 px (aspect kept, white padding; `TS_OED_SIZE`) before it reads them
+  (`benchmarks/topsol/run_oed.sh`, adapter `to_npz_oed.py`, `tests/test_topsol_oed.py`).
 
 ## 6. Running now (Nov 20, 18:10 UTC)
 

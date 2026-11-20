@@ -298,6 +298,13 @@ Options:
 - `TS_LIMIT=18`: smoke test.
 - `TS_PM_FORMATS=3x4+1R TS_PM_PER=0`: every PM-ECG-ID image printed like the Kaggle sheet.
 
+Open-ECG-Digitizer, the same options plus `TS_OED_SIZE` (default 2200x1700, the page size its
+networks were trained on; every image is fitted inside it before it reads them):
+
+```
+gh workflow run gpu-train.yml -f tag=oed -f max_hours=3 -f kaggle=true -f job='bash benchmarks/topsol/run_oed.sh'
+```
+
 The solution's readings are scored by our evaluators (`ECGDIG_EXTERNAL`), with both metrics.
 
 ### 5.6 Live log, stuck runs, emergencies
