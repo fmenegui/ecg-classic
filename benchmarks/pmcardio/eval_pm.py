@@ -122,53 +122,69 @@ def _run_all(jobs, n, cache: Path, root: Path):
             res[os.path.relpath(j[0], root)] = pickle.loads(k.read_bytes())
         else:
             todo.append(j)
-    # Batches of n*4 images, a new executor per batch (recycles process memory without
-    # max_tasks_per_child, which hangs the executor on Python 3.11 after n*4 tasks). Each image
-    # has a deadline; whatever exceeds it becomes a failure and the batch processes are killed.
+    # n images in flight at all times (a batch that waited for its slowest image kept a 32-vCPU
+    # pod at a load of 3-5). Processes are recycled by starting a new executor every n*4
+    # submissions (max_tasks_per_child hangs on Python 3.11); the old one finishes its images.
+    # Each image has a deadline; past it the image is a failure and its executor is killed.
     from concurrent.futures import wait, FIRST_COMPLETED
     per_img = float(os.environ.get("ECGDIG_IMG_TIMEOUT", "900"))
-    while todo:
-        batch, todo = todo[: n * 4], todo[n * 4:]
-        ex = ProcessPoolExecutor(n)
-        futs = {ex.submit(_digitize, j): j for j in batch}
-        t0 = time.time()
-        pending = set(futs)
-        broken = []
-        while pending:
-            done, pending = wait(pending, timeout=30, return_when=FIRST_COMPLETED)
-            for f in done:
-                j = futs[f]
-                try:
-                    path, o = f.result()
-                except BrokenProcessPool:
-                    broken.append(j)
-                    continue
-                except Exception as e:  # noqa: BLE001
-                    path, o = j[0], dict(ok=False, err=f"{type(e).__name__}: {e}", sec=0.0)
-                res[os.path.relpath(path, root)] = o
-                key(path).write_bytes(pickle.dumps(o))
-            if pending and time.time() - t0 > per_img * 4:
-                for f in pending:
-                    j = futs[f]
-                    o = dict(ok=False, err="timed out", sec=time.time() - t0)
-                    res[os.path.relpath(j[0], root)] = o
-                    key(j[0]).write_bytes(pickle.dumps(o))
-                for pr in list(getattr(ex, "_processes", {}).values()):
-                    pr.kill()
-                pending = set()
-        ex.shutdown(wait=False, cancel_futures=True)
-        for j in broken:
-            # killed process (memory?): run it alone; if it dies again, it becomes a failure
-            e1 = ProcessPoolExecutor(1)
+    todo = list(todo)
+    execs, futs, broken = [], {}, []          # futs: future -> (job, executor, start time)
+    cur, n_cur = None, 0
+
+    def finish(path, o):
+        res[os.path.relpath(path, root)] = o
+        key(path).write_bytes(pickle.dumps(o))
+
+    while todo or futs:
+        while todo and len(futs) < n:
+            if cur is None or n_cur >= n * 4:
+                cur, n_cur = ProcessPoolExecutor(n), 0
+                execs.append(cur)
+            j = todo.pop(0)
+            futs[cur.submit(_digitize, j)] = (j, cur, time.time())
+            n_cur += 1
+        done, _ = wait(set(futs), timeout=30, return_when=FIRST_COMPLETED)
+        for f in done:
+            j, _, _ = futs.pop(f)
             try:
-                path, o = e1.submit(_digitize, j).result(timeout=per_img)
+                path, o = f.result()
+            except BrokenProcessPool:
+                broken.append(j)
+                continue
             except Exception as e:  # noqa: BLE001
-                path, o = j[0], dict(ok=False, err=f"killed process/timeout: {type(e).__name__}", sec=0.0)
-                for pr in list(getattr(e1, "_processes", {}).values()):
-                    pr.kill()
-            e1.shutdown(wait=False, cancel_futures=True)
-            res[os.path.relpath(path, root)] = o
-            key(path).write_bytes(pickle.dumps(o))
+                path, o = j[0], dict(ok=False, err=f"{type(e).__name__}: {e}", sec=0.0)
+            finish(path, o)
+        now = time.time()
+        late = [f for f, (_, _, t) in futs.items() if now - t > per_img]
+        for f in late:
+            j, ex, t = futs.pop(f)
+            finish(j[0], dict(ok=False, err="timed out", sec=now - t))
+            # its executor may hold other images: they are resubmitted
+            for g in [g for g, v in futs.items() if v[1] is ex]:
+                todo.insert(0, futs.pop(g)[0])
+            for pr in list(getattr(ex, "_processes", {}).values()):
+                pr.kill()
+            ex.shutdown(wait=False, cancel_futures=True)
+            if ex is cur:
+                cur = None
+        live = {v[1] for v in futs.values()}
+        for ex in [e for e in execs if e not in live and e is not cur]:
+            ex.shutdown(wait=False)
+            execs.remove(ex)
+    for ex in execs:
+        ex.shutdown(wait=False, cancel_futures=True)
+    for j in broken:
+        # killed process (memory?): run it alone; if it dies again, it becomes a failure
+        e1 = ProcessPoolExecutor(1)
+        try:
+            path, o = e1.submit(_digitize, j).result(timeout=per_img)
+        except Exception as e:  # noqa: BLE001
+            path, o = j[0], dict(ok=False, err=f"killed process/timeout: {type(e).__name__}", sec=0.0)
+            for pr in list(getattr(e1, "_processes", {}).values()):
+                pr.kill()
+        e1.shutdown(wait=False, cancel_futures=True)
+        finish(path, o)
     return res
 
 
