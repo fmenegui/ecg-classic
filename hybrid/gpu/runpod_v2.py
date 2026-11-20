@@ -106,6 +106,7 @@ def cpu_start():
             "${REF}/hybrid/gpu/pod.sh -o /pod.sh && bash /pod.sh'")
     vcpu = int(os.environ.get("VCPU", "32"))
     t_end = time.time() + 60 * float(os.environ.get("WAIT_MIN", "30"))
+    t_queue = time.time() + 60 * float(os.environ.get("QUEUE_MIN", "150"))
     last = None
     while True:
         for flavor in ("cpu5c", "cpu3c", "cpu5g", "cpu3g"):
@@ -133,8 +134,13 @@ def cpu_start():
                 out("pod_id", d["id"])
                 print(f"::notice title=pod::{d['id']} {flavor}", flush=True)
                 return
-            last = f"{flavor}: {s} {str(d.get('error', ''))[:200]}"
+            last = f"{flavor}: {s} {str(d.get('error', '') or d.get('detail', ''))[:200]}"
             print(last, file=sys.stderr)
+            if "concurrent vCPUs" in str(d):
+                # the account allows 64 vCPU at once: other evaluations are running, so wait for
+                # them (up to QUEUE_MIN) instead of failing after WAIT_MIN
+                t_end = max(t_end, t_queue)
+                break
         if time.time() > t_end:
             sys.exit(f"no CPU pod in {dc or 'any data center'}: {last}")
         time.sleep(120)
