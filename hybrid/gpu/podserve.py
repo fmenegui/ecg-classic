@@ -1,7 +1,8 @@
 """HTTP server of a RunPod pod (started by hybrid/gpu/pod.sh).
 
 GET  /<file>          a file of $OUT_DIR (log, status, results, checkpoints)
-PUT  /in/<name>       stores the request body as $IN_DIR/<name> when the X-Upload-Token header
+PUT  /in/<name>       stores the request body as $IN_DIR/<name> (or one chunk <name>.cKKKofNNN,
+                      joined into <name> when all are in) when the X-Upload-Token header
                       equals $UPLOAD_TOKEN (a one-time value made by the workflow for this pod,
                       not a secret of the account): the workflow sends the models this way, since
                       the pod gets no GitHub token.
@@ -45,7 +46,24 @@ class H(http.server.SimpleHTTPRequestHandler):
             tmp.unlink(missing_ok=True)
             self.send_error(400, "short body")
             return
-        tmp.replace(IN / m.group(1))
+        name = m.group(1)
+        c = re.fullmatch(r"(.+)\.c(\d{3})of(\d{3})", name)
+        if not c:
+            tmp.replace(IN / name)
+        else:
+            # one chunk of a large file (the proxy fails on bodies near 100 MB): kept until all
+            # chunks are here, then joined atomically; a chunk sent twice just replaces itself
+            tmp.replace(IN / name)
+            base, n = c.group(1), int(c.group(3))
+            parts = [IN / f"{base}.c{k:03d}of{n:03d}" for k in range(n)]
+            if all(q.exists() for q in parts) and not (IN / base).exists():
+                out = IN / (base + ".joining")
+                with open(out, "wb") as f:
+                    for q in parts:
+                        f.write(q.read_bytes())
+                out.replace(IN / base)
+                for q in parts:
+                    q.unlink(missing_ok=True)
         self.send_response(201)
         self.end_headers()
 

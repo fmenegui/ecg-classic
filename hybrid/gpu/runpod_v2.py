@@ -127,22 +127,33 @@ def cpu_start():
         time.sleep(120)
 
 
+CHUNK = 16 << 20   # the proxy failed (502) on ~100 MB bodies: large files go in 16 MB chunks
+
+
 def put(files):
     base = f"https://{os.environ['POD_ID']}-8000.proxy.runpod.net"
     tok = os.environ["UPLOAD_TOKEN"]
+    pieces = []
     for f in files:
         p = Path(f)
+        data = p.read_bytes()
+        if len(data) <= CHUNK:
+            pieces.append((p.name, data))
+        else:
+            n = (len(data) + CHUNK - 1) // CHUNK
+            pieces += [(f"{p.name}.c{k:03d}of{n:03d}", data[k * CHUNK:(k + 1) * CHUNK]) for k in range(n)]
+    for name, data in pieces:
         tries = int(os.environ.get("PUT_TRIES", "120"))
         for i in range(tries):   # the pod may still be booting (image pull: up to ~1 h)
             try:
-                req = urllib.request.Request(f"{base}/in/{p.name}", data=p.read_bytes(), method="PUT",
+                req = urllib.request.Request(f"{base}/in/{name}", data=data, method="PUT",
                                              headers={"X-Upload-Token": tok, "User-Agent": "ecgdig-eval"})
                 with urllib.request.urlopen(req, timeout=600) as r:
-                    print(f"sent {p.name} ({p.stat().st_size // 1_000_000} MB): {r.status}", flush=True)
+                    print(f"sent {name} ({len(data) // 1_000_000} MB): {r.status}", flush=True)
                     break
             except Exception as e:  # noqa: BLE001
                 if i % 10 == 0:
-                    print(f"send {p.name}, attempt {i}: {e}", flush=True)
+                    print(f"send {name}, attempt {i}: {e}", flush=True)
                 if i == tries - 1:
                     try:   # what the pod says, if its server answers at all
                         with urllib.request.urlopen(urllib.request.Request(f"{base}/log.txt", headers={
@@ -150,7 +161,7 @@ def put(files):
                             print("pod log:", r.read().decode(errors="replace")[-3000:], flush=True)
                     except Exception as e2:  # noqa: BLE001
                         print(f"pod log not reachable either: {e2}", flush=True)
-                    sys.exit(f"could not send {p.name}: {e}")
+                    sys.exit(f"could not send {name}: {e}")
                 time.sleep(30)
 
 
