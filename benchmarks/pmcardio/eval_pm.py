@@ -93,7 +93,13 @@ def _digitize(job):
     signal.alarm(int(os.environ.get("PM_TIMEOUT", "300")))
     t0 = time.time()
     try:
-        r = digitize(path, Config(**cfg_kw), return_debug=True)
+        ext = os.environ.get("ECGDIG_EXTERNAL")
+        if ext:   # readings of another digitizer (benchmarks/topsol), scored exactly like ecgdig's
+            p_ = Path(path)
+            d_ = np.load(Path(ext) / f"{p_.parent.name}__{p_.stem}.npz", allow_pickle=True)
+            r = dict(leads=list(d_["leads"]), signals=d_["signals"], per_segment={}, layout=str(d_["layout"]))
+        else:
+            r = digitize(path, Config(**cfg_kw), return_debug=True)
         signal.alarm(0)
         out = dict(ok=True, leads=r["leads"], signals=r["signals"].astype(np.float32),
                    seg={k: [np.nonzero(np.isfinite(m))[0][[0, -1]] if np.isfinite(m).any() else None for m in v]

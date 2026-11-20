@@ -67,7 +67,7 @@ def open_zip(retries=8, part=0, n=1):
     signed URL (one API call), for parallel range reads."""
     import random
     from remotezip import RemoteZip
-    time.sleep(12 * min(part, 20))
+    time.sleep(12 * max(0, min(part, 20)))
     for i in range(retries):
         try:
             u = signed_url()
@@ -177,7 +177,10 @@ def main():
         ids = [x for x in a.ids.split(",") if x]
     else:
         all_ids, _ = train_ids(z)
-        ids = all_ids[a.part::a.nparts][::a.stride]
+        if a.part < 0:   # every part: the development subset of kaggle-full (stride per shard)
+            ids = [x for p in range(a.nparts) for x in all_ids[p::a.nparts][::a.stride]]
+        else:
+            ids = all_ids[a.part::a.nparts][::a.stride]
         (a.out).mkdir(parents=True, exist_ok=True)
         tmp = a.out / f"train.csv.{os.getpid()}"
         tmp.write_bytes(_read(z, "train.csv"))

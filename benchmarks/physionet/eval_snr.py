@@ -129,7 +129,13 @@ def _work(job):
     try:
         G = _load_gt(gt_p)
         n = G.shape[1]
-        r = digitize(str(img_p), Config(**cfg_kw), return_debug=True)
+        ext = os.environ.get("ECGDIG_EXTERNAL")
+        if ext:   # readings of another digitizer (benchmarks/topsol), scored exactly like ecgdig's
+            d_ = np.load(Path(ext) / f"{Path(img_p).stem}.npz", allow_pickle=True)
+            r = dict(leads=list(d_["leads"]), signals=d_["signals"], layout=str(d_["layout"]), layout_rows=[],
+                     speed_mm_per_s=25.0, duration_s=10.0, gains={}, debug_image=np.zeros((10, 10, 3), np.uint8))
+        else:
+            r = digitize(str(img_p), Config(**cfg_kw), return_debug=True)
         S12 = np.full((12, r["signals"].shape[1]), np.nan)
         for k_, nm in enumerate(r["leads"]):  # a free layout may have names outside the 12
             if nm in LEADS:

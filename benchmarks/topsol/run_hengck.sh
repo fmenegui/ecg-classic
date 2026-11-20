@@ -1,0 +1,61 @@
+#!/bin/bash
+# A hengck23-based Kaggle top solution (2nd or 3rd place) on our development sets, on a GPU pod:
+#   SOL=takashisomeya/physionet-2nd-place-submission  bash benchmarks/topsol/run_hengck.sh
+# Needs the Kaggle token (gpu-train.yml kaggle=true): the notebook, its public datasets (code and
+# weights) and the evaluation data are downloaded on the pod. Writes only pm_results.json,
+# kaggle_results.json and their reports to $OUT_DIR.
+#   TS_PM=1 / TS_KAGGLE=1   which sets (both by default)
+#   TS_LIMIT=N              at most N images per set (smoke test)
+set -u
+SOL=${SOL:-takashisomeya/physionet-2nd-place-submission}
+W=/root/ts; mkdir -p "$W/input" "$W/work" "$W/data" "$W/nb"
+pip install -q kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0 remotezip pandas connected-components-3d timm 2>&1 | tail -2
+kaggle kernels pull "$SOL" -p "$W/nb" -m > /dev/null || { echo "could not pull $SOL"; exit 1; }
+NB=$(ls "$W"/nb/*.ipynb | head -1)
+python - "$W/nb/kernel-metadata.json" > "$W/datasets.txt" <<'EOF'
+import json, sys
+for d in json.load(open(sys.argv[1])).get("dataset_sources") or []:
+    print(d)
+EOF
+while read ds; do
+  slug=${ds#*/}
+  echo "dataset $ds"
+  kaggle datasets download "$ds" -p "$W/input/$slug" --unzip -q || echo "could not download $ds"
+done < "$W/datasets.txt"
+du -sh "$W"/input/* 2>/dev/null
+python benchmarks/topsol/make_run.py "$NB" "$W/run.py"
+
+PREP=""
+if [ "${TS_PM:-1}" = "1" ]; then
+  python benchmarks/pmcardio/fetch.py --out /root/pm --per-scenario 5 --threads 8 --seed 0 --sel-out "$W/pm_sel.csv" | tail -2
+  if [ -n "${TS_LIMIT:-}" ]; then head -n $(( TS_LIMIT + 1 )) "$W/pm_sel.csv" > "$W/pm_sel_l.csv"; mv "$W/pm_sel_l.csv" "$W/pm_sel.csv"; fi
+  PREP="$PREP --pm-root /root/pm/visual_data --pm-list $W/pm_sel.csv"
+fi
+if [ "${TS_KAGGLE:-1}" = "1" ]; then
+  python benchmarks/physionet/kaggle_zip.py shard --part -1 --nparts 20 --stride 20 --out /root/kaggle --threads 8 \
+    --ids-file "$W/kaggle_ids.txt" | tail -2
+  IDS=$(cat "$W/kaggle_ids.txt")
+  if [ -n "${TS_LIMIT:-}" ]; then IDS=$(echo "$IDS" | tr ',' '\n' | head -n $(( (TS_LIMIT + 8) / 9 )) | paste -sd,); echo "$IDS" > "$W/kaggle_ids.txt"; fi
+  PREP="$PREP --kaggle-dir /root/kaggle --kaggle-ids $IDS"
+fi
+python benchmarks/topsol/prepare.py --out "$W/data" $PREP
+t0=$(date +%s)
+( cd "$W/work" && TS_DATA="$W/data" TS_INPUT="$W/input" TS_WORK="$W/work" python "$W/run.py" 2>&1 | tr '\r' '\n' \
+    | grep -vE "^\s+[0-9]+ |^\s*$" | tail -60 )
+echo "solution ran in $(( $(date +%s) - t0 )) s on $(ls $W/work/outputs/digitalised 2>/dev/null | wc -l) images"
+python benchmarks/topsol/to_npz.py "$W/work/outputs/digitalised" "$W/data/test.csv" "$W/ext"
+
+JOBS=$(nproc)
+if [ "${TS_PM:-1}" = "1" ]; then
+  ECGDIG_EXTERNAL="$W/ext" python benchmarks/pmcardio/eval_pm.py --root /root/pm/visual_data --gt /root/pm/final_data/data \
+    --meta /root/pm/final_data/metadata.csv --list "$W/pm_sel.csv" --out "$W/pm" --jobs "$JOBS" | tail -15
+  cp "$W/pm/results.json" "$OUT_DIR/pm_results.json"; cp "$W/pm/report.md" "$OUT_DIR/pm_report.md" 2>/dev/null
+fi
+if [ "${TS_KAGGLE:-1}" = "1" ]; then
+  mkdir -p "$W/kev"; ln -sfn /root/kaggle "$W/kev/data"
+  ECGDIG_EXTERNAL="$W/ext" python benchmarks/physionet/run.py eval --n 100000 --jobs "$JOBS" --keep-raw 0 \
+    --ids "$(cat "$W/kaggle_ids.txt")" --out "$W/kev" | tail -15
+  cp "$W/kev/results.json" "$OUT_DIR/kaggle_results.json"; cp "$W/kev/report.md" "$OUT_DIR/kaggle_report.md"
+  rm -rf "$W/kev/sig"
+fi
+echo "done"
