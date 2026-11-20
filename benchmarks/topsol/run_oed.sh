@@ -73,7 +73,10 @@ grep -E "Error|Traceback|error" "$W/oed.log" | sort | uniq -c | sort -rn | head 
 echo "Open-ECG-Digitizer ran in $(( $(date +%s) - t0 )) s; $(ls $W/out/*_timeseries_canonical.csv 2>/dev/null | wc -l) outputs"
 python benchmarks/topsol/to_npz_oed.py "$W/out" "$W/data/test.csv" "$W/ext"
 
-JOBS=$(nproc)
+# nproc shows the host's cores (128 on some pods), not the pod's share: 128 evaluator processes
+# with OpenBLAS threads each hit the thread limit and crashed the Kaggle scoring (Nov 20, 44801832861)
+JOBS=${TS_JOBS:-$(python -c "import os; print(min(16, len(os.sched_getaffinity(0))))")}
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 if [ "${TS_PM:-1}" = "1" ]; then
   ECGDIG_EXTERNAL="$W/ext" python benchmarks/pmcardio/eval_pm.py --root /root/pm/visual_data --gt /root/pm/final_data/data \
     --meta /root/pm/final_data/metadata.csv --list "$W/pm_sel.csv" --out "$W/pm" --jobs "$JOBS" | tail -15
@@ -84,6 +87,13 @@ if [ "${TS_KAGGLE:-1}" = "1" ]; then
   ECGDIG_EXTERNAL="$W/ext" python benchmarks/physionet/run.py eval --n 100000 --jobs "$JOBS" --keep-raw 0 \
     --ids "$(cat "$W/kaggle_ids.txt")" --out "$W/kev" | tail -15
   cp "$W/kev/results.json" "$OUT_DIR/kaggle_results.json"; cp "$W/kev/report.md" "$OUT_DIR/kaggle_report.md"
+  python - "$W/kev/results.json" "$W/ext" <<'PY' || FAILED=1
+import json, sys, pathlib
+n = len(json.load(open(sys.argv[1]))["results"]); m = len(list(pathlib.Path(sys.argv[2]).glob("*-*.npz")))
+print(f"Kaggle scoring coverage: {n} of {m} read images scored")
+sys.exit(0 if n >= m else "Kaggle scoring incomplete")
+PY
   rm -rf "$W/kev/sig"
 fi
+[ "${FAILED:-0}" = 1 ] && { echo "scoring incomplete"; exit 1; }
 echo "done"

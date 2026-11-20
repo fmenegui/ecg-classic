@@ -54,7 +54,7 @@ saw CV-to-private drops of ~4 dB.
 | 20/11 | 44796609191 | 2nd place solution, smoke (36 images) | 3090, 0.5 | 1.2 | 0.60 | runs end to end; Kaggle dev 30.07 dB (in-sample: memorised); PM-ECG-ID 3x4+1R 0 of 18 read; see §5 |
 | 20/11 | 44797759750 | Open-ECG-Digitizer, smoke (18 images) | A4000, 0.25 | 0.4 | 0.10 | runs end to end, ~19 s per image; see §5 |
 | 20/11 | 44801827747 | Open-ECG-Digitizer, PM dev | 4000 Ada, 0.28 | 2.5 | 0.70 | 3.54 dB vs ours 9.34 (300 ECGs); see §5 |
-| 20/11 | 44801832861 | Open-ECG-Digitizer, Kaggle dev | (running) | | | |
+| 20/11 | 44801832861 | Open-ECG-Digitizer, Kaggle dev | A4000, 0.25 | 2.7 | 0.68 | read 540 of 540, but only 45 scored (5 records): the scoring crashed (128 processes on a pod that shows 128 host cores; OpenBLAS thread limit). On those 45: 10.00 vs ours 15.48 dB. Fixed; rerun needed |
 
 Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-models`.
 
@@ -107,7 +107,7 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
 | Method | PM dev SNR (ECGs) | PM failed leads | PM Kaggle metric | Kaggle dev (images) | Note |
 |---|---|---|---|---|---|
 | ours, rowheavy3e | 9.34 (300) | 15.2% | 15.48 | 17.95 (540) | |
-| Open-ECG-Digitizer | 3.54 (300) | 24.5% | 5.37 | (running) | images fitted inside 2200x1700; size sensitivity not checked yet |
+| Open-ECG-Digitizer | 3.54 (300) | 24.5% | 5.37 | 10.00 vs ours 15.48 (45 of 540 paired, 8%) | images fitted inside 2200x1700; size sensitivity not checked yet |
 | 2nd place Kaggle | 0.00 (18, 3x4+1R only) | 100% | 0.42 | 30.07 (18) | Kaggle records are in its training set; fails the page template on PM |
 
 ## 5. Diagnostics
@@ -183,7 +183,7 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
 
 ## 6. Running now (Nov 20, 22:10 UTC)
 
-- Open-ECG-Digitizer on Kaggle dev (44801832861), ends ~23:15 UTC.
+- Nothing on RunPod.
 - Waiting for RunPod credit: rowheavy4 on the full real strips (smoke first), page v3 PM dev again
   (with the new deadline), 2nd place on every PM-ECG-ID 3x4+1R page, Open-ECG-Digitizer input-size
-  check.
+  check and its Kaggle dev scoring again.

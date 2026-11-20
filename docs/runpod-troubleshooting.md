@@ -257,6 +257,17 @@ page is that none of these repeats.
 | Run annotations, meant to show the pod id, appear only when the job ends | pod id uploaded as an artifact right after the start (`podlog.sh`) |
 | The 32-vCPU real-strips job ran on the broken EUR-IS-1 volume for an hour | cancelled; the volume moved; `BOOT_MIN` |
 
+## 19. Scoring crashed after a good run (Nov 20, 44801832861, ~0.7 USD)
+
+- **What happened.** Open-ECG-Digitizer read all 540 Kaggle dev images in 2.5 h, then the scoring
+  started `nproc` = 128 processes (the host's cores, not the pod's share). OpenBLAS could not create
+  its threads and the pool died after 45 images. The script printed `done` and exit code 0.
+- **Prevention, now in the code.** The top-solution runners use at most 16 processes with one BLAS
+  thread each (`TS_JOBS` to change it), and fail the job when fewer images are scored than read
+  (`Kaggle scoring coverage: n of m`).
+- **Practice.** On GPU pods never size a pool with `nproc`; read the coverage line before trusting
+  a number.
+
 ## Rules that save money
 
 1. **Look at every new kind of job in its first 10 minutes** (`podlog.sh`). Check that it started,
