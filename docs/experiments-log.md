@@ -144,7 +144,8 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
   The PM dev part hit the 3 h limit (exit code 124) with nothing kept. The evaluator now prints
   its progress and stops before the limit with partial results (runpod-troubleshooting section 10).
 - **Page v3 with rowheavy3e on free runners (Nov 20, pmcardio.yml 44834958768, 0 USD).** 19 of 20
-  shards (one runner was shut down by GitHub; rerun started): 280 of 6,000 ECGs paired with
+  shards: shard 7's runner was shut down twice at 14 of its 20 images (likely memory: an image
+  that the page network makes heavy; to find), so 280 of 6,000 ECGs are paired with
   rowheavy3e alone. PMcardio-style SNR 9.16 → 9.59 dB (+0.43), PCC 0.681 → 0.722, failed leads
   15.4% → 11.7%; 60-scenario mean 9.25 → 9.65. Gains: contrast +2.27, perspective +1.04, screens
   +1.42, resolution (failed leads 30% → 10%). Losses: rotation −0.64, padding −0.55, doogee and
@@ -200,7 +201,7 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
 | 44834948746 | env-check | 1 h | cents |
 | 44834954765 | rowheavy4 smoke: done, OK | | 0.08 USD |
 | 44837522288 | rowheavy4, 285 min on the volume, then the free dev benchmark | 5.8 h | 2.9 USD |
-| 44834958768 | PM dev, rowheavy3e + page v3, free runners: 19 of 20 shards done, shard 7 rerunning | 5 h | free |
+| 44834958768 | PM dev, rowheavy3e + page v3, free runners: 19 of 20 shards (shard 7 runner shut down twice) | | free |
 | 44834962498 | Open-ECG-Digitizer, Kaggle dev again (scoring fixed) | 4 h | 2.0 USD |
 | 44834966288 / 44834969780 / 44834973129 | Open-ECG-Digitizer input size: none / 2200x1700 / 3300x2550, 1 PM-ECG-ID ECG per scenario | 1 h each | 1.5 USD |
 | 44834976689 | 2nd place, PM-ECG-ID 3x4+1R pages: done (1 of 300 read) | | 0.16 USD |
