@@ -8,7 +8,10 @@ on:
     inputs:
       dcs:
         description: data centers, comma separated
-        default: 'EU-RO-1,EU-SE-1,EUR-NO-1,EU-CZ-1,CA-MTL-3,US-KS-2,US-GA-1,US-TX-3,EUR-IS-1'
+        default: 'EU-RO-1,EU-CZ-1,US-KS-2,EUR-IS-1'
+      image:
+        description: pod image (empty = the CPU default, python:3.11-bookworm)
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -37,6 +40,7 @@ jobs:
       WAIT_MIN: '10'
       BALANCE_RESERVE: '1'
       CPU_DCS: ${{ matrix.dc }}
+      CPU_IMAGE: ${{ inputs.image || 'python:3.11-bookworm' }}
       EXCLUDE_DCS: 'none'
     steps:
       - name: Job start time
