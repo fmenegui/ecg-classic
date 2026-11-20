@@ -8,4 +8,3 @@ dev3-row3e-dewarp2,rowheavy3 + dewarp v2 (numpy flatten)
 dev3-row3e-page3,rowheavy3 + page v3
 dev3-classical,classical reader only (no network)
 dev3-classical-R20,classical reader with the rectified frame at 20 px/mm (instead of 10)
-dev3-row3e-page3,rowheavy3 + page v3
