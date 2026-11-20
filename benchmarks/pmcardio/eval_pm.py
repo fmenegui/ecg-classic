@@ -142,7 +142,12 @@ def _run_all(jobs, n, cache: Path, root: Path):
                 cur, n_cur = ProcessPoolExecutor(n), 0
                 execs.append(cur)
             j = todo.pop(0)
-            futs[cur.submit(_digitize, j)] = (j, cur, time.time())
+            try:
+                futs[cur.submit(_digitize, j)] = (j, cur, time.time())
+            except BrokenProcessPool:   # a child of this executor died: start a new one
+                todo.insert(0, j)
+                cur = None
+                continue
             n_cur += 1
         done, _ = wait(set(futs), timeout=30, return_when=FIRST_COMPLETED)
         for f in done:
