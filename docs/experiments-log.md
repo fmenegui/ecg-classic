@@ -14,7 +14,7 @@ Per-scenario tables: [`results/`](results/). Current development ranking: [`lead
 |---|---|---|---|
 | PM-ECG-ID whole database | **10.43 dB** (rowheavy3e + page v3 + photo_norm, Nov 21) | 5,918 / 6,000 (98.6%) | PMcardio 14.48 dB (60-subset mean of its paper); 14.05 dB / PCC 0.885 / 6.62% failed in its supplementary table |
 | PM-ECG-ID dev (300 ECGs) | 9.34 dB (rowheavy3, 44653806160) | 300 / 6,000 (5%) | |
-| Kaggle training records, whole | 18.12 dB all, 18.04 holdout (rowheavy) | 8,793 / 8,793 (100%) | leaders 22.6-23.3 dB on the hidden test (private LB), not the same images |
+| Kaggle training records, whole | **18.30 dB** all, 18.21 holdout (rowheavy3e + page v3 + photo_norm, Nov 21) | 8,352 / 8,793 (95%) | leaders 22.6-23.3 dB on the hidden test (private LB), not the same images |
 | Kaggle dev (540 images) | 17.95 dB all, 17.67 holdout (rowheavy3) | 540 / 8,793 (6.1%) | |
 | Kaggle hidden test (official) | 13.03 dB private, classical only, late submission (Nov 17) | ~1,000 hidden images | 1st place 23.33 dB |
 
@@ -90,7 +90,7 @@ Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-
 | 19/11 | rowheavy | 9.55 → 9.71 (6,000) | 18.12 all / 18.04 holdout (8,793) |
 | 19/11 | page v1 + select, same-layout margin 0.1 | — | 18.13 → 17.82 (8,352, 95%): 384 images 3x4+1 → 3x4 |
 | 19/11 | rhythm-drop margin 0.5 (simulated from the two runs above) | −0.03 dB (5,700) | +0.31 dB back to 18.13 |
-| 21/11 | rowheavy3e + page v3 + photo_norm (vs rowheavy) | 9.69 → **10.43** (5,918, 98.6%) | (running: 44902767154) |
+| 21/11 | rowheavy3e + page v3 + photo_norm (vs rowheavy) | 9.69 → **10.43** (5,918, 98.6%) | 18.14 → **18.30** all, 18.07 → 18.21 holdout (8,352, 95%; 44902767154 vs 44420729713); 0001 +0.28, 0006 −0.09, others ±0.09 |
 
 ## 4. Development-set experiments (Nov 20; `docs/leaderboard.md`)
 
@@ -223,7 +223,9 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
     the same PM leads 13.01 → 12.93. Four shards hit the 300-min job limit (2 workers were too slow
     for 480 images with the page network); rescored from their per-image caches (partial, included
     above); the shards now stop at 280 min with partial results. Kaggle whole set for the same
-    configuration: kaggle-full 44902767154 (stride 1), to compare with rowheavy 44420729713.
+    configuration: kaggle-full 44902767154 (stride 1) vs rowheavy 44420729713: 8,352 images (95%;
+    one shard failed) 18.14 → **18.30 dB**, holdout 18.07 → 18.21. **Adopted (Nov 21): rowheavy3e +
+    page v3 + photo_norm is the new default; `Config.photo_norm` is now True.**
 - **Faint pen on white pages (Nov 21).** Opacity 0.15: 100 ECGs, 14 'no trace row found', wrong
   row counts on most 6x2 pages. The pen is mid-grey (~208 in every channel), the grid saturated
   orange-red (BGR 16/80/240): the grid is darker on average but brighter in its brightest channel,

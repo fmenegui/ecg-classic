@@ -66,7 +66,7 @@ class Config:
     # Simulated on PM-ECG-ID (5,700 ECGs, network v1): unconditional -0.09 dB, margin 0.5 -0.03 dB
     page_margin_rhythm: float = 0.5
     dewarp_margin: float = 0.0
-    photo_norm: bool = False    # per-page tone map before reading (ecgdig/photonorm.py)
+    photo_norm: bool = True     # per-page tone map before reading (ecgdig/photonorm.py); default since Nov 21
     photo_norm_range: int = 100     # pages whose grey levels span less than this are tone-mapped
     photo_norm_gamma_min: float = 0.35  # PM dev, Nov 21: 0.2 +0.62, 0.35 +0.70, 0.5 +0.58 dB
     photo_norm_white_max: bool = True   # white faint pages: stretch the brightest channel's range (PM dev +0.19 dB, Nov 21)
