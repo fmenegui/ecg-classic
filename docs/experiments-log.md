@@ -158,6 +158,9 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
   brightness -120 2.78 → 7.54, +160 9.12 → 11.63 (failed leads 12 → 24); worse: brightness -160
   −0.33 → −1.77 and -40 5.92 → 4.95 (6 new failed leads). Next: tune the gate and the gamma limit
   on those two, then a whole-database run.
+- Tuning (free runners): minimum gamma 0.35 (44859353824) and 0.5 (44859356037); only brightness
+  -160 and -120 reach the 0.2 limit. The -40 pages sampled locally (range 145-176) do not fire the
+  gate, so the -40 change comes from other pages.
 - Three shards' runners died again. The new progress line shows why: memory at 15.3-15.4 of 16 GB
   with 3-4 phone photos (16 Mpx, page network) in flight, no single culprit. `pmcardio.yml` now
   runs 3 images at a time.
