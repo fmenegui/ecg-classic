@@ -142,6 +142,15 @@ group; 29 middle: 10.8 vs 15.8). Their method (paper): a U-Net for grid intersec
 ("Dotter"), per-square 4-point undistortion ("Gridder"), and a U-Net trace mask per lead
 ("Leader") trained on 232 hand-annotated images of undisclosed origin.
 
+### Photometric normalisation (Nov 21)
+
+`Config.photo_norm`: a per-page tone map (`ecgdig/photonorm.py`) for pages whose grey levels span
+less than 100 of 255: stretch between the 0.5th and 99.5th percentiles, then a gamma that puts the
+paper (75th percentile) at 0.92; a white page with faint content is only stretched. On sample
+pages it fires on brightness -160 (range 51-58) and contrast gamma 0.125 (range 53-57) and on one
+of two opacity-0.15 pages; blur, low resolution and ordinary photos (range ~130) are left alone.
+Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576. Reference: 44834958768.
+
 ## 5. Diagnostics
 
 - **Oracle stages (Nov 17, 200 synthetic pages, run 44062555355).** Replacing a stage by its truth:
