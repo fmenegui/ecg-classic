@@ -61,7 +61,8 @@ saw CV-to-private drops of ~4 dB.
 | 20/11 | 44834954765 | rowheavy4 smoke (10 min) | A4500, 0.25 (EU-RO-1, on the volume) | 0.3 | 0.08 | real strips from the cache, bank cached, 0.64 s/step, data wait 1%; found that only 20,000 of ~50,000 real strips were loaded (`--real-cap` added) |
 | 20-21/11 | 44837522288 | rowheavy4: init rowheavy3e, full real strips (`--real-cap 60000`), 285 min | A4500, 0.25 (EU-RO-1, volume) | 4.85 | 1.21 | 29,530 steps; 49,762 real strips in memory; validation col error median 0.29 → 0.25 px, p90 1.60 → 1.40 px (real strips 0.30 → 0.29, p90 1.37 → 1.32); dev benchmarks 44865885556 (PM) and 44865887535 (Kaggle), free |
 | 21/11 | 44930386428 | 4th place solution (tomoon33, grid-based rectification, 4 models x 5 folds), smoke: 18 PM-ECG-ID 3x4+1R + 18 Kaggle images (`benchmarks/topsol/run_4th.sh`) | (running) | | | |
-| 21/11 | 44930219937 | 3rd place solution (hirotetsu, hengck23 base), smoke: 18 PM-ECG-ID 3x4+1R + 18 Kaggle images | (running) | | | |
+| 21/11 | 44930219937 | 3rd place solution (hirotetsu, hengck23 base), smoke: 18 PM-ECG-ID 3x4+1R + 18 Kaggle images | 4000 Ada, 0.28 | 0.3 | 0.08 | did not run: the converted notebook had an `except:` block of shell lines only (IndentationError); make_run.py now turns shell lines into `pass` |
+| 21/11 | 44931957085 | 3rd place solution, smoke again | (running) | | | |
 | 20/11 | 44797759750 | Open-ECG-Digitizer, smoke (18 images) | A4000, 0.25 | 0.4 | 0.10 | runs end to end, ~19 s per image; see §5 |
 | 20/11 | 44801827747 | Open-ECG-Digitizer, PM dev | 4000 Ada, 0.28 | 2.5 | 0.70 | 3.54 dB vs ours 9.34 (300 ECGs); see §5 |
 | 20/11 | 44801832861 | Open-ECG-Digitizer, Kaggle dev | A4000, 0.25 | 2.7 | 0.68 | read 540 of 540, but only 45 scored (5 records): the scoring crashed (128 processes on a pod that shows 128 host cores; OpenBLAS thread limit). On those 45: 10.00 vs ours 15.48 dB. Fixed; rerun needed |
