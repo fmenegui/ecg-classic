@@ -130,7 +130,7 @@ three use rowheavy3e + page v3 on free runners (the automatic run is 44834958768
 | Run | Given to the reader | Result |
 |---|---|---|
 | 44846130588 | printed format + 25 mm/s + 10 mm/mV | (running) |
-| 44846134555 | printed format | shards 7 and 17: runner shut down (memory?); 18 of 20 shards |
+| 44846134555 | printed format | 262 ECGs paired (18 of 20 shards; 7 and 17 runners shut down): 9.75 → 9.83 dB (+0.08), **failed leads 11.0% → 5.4%** (PMcardio 6.62%), 60-scenario mean 9.87 → 9.99. The format explains PMcardio's lower failure rate, not its SNR |
 | 44846138808 | 25 mm/s + 10 mm/mV | (running) |
 
 ## 5. Diagnostics
