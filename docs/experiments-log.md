@@ -130,9 +130,17 @@ three use rowheavy3e + page v3 on free runners (the automatic run is 44834958768
 
 | Run | Given to the reader | Result |
 |---|---|---|
-| 44846130588 | printed format + 25 mm/s + 10 mm/mV | (running) |
+| 44846130588 | printed format + 25 mm/s + 10 mm/mV | 262 ECGs (shards 7 and 17 shut down): 9.75 → 9.87 dB (+0.12), failed leads 11.0% → 5.5%, 60-scenario mean 9.87 → 10.02 |
 | 44846134555 | printed format | 262 ECGs paired (18 of 20 shards; 7 and 17 runners shut down): 9.75 → 9.83 dB (+0.08), **failed leads 11.0% → 5.4%** (PMcardio 6.62%), 60-scenario mean 9.87 → 9.99. The format explains PMcardio's lower failure rate, not its SNR |
 | 44846138808 | 25 mm/s + 10 mm/mV | 262 ECGs (shards 7 and 17 shut down again): 9.75 → 9.93 dB (+0.18), failed leads 11.0% → 10.1%, 60-scenario mean 9.87 → 10.06 |
+
+**Conclusion.** Giving the reader the format, the speed and the gain brings our failed leads below
+PMcardio's (5.4-5.5% vs 6.62%) but adds only 0.1-0.2 dB of SNR. Of the ~4.5 dB between us and
+PMcardio's 14.48 dB, the inputs its evaluation may have had explain at most ~0.2 dB. The rest is
+reading quality on degraded images (19 hardest scenarios: ours 1.8 dB vs its 11.1 dB "hard"
+group; 29 middle: 10.8 vs 15.8). Their method (paper): a U-Net for grid intersections
+("Dotter"), per-square 4-point undistortion ("Gridder"), and a U-Net trace mask per lead
+("Leader") trained on 232 hand-annotated images of undisclosed origin.
 
 ## 5. Diagnostics
 
