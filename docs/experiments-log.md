@@ -12,7 +12,7 @@ Per-scenario tables: [`results/`](results/). Current development ranking: [`lead
 
 | Benchmark | Best of ours | Coverage | Reference |
 |---|---|---|---|
-| PM-ECG-ID whole database | 9.71 dB (rowheavy, run 44356949676, Nov 19) | 6,000 / 6,000 (100%) | PMcardio 14.48 dB (60-subset mean of its paper); 14.05 dB / PCC 0.885 / 6.62% failed in its supplementary table |
+| PM-ECG-ID whole database | **10.43 dB** (rowheavy3e + page v3 + photo_norm, Nov 21) | 5,918 / 6,000 (98.6%) | PMcardio 14.48 dB (60-subset mean of its paper); 14.05 dB / PCC 0.885 / 6.62% failed in its supplementary table |
 | PM-ECG-ID dev (300 ECGs) | 9.34 dB (rowheavy3, 44653806160) | 300 / 6,000 (5%) | |
 | Kaggle training records, whole | 18.12 dB all, 18.04 holdout (rowheavy) | 8,793 / 8,793 (100%) | leaders 22.6-23.3 dB on the hidden test (private LB), not the same images |
 | Kaggle dev (540 images) | 17.95 dB all, 17.67 holdout (rowheavy3) | 540 / 8,793 (6.1%) | |
@@ -90,6 +90,7 @@ Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-
 | 19/11 | rowheavy | 9.55 → 9.71 (6,000) | 18.12 all / 18.04 holdout (8,793) |
 | 19/11 | page v1 + select, same-layout margin 0.1 | — | 18.13 → 17.82 (8,352, 95%): 384 images 3x4+1 → 3x4 |
 | 19/11 | rhythm-drop margin 0.5 (simulated from the two runs above) | −0.03 dB (5,700) | +0.31 dB back to 18.13 |
+| 21/11 | rowheavy3e + page v3 + photo_norm (vs rowheavy) | 9.69 → **10.43** (5,918, 98.6%) | (running: 44902767154) |
 
 ## 4. Development-set experiments (Nov 20; `docs/leaderboard.md`)
 
@@ -177,6 +178,16 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
     paired with no normalisation; 60-scenario mean 9.65 → 10.34; vs gamma 0.5 on all 300: 10.23 →
     10.35. Brightness -120 2.78 → 10.15, -160 −2.53 → 2.81, gamma 0.125 8.42 → 14.38, 0.25 7.08 →
     15.49, 8 1.25 → 7.68; -40 5.07 → 4.35 (the one loss). Now the default minimum gamma.
+  - **Whole database (Nov 21), paired, free runners.** rowheavy3e + page v3 (44875611556) vs the
+    same + photo_norm (44875613583): 5,848 of 6,000 ECGs (97.5%) 9.89 → **10.41 dB (+0.52)**, PCC
+    0.734 → 0.753, failed leads 10.0% → 9.3%, 60-scenario mean 9.94 → 10.44. Contrast +2.87,
+    brightness +0.83, everything else within ±0.1. Against the previous whole-database best
+    (rowheavy alone, pmcardio 44420734434, 9.71 dB): 5,918 ECGs (98.6%) 9.69 → **10.43 (+0.73)**,
+    failed leads 12.8% → 9.2%, 60-scenario mean 9.72 → 10.45; page v3 alone +0.23. Kaggle metric on
+    the same PM leads 13.01 → 12.93. Four shards hit the 300-min job limit (2 workers were too slow
+    for 480 images with the page network); rescored from their per-image caches (partial, included
+    above); the shards now stop at 280 min with partial results. Kaggle whole set for the same
+    configuration: kaggle-full 44902767154 (stride 1), to compare with rowheavy 44420729713.
   - Whole database, paired (free runners, per_scenario=0, 6,000 ECGs): first try 44861704073 /
     44861706690 cancelled after 12 of 42 shards died (memory 15.5 of 16 GB with 3 workers; ECG 47's
     photos in flight each time). Now 2 workers with a 7 GB cap each (`ECGDIG_MEM_LIMIT_MB`: an image
