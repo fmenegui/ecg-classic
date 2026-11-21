@@ -171,6 +171,22 @@ degradations, 20 px/mm, sub-pixel targets). rowheavy3e stays the row network.
   `pm_ecg/labels_fit.py` and `hybrid/realstrips_build.py` already do the fitting), from PTB-XL
   records outside PM-ECG-ID's 100 ECGs.
 
+### DIAGNOSTIC: training on PM-ECG-ID itself (Nov 21; never a default, never released)
+
+Question: does training on the benchmark's own kind of capture close the gap to PMcardio? Asked
+for by the owner as a diagnostic only. Design: split PM-ECG-ID by ECG (Image ID even = train,
+odd = test, so no test ECG's signal is seen); real strips from 20 even ECGs per scenario
+(`hybrid/pmstrips_build.py`, same labelling as the Kaggle real strips); the row network continued
+from rowheavy3e with those strips as its only real strips; both it and rowheavy3e evaluated on odd
+ECGs only (`pmcardio.yml id_parity=odd`), with page v3 and photo_norm. The model never becomes a
+default, is never released, and its numbers are never reported as our PM-ECG-ID result.
+
+| Step | Run | Result |
+|---|---|---|
+| strips (32 vCPU pod, volume) | 44963401452 | (running) |
+| training | | |
+| evaluation, rowheavy3e vs diagnostic, odd ECGs | | |
+
 ### Assisted mode (what PMcardio's evaluation may have given its algorithm)
 
 PMcardio's paper (medRxiv 2024.08.31.24312876) says paper speed and voltage gain are user inputs,

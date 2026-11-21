@@ -54,7 +54,9 @@ code on every push.
   `results.json`, `report.md`, `decomposition.json` and logs leave a pod or runner. The read signals
   next to the ground truth (`sig/`) are deleted. Real strips stay on the volume.
 - Weights trained on Kaggle pages never go to the public `fmenegui/ecgdig-models`.
-- PM-ECG-ID and LITFL are never used for training. Kaggle is split by record: the holdout
+- PM-ECG-ID and LITFL are never used for training. One owner-approved exception (Nov 21): the
+  diagnostic in `docs/experiments-log.md` (train on even Image IDs, test on odd only; the model is
+  never a default, never released, never reported as our PM-ECG-ID result). Kaggle is split by record: the holdout
   (id % 5 == 0 plus the 15 local records) never enters training.
 - Only terminate pods this session started.
 
