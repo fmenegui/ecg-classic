@@ -38,6 +38,9 @@ def main():
     ap.add_argument("--sel-out", default="", help="where to write the selection (default OUT/sel.csv)")
     ap.add_argument("--formats", default="", help="only these ECG formats (metadata 'ECG format'), comma separated")
     ap.add_argument("--pages", type=int, default=0, help="with --formats: only ECGs printed on this many pages")
+    ap.add_argument("--id-parity", choices=["", "even", "odd"], default="",
+                    help="only ECGs whose Image ID is even/odd (the PM-trained diagnostic, Nov 21: train on even, "
+                         "test on odd; never for the reported benchmark)")
     a = ap.parse_args()
     import numpy as np
     import pandas as pd
@@ -61,6 +64,8 @@ def main():
         m = m[m["ECG format"].isin(a.formats.split(","))]
         if a.pages:
             m = m[m["ECG number of pages"] == a.pages]
+    if a.id_parity:
+        m = m[(m["Image ID"].astype(int) % 2) == (0 if a.id_parity == "even" else 1)]
     if a.per_scenario:
         rng = np.random.default_rng(a.seed); keep = []
         for _, g in m.groupby("scen"):

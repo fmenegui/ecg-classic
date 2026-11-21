@@ -47,6 +47,11 @@ on:
         required: false
         default: ''
         type: string
+      id_parity:
+        description: 'DIAGNOSTIC ONLY: even/odd = only ECGs with an even/odd Image ID (the PM-trained diagnostic is tested on odd)'
+        required: false
+        default: ''
+        type: string
       per_scenario:
         description: 'ECGs per scenario (0 = whole database)'
         required: false
@@ -144,7 +149,7 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install -e . pandas remotezip onnxruntime
       - name: Download the shard (Zenodo, by ranges)
-        run: python benchmarks/pmcardio/fetch.py --out data/pm --shard ${{ matrix.part }} --nshards 20 --per-scenario ${{ inputs.per_scenario }}
+        run: python benchmarks/pmcardio/fetch.py --out data/pm --shard ${{ matrix.part }} --nshards 20 --per-scenario ${{ inputs.per_scenario }} ${{ inputs.id_parity && format('--id-parity {0}', inputs.id_parity) || '' }}
       - name: Models (built once by the models job, shared through the cache)
         if: ${{ inputs.ink_model_run != '' || inputs.grid_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' || inputs.dewarp_model_run != '' }}
         uses: actions/cache/restore@v4
