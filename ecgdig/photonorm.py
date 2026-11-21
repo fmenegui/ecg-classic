@@ -18,22 +18,28 @@ PAPER_Q = 75          # the paper is most of the page: its level is the 75th per
 PAPER_LEVEL = 0.92    # where the paper sits on a normal scan or render (0..1)
 
 
-def tone_map(img: np.ndarray, max_range: int = 100, gamma_min: float = 0.35):
+def tone_map(img: np.ndarray, max_range: int = 100, gamma_min: float = 0.35, white_max_channel: bool = False):
     """img: HxWx3 uint8 (BGR). Returns (image, info). info["applied"] says whether it changed."""
     g = img.mean(axis=2) if img.ndim == 3 else img.astype(np.float32)
     sub = g[::4, ::4]
     lo, hi = np.percentile(sub, [0.5, 99.5])
     paper = np.percentile(sub, PAPER_Q)
-    rng = hi - lo
-    pn = (paper - lo) / max(rng, 1.0)
     info = dict(lo=float(lo), hi=float(hi), paper=float(paper), applied=False)
+    if paper >= 250 and white_max_channel and img.ndim == 3:
+        # white page: a faint grey pen on a saturated red grid (PM-ECG-ID opacity 0.15-0.2) is
+        # mid-grey in all channels, the grid is dark in two and bright in its brightest one. The
+        # brightest channel's range is the pen's (the reader's ink map uses that channel):
+        # stretch it, so the pen turns dark and the grid keeps its colour
+        lo, hi = float(np.percentile(img.max(axis=2)[::4, ::4], 0.5)), 255.0
+        info.update(lo=lo, hi=hi, channel="max")
+    rng = hi - lo
     # only a compressed page: ordinary phone photos (paper ~180, range ~130) are left as they are
     if rng >= max_range:
         return img, info
     if paper >= 250:   # white page, faint content (low opacity): stretch only, no gamma
         gamma = 1.0
     else:
-        pn = float(np.clip(pn, 0.05, 0.98))
+        pn = float(np.clip((paper - lo) / max(rng, 1.0), 0.05, 0.98))
         gamma = float(np.clip(np.log(PAPER_LEVEL) / np.log(pn), gamma_min, 5.0))
     x = np.clip((np.arange(256, dtype=np.float32) - lo) / max(rng, 1.0), 0, 1)
     lut = np.clip(255.0 * x ** gamma + 0.5, 0, 255).astype(np.uint8)

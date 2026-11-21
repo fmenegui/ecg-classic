@@ -69,6 +69,7 @@ class Config:
     photo_norm: bool = False    # per-page tone map before reading (ecgdig/photonorm.py)
     photo_norm_range: int = 100     # pages whose grey levels span less than this are tone-mapped
     photo_norm_gamma_min: float = 0.35  # PM dev, Nov 21: 0.2 +0.62, 0.35 +0.70, 0.5 +0.58 dB
+    photo_norm_white_max: bool = False  # white faint pages: stretch the brightest channel's range
     dewarp_model: str = ""      # page-flattening ONNX (ecgdig/dewarp.py): the photo is also read
                                 # flattened, and the reading with the better quality is kept
     ink_mix: float = 1.0        # 1 = network only; <1 mixes with the classical map
@@ -1390,7 +1391,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         if isinstance(image, (str, bytes)) or hasattr(image, "__fspath__"):
             image = cv2.imread(str(image), cv2.IMREAD_COLOR)
         from .photonorm import tone_map
-        image, tm = tone_map(image, cfg.photo_norm_range, cfg.photo_norm_gamma_min)
+        image, tm = tone_map(image, cfg.photo_norm_range, cfg.photo_norm_gamma_min, cfg.photo_norm_white_max)
         out = digitize(image, dataclasses.replace(cfg, photo_norm=False), return_debug)
         out["photo_norm"] = tm
         return out

@@ -31,3 +31,15 @@ def test_dark_and_washed_out_restored():
         paper = np.percentile(out.mean(axis=2), 75)
         ink = out[201, 300].mean()
         assert paper > 200 and ink < 80 and paper - ink > 150
+
+
+def test_faint_grey_pen_on_red_grid():
+    im = np.full((400, 600, 3), 255, np.uint8)
+    im[::20] = (16, 80, 240); im[:, ::20] = (16, 80, 240)        # saturated orange-red grid (BGR)
+    im[200:203, 50:550] = 208                                    # faint grey pen
+    out, info = tone_map(im)
+    assert not info["applied"]                                   # off by default
+    out, info = tone_map(im, white_max_channel=True)
+    assert info["applied"] and info["channel"] == "max"
+    assert out[201, 300].max() < 60                              # the pen is dark now
+    assert out[0, 300, 2] > 100                                  # the grid keeps its red channel
