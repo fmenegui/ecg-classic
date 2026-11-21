@@ -1,7 +1,7 @@
 #!/bin/bash
 # 4th place Kaggle solution (tomoon33: grid multitask + grid line index rectification, an ensemble of
 # 4 digitisation models x 5 folds) on our development sets, on a GPU pod:
-#   bash benchmarks/topsol/run_4th.sh          (gpu-train.yml kaggle=true)
+#   bash benchmarks/topsol/run_4th.sh          (gpu-train.yml kaggle=true disk_gb=150)
 # Its notebook is shell cells driven by environment variables (RAW_IMAGE_DIR, TEST_CSV); it is
 # converted to a script (nb2sh.py) and pointed at our images (prepare.py). Its submission.csv is
 # converted to our npz (to_npz_sub.py) and scored by our evaluators.
@@ -20,6 +20,7 @@ for d in m.get("dataset_sources") or []:
 for k in m.get("kernel_sources") or []:
     print("kernel", k)
 PY
+df -h /root | tail -1     # the weights take ~70 GB unpacked: gpu-train.yml disk_gb=150
 while read kind ref; do
   slug=${ref#*/}; echo "$kind $ref"
   if [ "$kind" = dataset ]; then kaggle datasets download "$ref" -p "$TS_INPUT/$slug" --unzip -q || echo "could not download $ref"

@@ -46,6 +46,11 @@ on:
         required: false
         default: 'gpu'
         type: string
+      disk_gb:
+        description: 'Container disk of the pod in GB (the 4th place solution downloads ~70 GB of weights)'
+        required: false
+        default: '60'
+        type: string
 permissions:
   contents: read
   actions: write
@@ -82,6 +87,7 @@ jobs:
         env:
           GPU: ${{ inputs.gpu }}
           MAX_HOURS: ${{ inputs.max_hours }}
+          DISK_GB: ${{ inputs.disk_gb }}
           JOB: ${{ inputs.job }}
           REF: ${{ github.ref_name }}
           VOLUME_ID: ${{ steps.vol.outputs.volume_id }}

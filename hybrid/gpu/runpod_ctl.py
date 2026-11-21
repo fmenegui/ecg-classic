@@ -146,7 +146,7 @@ def _try_cards(gpus, asked, q, cloud, env, cmd, vol=None):
     # preferred GPU first, with as many vCPU as possible (the crops are generated on the CPU)
     # a cheap card with 8 vCPU beats an expensive one with more: every card at 16 vCPU first, then at 8
     for vcpu, g in [(16, g) for g in gpus] + [(8, g) for g in gpus]:
-        inp = dict(cloudType=cloud, gpuCount=1, volumeInGb=0, containerDiskInGb=60, minVcpuCount=vcpu,
+        inp = dict(cloudType=cloud, gpuCount=1, volumeInGb=0, containerDiskInGb=int(os.environ.get("DISK_GB") or 60), minVcpuCount=vcpu,
                    minMemoryInGb=int(os.environ.get("MIN_RAM_GB", "46")), gpuTypeId=g, name=NAME, imageName=IMAGE, dockerArgs=cmd,
                    ports="8000/http", volumeMountPath="/workspace", env=env)
         if vol:   # the data volume (caches of the bank and of the real strips): its data center only
