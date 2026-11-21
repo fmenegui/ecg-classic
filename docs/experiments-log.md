@@ -177,8 +177,10 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
     paired with no normalisation; 60-scenario mean 9.65 → 10.34; vs gamma 0.5 on all 300: 10.23 →
     10.35. Brightness -120 2.78 → 10.15, -160 −2.53 → 2.81, gamma 0.125 8.42 → 14.38, 0.25 7.08 →
     15.49, 8 1.25 → 7.68; -40 5.07 → 4.35 (the one loss). Now the default minimum gamma.
-  - Whole database, paired (free runners, per_scenario=0, 6,000 ECGs): rowheavy3e + page v3
-    44861704073; the same + photo_norm 44861706690.
+  - Whole database, paired (free runners, per_scenario=0, 6,000 ECGs): first try 44861704073 /
+    44861706690 cancelled after 12 of 42 shards died (memory 15.5 of 16 GB with 3 workers; ECG 47's
+    photos in flight each time). Now 2 workers with a 7 GB cap each (`ECGDIG_MEM_LIMIT_MB`: an image
+    that needs more fails alone). Rerun: rowheavy3e + page v3 44875611556; + photo_norm 44875613583.
 - Three shards' runners died again. The new progress line shows why: memory at 15.3-15.4 of 16 GB
   with 3-4 phone photos (16 Mpx, page network) in flight, no single culprit. `pmcardio.yml` now
   runs 3 images at a time.

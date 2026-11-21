@@ -268,6 +268,17 @@ page is that none of these repeats.
 - **Practice.** On GPU pods never size a pool with `nproc`; read the coverage line before trusting
   a number.
 
+## 20. Free GitHub runners killed by memory (Nov 20-21)
+
+- **What happened.** `pmcardio.yml` shards with the page network died with `The runner has received
+  a shutdown signal` at 14-15 of their 20 images, again and again (shards 7, 17, 0; whole-database
+  shards 12 of 42). The progress line showed memory at 15.3-15.5 of 16 GB with 3-4 phone photos
+  (16 Mpx) in flight, ECG 47 among them each time.
+- **Cost.** Nothing in money (free runners), but runs lost 5-40% of their coverage.
+- **Prevention, now in the code.** The progress line prints memory and the images in flight;
+  `pmcardio.yml` runs 2 workers and caps each at 7 GB (`ECGDIG_MEM_LIMIT_MB`), so an image that
+  needs more fails alone with MemoryError.
+
 ## Rules that save money
 
 1. **Look at every new kind of job in its first 10 minutes** (`podlog.sh`). Check that it started,
