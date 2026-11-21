@@ -52,6 +52,7 @@ saw CV-to-private drops of ~4 dB.
 | 20/11 | 44653806160 | rowheavy3e (continues 3c) | 3090, 0.5 | 4.6 | 2.31 | **current best row network**: Kaggle dev 17.95 / holdout 17.67 (+0.54 / +0.95 over 3c; +0.24 / +0.53 over rowreal); PM dev 9.34 (+0.21 over rowreal); few real strips (built during training) |
 | 20/11 | 44778865703, 44786097024, 44789063535 | 2nd place solution, smoke | A4000-3090 | ~1 | ~0.3 | pipeline fixes (paths, timm version, layout); see §5 |
 | 20/11 | 44796609191 | 2nd place solution, smoke (36 images) | 3090, 0.5 | 1.2 | 0.60 | runs end to end; Kaggle dev 30.07 dB (in-sample: memorised); PM-ECG-ID 3x4+1R 0 of 18 read; see §5 |
+| 20-21/11 | 44834962498 | Open-ECG-Digitizer, Kaggle dev again (scoring fixed; input fitted to 2200x1700) | 3090, 0.5 | 2.55 | 1.28 | 540 of 540 scored: **10.35 dB** official metric vs ours 17.95 (holdout 10.01 vs 17.67); every type lower, 0001 12.73 vs 25.05, photos 0006 9.86 vs 12.32 |
 | 20/11 | 44834969780 | Open-ECG-Digitizer input size 2200x1700, 1 ECG per scenario (60 ECGs, 66 images) | GPU | 0.5 | ~0.15 | 3.91 dB PMcardio-style, failed leads 23.8% |
 | 20/11 | 44834966288 | Open-ECG-Digitizer, images at their own size (same 60 ECGs) | GPU | 0.8 | ~0.2 | **5.09 dB (+1.19 over 2200x1700)**, failed 22.8%; photos gain most (iphone +10, bents +6.6, samsung +6.1); 2148 s vs 1222 s |
 | 20/11 | 44834973129 | Open-ECG-Digitizer input size 3300x2550 (same 60 ECGs) | GPU | 0.8 | ~0.2 | 5.12 dB, same as its own size (+0.03); its own size is kept (it resamples to 3000 px inside) |
@@ -115,7 +116,7 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
 | Method | PM dev SNR (ECGs) | PM failed leads | PM Kaggle metric | Kaggle dev (images) | Note |
 |---|---|---|---|---|---|
 | ours, rowheavy3e | 9.34 (300) | 15.2% | 15.48 | 17.95 (540) | |
-| Open-ECG-Digitizer | 3.54 (300, fitted to 2200x1700; ~+1.2 at its own size on 60, rerunning) | 24.5% | 5.37 | 10.00 vs ours 15.48 (45 of 540 paired, 8%) | images fitted inside 2200x1700; size sensitivity not checked yet |
+| Open-ECG-Digitizer | 3.54 (300, fitted to 2200x1700; ~+1.2 at its own size on 60, rerunning) | 24.5% | 5.37 | 10.35 (540) | images fitted inside 2200x1700; size sensitivity not checked yet |
 | 2nd place Kaggle | 0.00 (300, 3x4+1R only: 1 of 300 pages read) | 100% | 0.46 | 30.07 (18) | Kaggle records are in its training set; fails the page template on PM |
 
 ### Assisted mode (what PMcardio's evaluation may have given its algorithm)
@@ -221,7 +222,7 @@ three use rowheavy3e + page v3 on free runners (the automatic run is 44834958768
 | 44834954765 | rowheavy4 smoke: done, OK | | 0.08 USD |
 | 44837522288 | rowheavy4, 285 min on the volume, then the free dev benchmark | 5.8 h | 2.9 USD |
 | 44834958768 | PM dev, rowheavy3e + page v3, free runners: 19 of 20 shards (shard 7 runner shut down twice) | | free |
-| 44834962498 | Open-ECG-Digitizer, Kaggle dev again (scoring fixed) | 4 h | 2.0 USD |
+| 44834962498 | Open-ECG-Digitizer, Kaggle dev again: done, 10.35 dB | | 1.28 USD |
 | 44834966288 / 44834969780 / 44834973129 | Open-ECG-Digitizer input size: none / 2200x1700 / 3300x2550, 1 PM-ECG-ID ECG per scenario | 1 h each | 1.5 USD |
 | 44834976689 | 2nd place, PM-ECG-ID 3x4+1R pages: done (1 of 300 read) | | 0.16 USD |
 
