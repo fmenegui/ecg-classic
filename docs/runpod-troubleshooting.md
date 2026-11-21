@@ -279,6 +279,14 @@ page is that none of these repeats.
   `pmcardio.yml` runs 2 workers and caps each at 7 GB (`ECGDIG_MEM_LIMIT_MB`), so an image that
   needs more fails alone with MemoryError.
 
+## 21. Container disk full (Nov 21, 44930386428, ~0.2 USD)
+
+- **What happened.** The 4th place Kaggle solution downloads ~70 GB of weights (4 models x 5
+  folds). The GPU pod's 60 GB container disk filled at the 6th of its 11 datasets
+  (`No space left on device`) and nothing ran.
+- **Prevention, now in the code.** `gpu-train.yml` has `disk_gb` (default 60; 150 for this solution).
+- **Practice.** Before running a third-party solution, add up the sizes of its Kaggle datasets.
+
 ## Rules that save money
 
 1. **Look at every new kind of job in its first 10 minutes** (`podlog.sh`). Check that it started,
