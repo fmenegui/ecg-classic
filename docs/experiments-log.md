@@ -161,6 +161,10 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
 - Tuning (free runners): minimum gamma 0.35 (44859353824) and 0.5 (44859356037); only brightness
   -160 and -120 reach the 0.2 limit. The -40 pages sampled locally (range 145-176) do not fire the
   gate, so the -40 change comes from other pages.
+  - Minimum gamma 0.5 (44859356037, all 20 shards, 280 ECGs): 9.59 → 10.17 dB (+0.58) over no
+    normalisation; same as 0.2 on the 243 common ECGs (10.35 → 10.33). Brightness -160 −1.77 →
+    +3.16 and -40 back to 5.93, but contrast gamma 8 9.85 → 7.25 and gamma 1.5 8.35 → 7.10: those
+    pages need a gamma below 0.5.
 - Three shards' runners died again. The new progress line shows why: memory at 15.3-15.4 of 16 GB
   with 3-4 phone photos (16 Mpx, page network) in flight, no single culprit. `pmcardio.yml` now
   runs 3 images at a time.
