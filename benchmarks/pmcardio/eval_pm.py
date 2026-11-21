@@ -151,8 +151,13 @@ def _run_all(jobs, n, cache: Path, root: Path):
         if now - t_log > 60:
             k = len(res) - n_done0
             eta = (total - k) * (now - t_start) / k / 60 if k else float("nan")
-            print(f"eval progress: {k} of {total} images, {now - t_start:.0f} s, ETA {eta:.0f} min",
-                  file=sys.stderr, flush=True)
+            try:   # memory and the images in flight: a runner killed for memory shows the culprit
+                mem = os.popen("free -m | awk '/Mem:/{print $3\"/\"$2}'").read().strip()
+            except Exception:  # noqa: BLE001
+                mem = "?"
+            fl = ",".join(os.path.basename(v[0][0]) + f"@{now - v[2]:.0f}s" for v in futs.values())
+            print(f"eval progress: {k} of {total} images, {now - t_start:.0f} s, ETA {eta:.0f} min, "
+                  f"mem {mem} MB, in flight: {fl}", file=sys.stderr, flush=True)
             t_log = now
         if deadline and now > deadline:
             print(f"deadline reached: {len(res) - n_done0} of {total} images read, "

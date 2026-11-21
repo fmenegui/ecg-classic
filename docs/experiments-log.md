@@ -130,7 +130,7 @@ three use rowheavy3e + page v3 on free runners (the automatic run is 44834958768
 | Run | Given to the reader | Result |
 |---|---|---|
 | 44846130588 | printed format + 25 mm/s + 10 mm/mV | (running) |
-| 44846134555 | printed format | (running) |
+| 44846134555 | printed format | shards 7 and 17: runner shut down (memory?); 18 of 20 shards |
 | 44846138808 | 25 mm/s + 10 mm/mV | (running) |
 
 ## 5. Diagnostics
