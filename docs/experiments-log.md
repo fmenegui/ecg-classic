@@ -152,6 +152,13 @@ degradations, 20 px/mm, sub-pixel targets). rowheavy3e stays the row network.
 - A cheap discriminating test: train the reproduction's Dotter and Leader at the paper's regime on
   a GPU (300 x 10,000 patches, a few hours on a cheap card) with the same synthetic data. A large
   rise on PM-ECG-ID points to training amount and the method; little change points to data.
+- **Paper-regime test launched (Nov 21, 14:40 UTC).** Kaggle GPU kernel `pm-ecg-paper-regime`
+  (fmenegui/pm-ecg-digitalization, `kernel/paper_regime.py`, request run-paper-01; free Kaggle GPU:
+  the code is in a private repository, which RunPod pods cannot clone without a secret). Same
+  synthetic generator and architecture as the current weights; Dotter and Leader trained from
+  scratch at 300 x 10,000 patches (up to 200 min each); the same 60 PM-ECG-ID images (one per
+  scenario), same evaluator, arm A = current weights, arm B = new Dotter and Leader. Design and
+  results in that repository's `docs/RESULTADOS.md`.
 - Next for us either way: real photos of our own prints with labels fitted from the known signal (no hand annotation;
   `pm_ecg/labels_fit.py` and `hybrid/realstrips_build.py` already do the fitting), from PTB-XL
   records outside PM-ECG-ID's 100 ECGs.
