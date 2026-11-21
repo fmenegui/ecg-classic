@@ -61,7 +61,7 @@ saw CV-to-private drops of ~4 dB.
 | 20/11 | 44834954765 | rowheavy4 smoke (10 min) | A4500, 0.25 (EU-RO-1, on the volume) | 0.3 | 0.08 | real strips from the cache, bank cached, 0.64 s/step, data wait 1%; found that only 20,000 of ~50,000 real strips were loaded (`--real-cap` added) |
 | 20-21/11 | 44837522288 | rowheavy4: init rowheavy3e, full real strips (`--real-cap 60000`), 285 min | A4500, 0.25 (EU-RO-1, volume) | 4.85 | 1.21 | 29,530 steps; 49,762 real strips in memory; validation col error median 0.29 → 0.25 px, p90 1.60 → 1.40 px (real strips 0.30 → 0.29, p90 1.37 → 1.32); dev benchmarks 44865885556 (PM) and 44865887535 (Kaggle), free |
 | 21/11 | 44930386428 | 4th place solution (tomoon33, grid-based rectification, 4 models x 5 folds), smoke: 18 PM-ECG-ID 3x4+1R + 18 Kaggle images (`benchmarks/topsol/run_4th.sh`) | 3090, 0.5 | 0.4 | 0.20 | did not run: its weights filled the 60 GB container disk at the 6th of 11 datasets; gpu-train.yml now has `disk_gb` |
-| 21/11 | 44932673380 | 4th place solution, smoke again with a 150 GB disk | (running) | | | |
+| 21/11 | 44932673380 | 4th place solution, smoke again with a 150 GB disk | 3090, 0.5 | 1.2 | 0.59 | ran: 36 of 36 (1,255 s; grid model 4.1 GB, line-index 9.2 GB, ...). Kaggle dev, 18 images (in its training set): 27.95 dB, PCC 0.999. PM-ECG-ID 3x4+1R, 18 images: every lead returned (0% failed) but **SNR −2.35 dB, PCC 0.318** (best lead II 0.74 dB): its grid model rectifies the PM pages without failing, but the reading maps them onto the Kaggle sheet (1700x2200, fixed lead positions); ours on this format ~11 dB |
 | 21/11 | 44930219937 | 3rd place solution (hirotetsu, hengck23 base), smoke: 18 PM-ECG-ID 3x4+1R + 18 Kaggle images | 4000 Ada, 0.28 | 0.3 | 0.08 | did not run: the converted notebook had an `except:` block of shell lines only (IndentationError); make_run.py now turns shell lines into `pass` |
 | 21/11 | 44931957085 | 3rd place solution, smoke again | 3090, 0.5 | 0.3 | 0.15 | did not run: its model code imports `transformers` (not installed); added to run_hengck.sh |
 | 21/11 | 44933687310 | 3rd place solution, smoke, third try | 3090, 0.5 | 0.45 | 0.22 | ran (586 s for 36 images, stages 0-2), but wrote to output-<MODE>/digitalised, not outputs/digitalised: nothing converted. run_hengck.sh now finds the output folder |
@@ -126,7 +126,8 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
 | ours, rowheavy3e | 9.34 (300) | 15.2% | 15.48 | 17.95 (540) | |
 | Open-ECG-Digitizer | 4.41 (300, own size; 3.54 fitted to 2200x1700) | 24.7% | 5.86 | 10.35 (540) | images fitted inside 2200x1700; size sensitivity not checked yet |
 | 2nd place Kaggle | 0.00 (300, 3x4+1R only: 1 of 300 pages read) | 100% | 0.46 |
-| 3rd place Kaggle | 0.00 (18, 3x4+1R only: 0 of 18 read) | 100% | 0.42 | 27-30 (18, in its training set) | same hengck23 template stage as the 2nd | 30.07 (18) | Kaggle records are in its training set; fails the page template on PM |
+| 3rd place Kaggle | 0.00 (18, 3x4+1R only: 0 of 18 read) | 100% | 0.42 | 27-30 (18, in its training set) | same hengck23 template stage as the 2nd |
+| 4th place Kaggle | −2.35 (18, 3x4+1R only; PCC 0.318) | 0% | −0.98 | 27.95 (18, in its training set) | grid rectification works; the reading assumes the Kaggle sheet | 30.07 (18) | Kaggle records are in its training set; fails the page template on PM |
 
 **rowheavy4 (Nov 21): neutral, not adopted.** 2.5× the real Kaggle strips (49,762 vs ~20,000)
 and 29,530 more steps from rowheavy3e: PM dev 9.34 → 9.29 dB (300 ECGs, 5%), Kaggle dev 17.95 →
