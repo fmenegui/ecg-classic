@@ -51,8 +51,10 @@ t0=$(date +%s)
 ( cd "$W/work" && TS_DATA="$W/data" TS_INPUT="$W/input" TS_WORK="$W/work" python "$W/run.py" > "$W/solution.log" 2>&1 )
 # progress lines (\r) dropped; every error kept with its context
 tr '\r' '\n' < "$W/solution.log" | grep -vE "^\s+(\[GPU[0-9]\])?\s*[0-9]+(/[0-9]+)? |^\s*$" | grep -vE "WARN.*imread" | head -150
-echo "solution ran in $(( $(date +%s) - t0 )) s on $(ls $W/work/outputs/digitalised 2>/dev/null | wc -l) images"
-python benchmarks/topsol/to_npz.py "$W/work/outputs/digitalised" "$W/data/test.csv" "$W/ext"
+# 2nd place writes outputs/digitalised, 3rd output-<MODE>/digitalised
+DIG=$(find "$W/work" -maxdepth 3 -type d -name digitalised | head -1)
+echo "solution ran in $(( $(date +%s) - t0 )) s on $(ls "$DIG" 2>/dev/null | wc -l) images (${DIG:-no output})"
+python benchmarks/topsol/to_npz.py "${DIG:-$W/work/outputs/digitalised}" "$W/data/test.csv" "$W/ext"
 
 # nproc shows the host's cores (128 on some pods), not the pod's share: 128 evaluator processes
 # with OpenBLAS threads each hit the thread limit and crashed the Kaggle scoring (Nov 20, 44801832861)
