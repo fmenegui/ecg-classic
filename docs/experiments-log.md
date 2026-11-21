@@ -175,7 +175,7 @@ three use rowheavy3e + page v3 on free runners (the automatic run is 44834958768
 | Run | Given to the reader | Result |
 |---|---|---|
 | 44846130588 | printed format + 25 mm/s + 10 mm/mV | 262 ECGs (shards 7 and 17 shut down): 9.75 → 9.87 dB (+0.12), failed leads 11.0% → 5.5%, 60-scenario mean 9.87 → 10.02 |
-| 44917443473 | Kaggle dev (540 images), 25 mm/s + 10 mm/mV, with page v3 + photo_norm (reference 44856569576) | (running) |
+| 44917443473 | Kaggle dev (540 images), 25 mm/s + 10 mm/mV, with page v3 + photo_norm (reference 44856569576) | 17.96 → 17.97 dB (+0.01; holdout +0.01); at most +0.12 on one type (0012). Our speed and gain readings cost nothing on Kaggle |
 | 44846134555 | printed format | 262 ECGs paired (18 of 20 shards; 7 and 17 runners shut down): 9.75 → 9.83 dB (+0.08), **failed leads 11.0% → 5.4%** (PMcardio 6.62%), 60-scenario mean 9.87 → 9.99. The format explains PMcardio's lower failure rate, not its SNR |
 | 44846138808 | 25 mm/s + 10 mm/mV | 262 ECGs (shards 7 and 17 shut down again): 9.75 → 9.93 dB (+0.18), failed leads 11.0% → 10.1%, 60-scenario mean 9.87 → 10.06 |
 
