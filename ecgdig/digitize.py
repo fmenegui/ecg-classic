@@ -66,6 +66,7 @@ class Config:
     # Simulated on PM-ECG-ID (5,700 ECGs, network v1): unconditional -0.09 dB, margin 0.5 -0.03 dB
     page_margin_rhythm: float = 0.5
     dewarp_margin: float = 0.0
+    photo_norm: bool = False    # per-page tone map before reading (ecgdig/photonorm.py)
     dewarp_model: str = ""      # page-flattening ONNX (ecgdig/dewarp.py): the photo is also read
                                 # flattened, and the reading with the better quality is kept
     ink_mix: float = 1.0        # 1 = network only; <1 mixes with the classical map
@@ -1383,6 +1384,14 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     ink map and with the network's, and the reading with the better internal quality is
     returned (res["hybrid"] says which and why)."""
     cfg = cfg or Config()
+    if cfg.photo_norm:
+        if isinstance(image, (str, bytes)) or hasattr(image, "__fspath__"):
+            image = cv2.imread(str(image), cv2.IMREAD_COLOR)
+        from .photonorm import tone_map
+        image, tm = tone_map(image)
+        out = digitize(image, dataclasses.replace(cfg, photo_norm=False), return_debug)
+        out["photo_norm"] = tm
+        return out
     if cfg.ink_model and cfg.hybrid == "select":
         if isinstance(image, (str, bytes)) or hasattr(image, "__fspath__"):
             image = cv2.imread(str(image), cv2.IMREAD_COLOR)
