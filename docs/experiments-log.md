@@ -118,6 +118,21 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
 | Open-ECG-Digitizer | 3.54 (300, fitted to 2200x1700; ~+1.2 at its own size on 60, rerunning) | 24.5% | 5.37 | 10.00 vs ours 15.48 (45 of 540 paired, 8%) | images fitted inside 2200x1700; size sensitivity not checked yet |
 | 2nd place Kaggle | 0.00 (300, 3x4+1R only: 1 of 300 pages read) | 100% | 0.46 | 30.07 (18) | Kaggle records are in its training set; fails the page template on PM |
 
+### Assisted mode (what PMcardio's evaluation may have given its algorithm)
+
+PMcardio's paper (medRxiv 2024.08.31.24312876) says paper speed and voltage gain are user inputs,
+and format, lead order and rotation "can be provided as input by the user or determined
+automatically"; it does not say which mode its PM-ECG-ID evaluation used (multi-photo ECGs have no
+automatic detection). PM-ECG-ID's metadata has the printed format but no speed or gain; our reader
+finds 25 mm/s and 10 mm/mV on 96% of the dev pages, so the assisted runs fix those values. All
+three use rowheavy3e + page v3 on free runners (the automatic run is 44834958768):
+
+| Run | Given to the reader | Result |
+|---|---|---|
+| 44846130588 | printed format + 25 mm/s + 10 mm/mV | (running) |
+| 44846134555 | printed format | (running) |
+| 44846138808 | 25 mm/s + 10 mm/mV | (running) |
+
 ## 5. Diagnostics
 
 - **Oracle stages (Nov 17, 200 synthetic pages, run 44062555355).** Replacing a stage by its truth:
