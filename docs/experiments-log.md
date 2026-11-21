@@ -198,6 +198,7 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
     Opacity 0.15 2.98 → 7.28 (failed leads 36 → 24), 0.4 8.93 → 13.84, 0.2 9.26 → 8.39; brightness
     +120 9.67 → 13.22 (18 → 6 failed), +160 11.63 → 10.45. Kaggle metric on the PM leads 14.36 →
     14.33. Now on by default with photo_norm (Config.photo_norm_white_max=True).
+    Whole database with it: pmcardio 44908014040 (free).
   - Whole database, paired (free runners, per_scenario=0, 6,000 ECGs): first try 44861704073 /
     44861706690 cancelled after 12 of 42 shards died (memory 15.5 of 16 GB with 3 workers; ECG 47's
     photos in flight each time). Now 2 workers with a 7 GB cap each (`ECGDIG_MEM_LIMIT_MB`: an image
