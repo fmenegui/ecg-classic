@@ -136,6 +136,8 @@ jobs:
       matrix:
         part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     steps:
+      - name: Job start time
+        run: echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -164,6 +166,9 @@ jobs:
           if [ "${{ inputs.oracle }}" = "true" ]; then ARGS="$ARGS --oracle-layout"; fi
           for kv in ${{ inputs.config }}; do ARGS="$ARGS --config $kv"; done
           export ECGDIG_MEM_LIMIT_MB=7000   # 2 workers x 7 GB on a 16 GB runner
+          # stop at 280 of the job's 300 minutes and keep what was read (whole-database shards of 480
+          # images with the page network took longer, Nov 21: 4 shards cancelled, nothing kept)
+          export ECGDIG_DEADLINE=$(( JOB_T0 + 280 * 60 ))
           python benchmarks/pmcardio/eval_pm.py --root data/pm/visual_data --gt data/pm/final_data/data \
             --meta data/pm/final_data/metadata.csv --list data/pm/sel.csv --out results/pm --jobs 2 $ARGS   # 3-4 phone photos with the page network filled the 16 GB runner (Nov 21)
       - uses: actions/upload-artifact@v4
