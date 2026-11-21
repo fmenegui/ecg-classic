@@ -36,3 +36,13 @@ def test_every_lead_in_place(tmp_path):
                 assert np.allclose(seg, LEADS.index(n) + 1), (fs, n)
                 assert np.isnan(np.delete(S[LEADS.index(n)], np.s_[c * 1250:(c + 1) * 1250])).all(), (fs, n)
         assert np.allclose(S[1], 100.0)
+
+
+def test_make_run_keeps_blocks_valid(tmp_path):
+    """A block whose only statements are shell lines stays valid Python (3rd place notebook)."""
+    import ast, json
+    nb = {"cells": [{"cell_type": "code", "source": ["try:\n    import cc3d\nexcept:\n    #comment\n\n    !pip install x\n"]}]}
+    (tmp_path / "n.ipynb").write_text(json.dumps(nb))
+    subprocess.run([sys.executable, str(ROOT / "benchmarks/topsol/make_run.py"), str(tmp_path / "n.ipynb"),
+                    str(tmp_path / "r.py")], check=True)
+    ast.parse((tmp_path / "r.py").read_text())

@@ -26,6 +26,9 @@ def convert(nb_path, out_path):
         for ln in src.split("\n"):
             s = ln.strip()
             if s.startswith("!") or s.startswith("%"):
+                # a shell line may be the only statement of a block (3rd place: `except:` holds
+                # only !ls and !pip): keep the block valid
+                lines.append(ln[: len(ln) - len(ln.lstrip())] + "pass")
                 continue
             if "shutil.rmtree(OUT_DIR)" in ln:
                 continue
