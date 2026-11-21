@@ -130,19 +130,29 @@ degradations, 20 px/mm, sub-pixel targets). rowheavy3e stays the row network.
 
 ### Where PMcardio's 14.48 dB comes from (Nov 21)
 
-- Our faithful reproduction of its published method (fmenegui/pm-ecg-digitalization: Dotter, the
-  patent's Gridder and Undistortion, Leader; trained on ecg-torch-renderer synthetic pages) read
-  PM-ECG-ID at **3.1 dB** (315 images, run-pmid-05, Nov 14), with a ceiling of ~6-8 dB on scenarios
-  where nothing failed. The architecture alone does not explain 14.48 dB.
+- Our reproduction of its published method (fmenegui/pm-ecg-digitalization) read PM-ECG-ID at
+  **3.1 dB** (315 images, run-pmid-05, Nov 14), ~6-8 dB on scenarios where nothing failed. That
+  reproduction is **not** a fair test of the method, so it does not say where the gain comes from:
+  - faithful only where the patent is precise: the Gridder and the per-cell Undistortion;
+  - network depth and width are not published (ours: U-Net base 16, 4 levels); the Leader's
+    training settings are not published either;
+  - trained at about 0.2% of the paper's regime (Dotter 7 epochs x 1,000 patches on CPU vs 300 x
+    10,000), on synthetic ecg-torch-renderer pages, not on annotated photos; the Leader used on
+    PM-ECG-ID was fine-tuned on Kaggle labels;
+  - the reconstruction (rows, columns, paths, format) is our own: the paper only names the steps;
+  - in that run the geometry failed outright on many 16 Mpx photos (memory, Gridder coverage).
 - Assisted inputs (format, speed, gain) explain at most ~0.2 dB (above).
-- The same pattern everywhere: a method trained on images from the same capture pipeline as its
-  test reads far better there (Kaggle 2nd place: 30 dB on its training records, ~22.6 on the hidden
+- Hypothesis (not shown): the gain is mostly training data. A method trained on images from the
+  same capture pipeline as its test reads far better there (Kaggle 2nd place: 30 dB on its training records, ~22.6 on the hidden
   test, 0 of 300 PM-ECG-ID pages). PMcardio built PM-ECG-ID (printed PTB-XL ECGs photographed with
   Samsung, iPhone and Doogee phones) and trained Dotter and Leader on 232 hand-annotated images of
   undisclosed origin; most likely the same kind of prints and phones.
 - Our own evidence that real captures transfer: the row network with 35% real Kaggle strips
   (rowreal) moved PM-ECG-ID 8.52 → 9.46 dB on the whole database, though it never saw a PM image.
-- Next: real photos of our own prints with labels fitted from the known signal (no hand annotation;
+- A cheap discriminating test: train the reproduction's Dotter and Leader at the paper's regime on
+  a GPU (300 x 10,000 patches, a few hours on a cheap card) with the same synthetic data. A large
+  rise on PM-ECG-ID points to training amount and the method; little change points to data.
+- Next for us either way: real photos of our own prints with labels fitted from the known signal (no hand annotation;
   `pm_ecg/labels_fit.py` and `hybrid/realstrips_build.py` already do the fitting), from PTB-XL
   records outside PM-ECG-ID's 100 ECGs.
 
