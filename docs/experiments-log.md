@@ -185,7 +185,8 @@ default, is never released, and its numbers are never reported as our PM-ECG-ID 
 |---|---|---|
 | strips (32 vCPU pod, volume) | 44963401452 | (running) |
 | training | | |
-| evaluation, rowheavy3e vs diagnostic, odd ECGs | | |
+| evaluation, rowheavy3e (baseline), odd ECGs, 5 per scenario | 44963430509 | (running) |
+| evaluation, diagnostic model, same ECGs | | |
 
 ### Assisted mode (what PMcardio's evaluation may have given its algorithm)
 
