@@ -63,7 +63,7 @@ saw CV-to-private drops of ~4 dB.
 | 21/11 | 44930386428 | 4th place solution (tomoon33, grid-based rectification, 4 models x 5 folds), smoke: 18 PM-ECG-ID 3x4+1R + 18 Kaggle images (`benchmarks/topsol/run_4th.sh`) | 3090, 0.5 | 0.4 | 0.20 | did not run: its weights filled the 60 GB container disk at the 6th of 11 datasets; gpu-train.yml now has `disk_gb` |
 | 21/11 | 44932673380 | 4th place solution, smoke again with a 150 GB disk | (running) | | | |
 | 21/11 | 44930219937 | 3rd place solution (hirotetsu, hengck23 base), smoke: 18 PM-ECG-ID 3x4+1R + 18 Kaggle images | 4000 Ada, 0.28 | 0.3 | 0.08 | did not run: the converted notebook had an `except:` block of shell lines only (IndentationError); make_run.py now turns shell lines into `pass` |
-| 21/11 | 44931957085 | 3rd place solution, smoke again | (running) | | | |
+| 21/11 | 44931957085 | 3rd place solution, smoke again | 3090, 0.5 | 0.3 | 0.15 | did not run: its model code imports `transformers` (not installed); added to run_hengck.sh |
 | 20/11 | 44797759750 | Open-ECG-Digitizer, smoke (18 images) | A4000, 0.25 | 0.4 | 0.10 | runs end to end, ~19 s per image; see §5 |
 | 20/11 | 44801827747 | Open-ECG-Digitizer, PM dev | 4000 Ada, 0.28 | 2.5 | 0.70 | 3.54 dB vs ours 9.34 (300 ECGs); see §5 |
 | 20/11 | 44801832861 | Open-ECG-Digitizer, Kaggle dev | A4000, 0.25 | 2.7 | 0.68 | read 540 of 540, but only 45 scored (5 records): the scoring crashed (128 processes on a pod that shows 128 host cores; OpenBLAS thread limit). On those 45: 10.00 vs ours 15.48 dB. Fixed; rerun needed |
