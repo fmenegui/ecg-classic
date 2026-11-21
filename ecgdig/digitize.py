@@ -68,7 +68,7 @@ class Config:
     dewarp_margin: float = 0.0
     photo_norm: bool = False    # per-page tone map before reading (ecgdig/photonorm.py)
     photo_norm_range: int = 100     # pages whose grey levels span less than this are tone-mapped
-    photo_norm_gamma_min: float = 0.2
+    photo_norm_gamma_min: float = 0.35  # PM dev, Nov 21: 0.2 +0.62, 0.35 +0.70, 0.5 +0.58 dB
     dewarp_model: str = ""      # page-flattening ONNX (ecgdig/dewarp.py): the photo is also read
                                 # flattened, and the reading with the better quality is kept
     ink_mix: float = 1.0        # 1 = network only; <1 mixes with the classical map

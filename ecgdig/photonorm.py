@@ -18,7 +18,7 @@ PAPER_Q = 75          # the paper is most of the page: its level is the 75th per
 PAPER_LEVEL = 0.92    # where the paper sits on a normal scan or render (0..1)
 
 
-def tone_map(img: np.ndarray, max_range: int = 100, gamma_min: float = 0.2):
+def tone_map(img: np.ndarray, max_range: int = 100, gamma_min: float = 0.35):
     """img: HxWx3 uint8 (BGR). Returns (image, info). info["applied"] says whether it changed."""
     g = img.mean(axis=2) if img.ndim == 3 else img.astype(np.float32)
     sub = g[::4, ::4]

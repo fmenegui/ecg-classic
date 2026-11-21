@@ -165,6 +165,10 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
     normalisation; same as 0.2 on the 243 common ECGs (10.35 → 10.33). Brightness -160 −1.77 →
     +3.16 and -40 back to 5.93, but contrast gamma 8 9.85 → 7.25 and gamma 1.5 8.35 → 7.10: those
     pages need a gamma below 0.5.
+  - **Minimum gamma 0.35 (44859353824, 300 ECGs, 5%): best.** 9.59 → 10.28 dB (+0.70) on 280
+    paired with no normalisation; 60-scenario mean 9.65 → 10.34; vs gamma 0.5 on all 300: 10.23 →
+    10.35. Brightness -120 2.78 → 10.15, -160 −2.53 → 2.81, gamma 0.125 8.42 → 14.38, 0.25 7.08 →
+    15.49, 8 1.25 → 7.68; -40 5.07 → 4.35 (the one loss). Now the default minimum gamma.
 - Three shards' runners died again. The new progress line shows why: memory at 15.3-15.4 of 16 GB
   with 3-4 phone photos (16 Mpx, page network) in flight, no single culprit. `pmcardio.yml` now
   runs 3 images at a time.
