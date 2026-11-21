@@ -59,7 +59,7 @@ saw CV-to-private drops of ~4 dB.
 | 21/11 | 44840397161 | Open-ECG-Digitizer, PM dev at the images' own size | 3090, 0.5 | 4.3 | 2.15 | 300 of 6,000 ECGs (5%): **4.41 dB** (3.54 fitted to 2200x1700; ours rowheavy3e 9.34, with page v3 + photo_norm 10.35); PCC 0.513, failed leads 24.7%; 44 s per image |
 | 20/11 | 44834976689 | 2nd place solution, PM-ECG-ID 3x4+1R pages (5 per scenario) | 3090, 0.5 | 0.3 | 0.16 | **1 of 300 pages read** (stage 0, the homography to the Kaggle reference page, failed on 292; stage 1 on 7); PM SNR 0.00 dB. On the 21 of these ECGs also in our PM dev: ours 11.08 dB |
 | 20/11 | 44834954765 | rowheavy4 smoke (10 min) | A4500, 0.25 (EU-RO-1, on the volume) | 0.3 | 0.08 | real strips from the cache, bank cached, 0.64 s/step, data wait 1%; found that only 20,000 of ~50,000 real strips were loaded (`--real-cap` added) |
-| 20/11 | 44837522288 | rowheavy4: init rowheavy3e, full real strips (`--real-cap 60000`), 285 min | (running) | | | |
+| 20-21/11 | 44837522288 | rowheavy4: init rowheavy3e, full real strips (`--real-cap 60000`), 285 min | A4500, 0.25 (EU-RO-1, volume) | 4.85 | 1.21 | 29,530 steps; 49,762 real strips in memory; validation col error median 0.29 → 0.25 px, p90 1.60 → 1.40 px (real strips 0.30 → 0.29, p90 1.37 → 1.32); dev benchmarks 44865885556 (PM) and 44865887535 (Kaggle), free |
 | 20/11 | 44797759750 | Open-ECG-Digitizer, smoke (18 images) | A4000, 0.25 | 0.4 | 0.10 | runs end to end, ~19 s per image; see §5 |
 | 20/11 | 44801827747 | Open-ECG-Digitizer, PM dev | 4000 Ada, 0.28 | 2.5 | 0.70 | 3.54 dB vs ours 9.34 (300 ECGs); see §5 |
 | 20/11 | 44801832861 | Open-ECG-Digitizer, Kaggle dev | A4000, 0.25 | 2.7 | 0.68 | read 540 of 540, but only 45 scored (5 records): the scoring crashed (128 processes on a pod that shows 128 host cores; OpenBLAS thread limit). On those 45: 10.00 vs ours 15.48 dB. Fixed; rerun needed |
@@ -263,7 +263,7 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
 |---|---|---|---|
 | 44834948746 | env-check | 1 h | cents |
 | 44834954765 | rowheavy4 smoke: done, OK | | 0.08 USD |
-| 44837522288 | rowheavy4, 285 min on the volume, then the free dev benchmark | 5.8 h | 2.9 USD |
+| 44837522288 | rowheavy4: done (1.21 USD); dev benchmarks running | | |
 | 44834958768 | PM dev, rowheavy3e + page v3, free runners: 19 of 20 shards (shard 7 runner shut down twice) | | free |
 | 44834962498 | Open-ECG-Digitizer, Kaggle dev again: done, 10.35 dB | | 1.28 USD |
 | 44834966288 / 44834969780 / 44834973129 | Open-ECG-Digitizer input size: none / 2200x1700 / 3300x2550, 1 PM-ECG-ID ECG per scenario | 1 h each | 1.5 USD |
