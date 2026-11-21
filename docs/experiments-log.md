@@ -188,6 +188,12 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
     for 480 images with the page network); rescored from their per-image caches (partial, included
     above); the shards now stop at 280 min with partial results. Kaggle whole set for the same
     configuration: kaggle-full 44902767154 (stride 1), to compare with rowheavy 44420729713.
+- **Faint pen on white pages (Nov 21).** Opacity 0.15: 100 ECGs, 14 'no trace row found', wrong
+  row counts on most 6x2 pages. The pen is mid-grey (~208 in every channel), the grid saturated
+  orange-red (BGR 16/80/240): the grid is darker on average but brighter in its brightest channel,
+  which is the one the ink map reads. `photo_norm_white_max=True` stretches the brightest
+  channel's range on white pages (215-255 there): the pen turns black and the grid stays red. PM
+  dev run 44905591721 (free), reference 44859353824 (photo_norm, gamma 0.35).
   - Whole database, paired (free runners, per_scenario=0, 6,000 ECGs): first try 44861704073 /
     44861706690 cancelled after 12 of 42 shards died (memory 15.5 of 16 GB with 3 workers; ECG 47's
     photos in flight each time). Now 2 workers with a 7 GB cap each (`ECGDIG_MEM_LIMIT_MB`: an image
