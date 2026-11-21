@@ -101,6 +101,7 @@ Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-
 | rowheavy3e + page v3 (free runners, 44834958768; 19 of 20 shards) | 9.16 → 9.59 (+0.43) on 280 (4.7%); failed leads 15.4 → 11.7%; Kaggle metric on PM 15.62 → 14.22 | (17.72 with rowreal) | |
 | rowheavy3c 44523858950 | 8.95 | 17.41 | 16.71 |
 | **rowheavy3e 44653806160** | **9.34** | **17.95** | **17.67** |
+| rowheavy4 44837522288 (full real strips) | (running: 44865885556) | 17.93 (-0.02) | 17.58 (-0.09) |
 | rowheavy3e + dewarp v2 (numpy, really running) | 9.26 (-0.07) | 17.95 | 17.67 |
 | classical only (no network) | — | 17.22 | 17.15 |
 | classical at 20 px/mm (rectified frame; same rules) | — | 17.51 (+0.29) | 17.79 (+0.64) |
