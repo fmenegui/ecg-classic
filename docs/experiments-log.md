@@ -150,6 +150,8 @@ paper (75th percentile) at 0.92; a white page with faint content is only stretch
 pages it fires on brightness -160 (range 51-58) and contrast gamma 0.125 (range 53-57) and on one
 of two opacity-0.15 pages; blur, low resolution and ordinary photos (range ~130) are left alone.
 Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576. Reference: 44834958768.
+- Kaggle dev (44856569576, 540 images, 6.1%; with page v3): 17.95 → 17.96 dB vs rowheavy3e alone;
+  0006 +0.10, 0009 +0.07, 0010 +0.05, other types unchanged: no harm on normal pages.
 
 ## 5. Diagnostics
 
