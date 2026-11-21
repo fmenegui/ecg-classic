@@ -42,10 +42,18 @@ def main():
     import numpy as np
     import pandas as pd
     os.makedirs(a.out, exist_ok=True)
-    with _open() as z:
-        for n in ["final_data/metadata.csv", "final_data/data/leads.npz", "final_data/data/rhythms.npz"]:
-            if not os.path.exists(os.path.join(a.out, n)):
-                z.extract(n, a.out)
+    for n in ["final_data/metadata.csv", "final_data/data/leads.npz", "final_data/data/rhythms.npz"]:
+        for tent in range(8):   # Zenodo's 500/504 bursts also hit these reads (Nov 21: two shards lost)
+            if os.path.exists(os.path.join(a.out, n)):
+                break
+            try:
+                with _open() as z:
+                    z.extract(n, a.out)
+            except Exception as e:  # noqa: BLE001
+                if tent == 7:
+                    raise
+                print("attempt", tent, n, str(e)[:120], flush=True)
+                time.sleep(min(240, 10 * 2 ** tent) * random.uniform(0.6, 1.0))
     m = pd.read_csv(os.path.join(a.out, "final_data/metadata.csv"))
     m["scen"] = m["Image relative path"].str.split("/").str[0]
     if a.formats:
