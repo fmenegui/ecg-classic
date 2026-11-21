@@ -12,7 +12,7 @@ Per-scenario tables: [`results/`](results/). Current development ranking: [`lead
 
 | Benchmark | Best of ours | Coverage | Reference |
 |---|---|---|---|
-| PM-ECG-ID whole database | **10.43 dB** (rowheavy3e + page v3 + photo_norm, Nov 21) | 5,918 / 6,000 (98.6%) | PMcardio 14.48 dB (60-subset mean of its paper); 14.05 dB / PCC 0.885 / 6.62% failed in its supplementary table |
+| PM-ECG-ID whole database | **10.49 dB** (rowheavy3e + page v3 + photo_norm with the faint-pen stretch, Nov 21) | 5,730 / 6,000 (95.5%) | PMcardio 14.48 dB (60-subset mean of its paper); 14.05 dB / PCC 0.885 / 6.62% failed in its supplementary table |
 | PM-ECG-ID dev (300 ECGs) | 9.34 dB (rowheavy3, 44653806160) | 300 / 6,000 (5%) | |
 | Kaggle training records, whole | **18.30 dB** all, 18.21 holdout (rowheavy3e + page v3 + photo_norm, Nov 21) | 8,352 / 8,793 (95%) | leaders 22.6-23.3 dB on the hidden test (private LB), not the same images |
 | Kaggle dev (540 images) | 17.95 dB all, 17.67 holdout (rowheavy3) | 540 / 8,793 (6.1%) | |
@@ -248,6 +248,10 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
     ground-truth read, rerun). On 5,079 ECGs (84.7%) paired with the first photo_norm run: 10.53 →
     **10.63 dB (+0.10)**, digital +0.43, brightness +0.22, the rest within ±0.06. Against rowheavy alone
     (5,130 ECGs): 9.72 → 10.63 (+0.91), failed leads 13.0% → 9.2%, 60-scenario mean 9.82 → 10.70.
+    Final, with the two shards rerun (one stopped at the 280-min deadline with partial results): 5,730
+    of 6,000 ECGs (95.5%) against rowheavy alone 9.63 → **10.49 dB (+0.86)**, PCC 0.706 → 0.756,
+    failed leads 13.0% → 9.1%, 60-scenario mean 9.71 → 10.55; against photo_norm without the stretch
+    (5,679) 10.39 → 10.48 (+0.10). This is the current default.
   - Whole database, paired (free runners, per_scenario=0, 6,000 ECGs): first try 44861704073 /
     44861706690 cancelled after 12 of 42 shards died (memory 15.5 of 16 GB with 3 workers; ECG 47's
     photos in flight each time). Now 2 workers with a 7 GB cap each (`ECGDIG_MEM_LIMIT_MB`: an image
