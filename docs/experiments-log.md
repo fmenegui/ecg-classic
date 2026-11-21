@@ -154,6 +154,10 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
   PCC 0.725 → 0.747, failed leads 11.2% → 10.3%, 60-scenario mean 9.87 → 10.41. Contrast +3.16
   (failed 18.6% → 11.0%), brightness +0.79 (but failed leads 15.5% → 19.0%: to look at), digital
   +0.46; every other group unchanged (the gate did not fire). Candidate for the default.
+  Per scenario: contrast gamma 0.25 7.08 → 15.49, gamma 8 1.25 → 9.85, gamma 0.125 7.15 → 12.32,
+  brightness -120 2.78 → 7.54, +160 9.12 → 11.63 (failed leads 12 → 24); worse: brightness -160
+  −0.33 → −1.77 and -40 5.92 → 4.95 (6 new failed leads). Next: tune the gate and the gamma limit
+  on those two, then a whole-database run.
 - Three shards' runners died again. The new progress line shows why: memory at 15.3-15.4 of 16 GB
   with 3-4 phone photos (16 Mpx, page network) in flight, no single culprit. `pmcardio.yml` now
   runs 3 images at a time.
