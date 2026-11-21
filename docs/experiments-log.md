@@ -150,6 +150,13 @@ paper (75th percentile) at 0.92; a white page with faint content is only stretch
 pages it fires on brightness -160 (range 51-58) and contrast gamma 0.125 (range 53-57) and on one
 of two opacity-0.15 pages; blur, low resolution and ordinary photos (range ~130) are left alone.
 Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576. Reference: 44834958768.
+- **PM dev (44856538010, 243 of 6,000 ECGs paired, 4.0%; 17 of 20 shards): 9.73 → 10.35 dB (+0.62)**,
+  PCC 0.725 → 0.747, failed leads 11.2% → 10.3%, 60-scenario mean 9.87 → 10.41. Contrast +3.16
+  (failed 18.6% → 11.0%), brightness +0.79 (but failed leads 15.5% → 19.0%: to look at), digital
+  +0.46; every other group unchanged (the gate did not fire). Candidate for the default.
+- Three shards' runners died again. The new progress line shows why: memory at 15.3-15.4 of 16 GB
+  with 3-4 phone photos (16 Mpx, page network) in flight, no single culprit. `pmcardio.yml` now
+  runs 3 images at a time.
 - Kaggle dev (44856569576, 540 images, 6.1%; with page v3): 17.95 → 17.96 dB vs rowheavy3e alone;
   0006 +0.10, 0009 +0.07, 0010 +0.05, other types unchanged: no harm on normal pages.
 
