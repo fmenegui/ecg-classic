@@ -79,6 +79,16 @@ def _diag(r):
                 hybrid={k: v for k, v in (r.get("hybrid") or {}).items() if k != "errors"} or None)
 
 
+def _limit_memory():
+    """Worker initializer: ECGDIG_MEM_LIMIT_MB caps each worker's data segment, so an image that
+    needs too much memory fails alone (MemoryError) instead of the machine killing the runner
+    (Nov 21: GitHub runners died at 15.5 of 16 GB with phone photos in flight)."""
+    mb = int(os.environ.get("ECGDIG_MEM_LIMIT_MB", "0") or 0)
+    if mb > 0:
+        import resource
+        resource.setrlimit(resource.RLIMIT_DATA, (mb << 20, mb << 20))
+
+
 def _digitize(job):
     path, cfg_kw = job
     import warnings
@@ -169,7 +179,7 @@ def _run_all(jobs, n, cache: Path, root: Path):
             return res
         while todo and len(futs) < n:
             if cur is None or n_cur >= n * 4:
-                cur, n_cur = ProcessPoolExecutor(n), 0
+                cur, n_cur = ProcessPoolExecutor(n, initializer=_limit_memory), 0
                 execs.append(cur)
             j = todo.pop(0)
             try:
@@ -211,7 +221,7 @@ def _run_all(jobs, n, cache: Path, root: Path):
         ex.shutdown(wait=False, cancel_futures=True)
     for j in broken:
         # killed process (memory?): run it alone; if it dies again, it becomes a failure
-        e1 = ProcessPoolExecutor(1)
+        e1 = ProcessPoolExecutor(1, initializer=_limit_memory)
         try:
             path, o = e1.submit(_digitize, j).result(timeout=per_img)
         except Exception as e:  # noqa: BLE001

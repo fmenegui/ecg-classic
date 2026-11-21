@@ -163,8 +163,9 @@ jobs:
           if [ -f model/dewarp.onnx ]; then ARGS="$ARGS --config dewarp_model=$PWD/model/dewarp.onnx"; fi
           if [ "${{ inputs.oracle }}" = "true" ]; then ARGS="$ARGS --oracle-layout"; fi
           for kv in ${{ inputs.config }}; do ARGS="$ARGS --config $kv"; done
+          export ECGDIG_MEM_LIMIT_MB=7000   # 2 workers x 7 GB on a 16 GB runner
           python benchmarks/pmcardio/eval_pm.py --root data/pm/visual_data --gt data/pm/final_data/data \
-            --meta data/pm/final_data/metadata.csv --list data/pm/sel.csv --out results/pm --jobs 3 $ARGS   # 4 images of 16 Mpx with the page network filled the 16 GB runner (Nov 21)
+            --meta data/pm/final_data/metadata.csv --list data/pm/sel.csv --out results/pm --jobs 2 $ARGS   # 3-4 phone photos with the page network filled the 16 GB runner (Nov 21)
       - uses: actions/upload-artifact@v4
         if: always()
         with:
