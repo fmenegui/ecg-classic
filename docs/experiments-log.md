@@ -101,7 +101,7 @@ Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-
 | rowheavy3e + page v3 (free runners, 44834958768; 19 of 20 shards) | 9.16 → 9.59 (+0.43) on 280 (4.7%); failed leads 15.4 → 11.7%; Kaggle metric on PM 15.62 → 14.22 | (17.72 with rowreal) | |
 | rowheavy3c 44523858950 | 8.95 | 17.41 | 16.71 |
 | **rowheavy3e 44653806160** | **9.34** | **17.95** | **17.67** |
-| rowheavy4 44837522288 (full real strips) | (running: 44865885556) | 17.93 (-0.02) | 17.58 (-0.09) |
+| rowheavy4 44837522288 (full real strips) | 9.29 (-0.04) | 17.93 (-0.02) | 17.58 (-0.09) |
 | rowheavy3e + dewarp v2 (numpy, really running) | 9.26 (-0.07) | 17.95 | 17.67 |
 | classical only (no network) | — | 17.22 | 17.15 |
 | classical at 20 px/mm (rectified frame; same rules) | — | 17.51 (+0.29) | 17.79 (+0.64) |
@@ -119,6 +119,13 @@ dominate the linear mean. Resolution pays where the trace is clean; a row networ
 | ours, rowheavy3e | 9.34 (300) | 15.2% | 15.48 | 17.95 (540) | |
 | Open-ECG-Digitizer | 4.41 (300, own size; 3.54 fitted to 2200x1700) | 24.7% | 5.86 | 10.35 (540) | images fitted inside 2200x1700; size sensitivity not checked yet |
 | 2nd place Kaggle | 0.00 (300, 3x4+1R only: 1 of 300 pages read) | 100% | 0.46 | 30.07 (18) | Kaggle records are in its training set; fails the page template on PM |
+
+**rowheavy4 (Nov 21): neutral, not adopted.** 2.5× the real Kaggle strips (49,762 vs ~20,000)
+and 29,530 more steps from rowheavy3e: PM dev 9.34 → 9.29 dB (300 ECGs, 5%), Kaggle dev 17.95 →
+17.93 (540 images, 6.1%), holdout 17.67 → 17.58; validation column error improved (0.29 → 0.25 px
+median) without moving the benchmarks. More of the same real strips does not help any more; the
+next row-network gains must come from new kinds of training data (extreme photometric
+degradations, 20 px/mm, sub-pixel targets). rowheavy3e stays the row network.
 
 ### Assisted mode (what PMcardio's evaluation may have given its algorithm)
 
