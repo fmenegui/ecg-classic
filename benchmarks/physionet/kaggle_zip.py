@@ -177,6 +177,9 @@ def main():
         ids = [x for x in a.ids.split(",") if x]
     else:
         all_ids, _ = train_ids(z)
+        if a.ids:   # only these records (e.g. the photos turned by 90 degrees), split over the parts
+            want = {x for x in a.ids.split(",") if x}
+            all_ids = [x for x in all_ids if x in want]
         if a.part < 0:   # every part: the development subset of kaggle-full (stride per shard)
             ids = [x for p in range(a.nparts) for x in all_ids[p::a.nparts][::a.stride]]
         else:

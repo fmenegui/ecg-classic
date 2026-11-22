@@ -47,6 +47,11 @@ on:
         required: false
         default: ''
         type: string
+      records:
+        description: 'Only these training records, comma separated (split over the 20 shards; stride still applies)'
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
   actions: read
@@ -128,7 +133,7 @@ jobs:
       - name: Records of this shard, read from the archive by ranges
         run: |
           python -m pip install -q remotezip requests
-          python benchmarks/physionet/kaggle_zip.py shard --part ${{ matrix.part }} --nparts 20 --stride ${{ inputs.stride }} \
+          python benchmarks/physionet/kaggle_zip.py shard --part ${{ matrix.part }} --nparts 20 --stride ${{ inputs.stride }} ${{ inputs.records && format('--ids {0}', inputs.records) || '' }} \
             --threads 4 --out results/physionet/data
       - uses: actions/cache/restore@v4
         if: inputs.ink_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' || inputs.dewarp_model_run != ''
