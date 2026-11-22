@@ -438,8 +438,8 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
     by 0.15 mm; ECG 41 digital had a 1% top-to-bottom horizontal scale change from it): digital
     18.39 → 18.18 (+7.2 and +7.1 on two pages, −19.8 on one); brightness +40 unchanged (photos
     keep their homography). Not adopted.
-  - `geometry.CELL_MAX_MM=0.8`: digital 18.39 → 17.11 (the same four pages fall as with poly).
-    Not adopted.
+  - `geometry.CELL_MAX_MM=0.8`: digital 18.39 → 17.11 (the same four pages fall as with poly);
+    brightness +40 13.95 → 13.77. Not adopted.
   - Choosing between cell and the variant by the mean lead quality score: +0.10 (H_SELECT) or
     worse; the internal score does not track these errors.
   - Mixed swings of ±7-20 dB on single pages from small geometric changes: the structure stage

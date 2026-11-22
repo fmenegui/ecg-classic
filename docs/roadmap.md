@@ -22,6 +22,23 @@
 - **PM-ECG-ID:** **structure** (13% of single-page ECGs have the wrong row count, 12.9% failed
   leads) as well as the trace.
 
+## Update (Nov 22): what PM-ECG-ID says after the per-ECG analysis
+
+PM-ECG-ID is 100 ECGs × 60 scenarios, so one ECG's failure repeats in up to 60 scenarios. On the
+whole default run (10.49 dB) the gap to PMcardio splits into ~2.1 dB from the 19 hardest scenarios
+and ~1.7 dB from the 29 middle ones. Measured on local subsets (experiment log, §5):
+
+- **Horizontal geometry from the grid is a small lever** (~+0.15 dB on photos beyond what a
+  per-lead time-scale oracle also adds on flat digital pages).
+- **The structure stage is fragile.** Small geometric changes swing single digital pages by
+  ±7-20 dB (layout lost, rows mixed). Per-ECG structural failures dominate: a faint row start,
+  columns with their own row heights, columns read short, wrong orientation (183 of 6,199 pages
+  turned although none is), wrong rows on blur and low resolution.
+- So the order becomes: (1) structure robustness (orientation, row starts, per-column rows,
+  layout), each fix behind a flag, checked on local subsets and then together in one
+  whole-database paired run; (2) rows and trace on blur and low resolution; (3) the print kit
+  (`kit/`) for real photos with exact geometry, to train and to measure geometry and structure.
+
 ## Order of work
 
 ### 1. Measure against the winners on the same images
