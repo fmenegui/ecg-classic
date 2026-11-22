@@ -37,6 +37,14 @@ def _comp_dir():
 COMP = _comp_dir()
 OUT = os.environ.get("ECG_OUT", "/kaggle/working/submission.csv")   # the competition requires this name
 PER_IMAGE_S = int(os.environ.get("ECG_IMAGE_TIMEOUT", "300"))
+# Kaggle stops a notebook at 9 h. The networks cost ~4x the classical reader on CPU, so when the time
+# left cannot cover the remaining images, the rest are read classically (and past the end, left as 0).
+BUDGET_S = float(os.environ.get("ECG_BUDGET_S", str(8.3 * 3600)))
+CLASSIC_S = float(os.environ.get("ECG_CLASSIC_S", "40"))   # pessimistic classical seconds per image
+HYBRID_S = float(os.environ.get("ECG_HYBRID_S", "150"))    # pessimistic hybrid seconds per image
+T_START = time.time()
+T_END = 0.0
+N_WORKERS = 1
 FS_ME = 500.0
 
 
@@ -142,8 +150,20 @@ def _lead_values(sig500, fs, n, long_lead):
     return _fill(out)
 
 
+def _mode(left_s, n_left):
+    """'hybrid' while the time left covers this image with the networks and the rest classically,
+    'classical' while it covers the rest classically, else 'skip'."""
+    if not MODELS:
+        return "classical" if left_s > CLASSIC_S / 4 else "skip"
+    per = 1.0 / max(1, N_WORKERS)
+    if left_s > HYBRID_S + (n_left - 1) * CLASSIC_S * per:
+        return "hybrid"
+    return "classical" if left_s > CLASSIC_S / 4 else "skip"
+
+
 def _one(job):
-    image_id, leads = job       # leads: list of (lead, fs, n)
+    global T_END, N_WORKERS
+    image_id, leads, n_left, T_END, N_WORKERS = job   # leads: (lead, fs, n); n_left: images from this one on
     import warnings
     warnings.filterwarnings("ignore")
 
@@ -151,19 +171,25 @@ def _one(job):
         raise TimeoutError("timed out")
     res = {lead: np.zeros(n) for lead, fs, n in leads}
     t0 = time.time()
+    left_s = T_END - t0 if T_END else 1e9
+    mode = _mode(left_s, n_left)
+    if mode == "skip":
+        print(image_id, "skipped: out of time", flush=True)
+        return image_id, res
     try:
         _find_ecgdig()
         from ecgdig import Config, digitize
         signal.signal(signal.SIGALRM, _alarm)
-        signal.alarm(PER_IMAGE_S)
-        r = digitize(os.path.join(COMP, "test", f"{image_id}.png"), Config(**MODELS))
+        signal.alarm(max(1, int(min(PER_IMAGE_S, left_s))))
+        r = digitize(os.path.join(COMP, "test", f"{image_id}.png"),
+                     Config(**MODELS) if mode == "hybrid" else Config())
         signal.alarm(0)
         names = list(r["leads"])
         for lead, fs, n in leads:
             if lead in names:
                 res[lead] = _lead_values(np.asarray(r["signals"][names.index(lead)], float), fs, n,
                                          long_lead=(lead == "II"))
-        status = r.get("layout", "")
+        status = r.get("layout", "") + ("" if mode == "hybrid" or not MODELS else " (classical: time)")
     except Exception as e:  # noqa: BLE001
         signal.alarm(0)
         status = f"failed: {type(e).__name__}: {str(e)[:80]}"
@@ -179,10 +205,12 @@ def main():
     if not MODELS:
         print("inputs:", sorted(glob.glob("/kaggle/input/**", recursive=True))[:40], flush=True)
     test = pd.read_csv(os.path.join(COMP, "test.csv"))
+    groups = list(test.groupby("id", sort=False))
     jobs = []
-    for image_id, g in test.groupby("id", sort=False):
+    for k, (image_id, g) in enumerate(groups):
         jobs.append((str(image_id), [(str(l), float(f), int(n)) for l, f, n in
-                                     zip(g["lead"], g["fs"], g["number_of_rows"])]))
+                                     zip(g["lead"], g["fs"], g["number_of_rows"])], len(groups) - k,
+                     T_START + BUDGET_S, max(1, (os.cpu_count() or 1) // (2 if MODELS else 1))))
     print(len(jobs), "images,", os.cpu_count(), "CPUs", flush=True)
     ids, vals = [], []
     # each ONNX session uses 2 threads: half the CPUs as workers when networks are on
