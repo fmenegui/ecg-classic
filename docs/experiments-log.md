@@ -481,7 +481,7 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
   | E2 blue grid | −9.47 | −16.65 | 21.57 |
   | E3 page 8% smaller | 28.39 | 27.18 | 22.65 |
   | E4 rotated 3°, JPEG 70 | 28.33 | 27.44 | 22.72 |
-  | E5 6x2 (the generator's own lead order) | 1/20, −0.22 | −0.43 | **9.24** (45% segments failed) |
+  | E5 6x2 (generator: both columns show 0-5 s) | 1/20, −0.22 | −0.43 | **9.24** (45% segments failed) |
   | E6 rows 30% closer | 0/20 | 0.00 | 23.87 |
   | E7 top 12% cut off | 29.91 | 25.29 | 25.09 |
 
@@ -493,8 +493,9 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
     them, hence 1 of 300 read.
   - Ours reads every variant but one at 20.5-25.7 dB. On the clean generator sheet we are 2-5 dB
     below the template readers: trace precision, not structure.
-  - Ours fails half the leads of ecg-image-kit's 6x2 page (9.24 dB): its columns hold the leads in
-    an unusual order (V1, II, V2, III, ... interleaved), which our layout library does not have.
+  - Ours fails half the leads of ecg-image-kit's 6x2 page (9.24 dB): there both columns show the
+    same 0-5 s, while our reader (and PM-ECG-ID's 6x2) takes the second column as 5-10 s. Devices
+    differ on this; a reader should try both time conventions for multi-column pages.
 - **Print kit (Nov 22, `kit/`).** 40 training pages (PTB-XL folds 1-9) and 20 test pages (fold
   10, pages 100-119), A4, six layouts, six grid colours, pulse left/right/both, four ArUco markers
   per page. No PM-ECG-ID ECG or patient, no lead-II match with an evaluation ECG. `read_photo.py`
