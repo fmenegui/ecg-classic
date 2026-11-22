@@ -27,6 +27,16 @@ def _open(retries=10):
             time.sleep(min(240, 10 * 2 ** i) * random.uniform(0.6, 1.0))
 
 
+def select_ecgs(m, spec: str):
+    """Rows of the metadata for the ECGs "scenario:image_id,..." (all pages of each)."""
+    want = set()
+    for it in [x.strip() for x in spec.replace(";", ",").split(",") if x.strip()]:
+        sc, iid = it.rsplit(":", 1)
+        want.add((sc, int(iid)))
+    scen = m["Image relative path"].str.split("/").str[0]
+    return m[[(a, int(b)) in want for a, b in zip(scen, m["Image ID"])]]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
@@ -38,6 +48,7 @@ def main():
     ap.add_argument("--sel-out", default="", help="where to write the selection (default OUT/sel.csv)")
     ap.add_argument("--formats", default="", help="only these ECG formats (metadata 'ECG format'), comma separated")
     ap.add_argument("--pages", type=int, default=0, help="with --formats: only ECGs printed on this many pages")
+    ap.add_argument("--ecgs", default="", help='only these ECGs: "scenario:image_id,..." (every page of each)')
     ap.add_argument("--id-parity", choices=["", "even", "odd"], default="",
                     help="only ECGs whose Image ID is even/odd (the PM-trained diagnostic, Nov 21: train on even, "
                          "test on odd; never for the reported benchmark)")
@@ -64,6 +75,8 @@ def main():
         m = m[m["ECG format"].isin(a.formats.split(","))]
         if a.pages:
             m = m[m["ECG number of pages"] == a.pages]
+    if a.ecgs:
+        m = select_ecgs(m, a.ecgs)
     if a.id_parity:
         m = m[(m["Image ID"].astype(int) % 2) == (0 if a.id_parity == "even" else 1)]
     if a.per_scenario:
