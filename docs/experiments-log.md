@@ -167,6 +167,14 @@ degradations, 20 px/mm, sub-pixel targets). rowheavy3e stays the row network.
   scratch at 300 x 10,000 patches (up to 200 min each); the same 60 PM-ECG-ID images (one per
   scenario), same evaluator, arm A = current weights, arm B = new Dotter and Leader. Design and
   results in that repository's `docs/RESULTADOS.md`.
+  - **Result (Nov 21, ~10 h of free Kaggle GPU).** The full regime did not fit: 60 epochs x 10,000
+    patches per network in 200 min (20% of the paper's, 85x the current weights). Synthetic
+    validation IoU rose a lot (Dotter 0.865 → 0.957, Leader 0.731 → 0.906); PM-ECG-ID did not
+    (60 images, one per scenario: SNR −0.76 → −1.42 dB, PCC 0.268 → 0.253, failed leads 24% → 22%).
+    Training volume on synthetic pages is not what separates the reproduction from PMcardio. Both
+    arms are below 0 dB: this reproduction fails earlier (geometry and reconstruction on 16 Mpx
+    photos) and is too weak a proxy of PMcardio's method to attribute its gain. The PM-trained
+    diagnostic (below) tests the data hypothesis directly.
 - Next for us either way: real photos of our own prints with labels fitted from the known signal (no hand annotation;
   `pm_ecg/labels_fit.py` and `hybrid/realstrips_build.py` already do the fitting), from PTB-XL
   records outside PM-ECG-ID's 100 ECGs.
