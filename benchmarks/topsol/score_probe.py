@@ -57,8 +57,11 @@ def main():
     ap.add_argument("--config", action="append", default=[])
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--variants", default="", help="only these variants, comma separated")
     a = ap.parse_args()
     keys = sorted(p.stem for p in (a.probe / "gt").glob("*.npz"))
+    if a.variants:
+        keys = [k for k in keys if k.split("_")[0] in a.variants.split(",")]
     preds = {}
     if a.npz:
         for k in keys:
