@@ -88,12 +88,22 @@ def _models():
             import onnxruntime  # noqa: F401
         except ImportError:
             import subprocess
-            wheels = sorted(set(os.path.dirname(w) for w in glob.glob("/kaggle/input/**/wheels/*.whl", recursive=True)
-                                + glob.glob("/kaggle/working/wheels/**/*.whl", recursive=True)))
-            for d in wheels:
-                subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--no-index", "--find-links", d,
-                                "onnxruntime"], check=False)
-            import onnxruntime  # noqa: F401
+            whl = sorted(set(glob.glob("/kaggle/input/**/*.whl", recursive=True)
+                             + glob.glob("/kaggle/working/wheels/**/*.whl", recursive=True)))
+            tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+            ort = [w for w in whl if os.path.basename(w).startswith("onnxruntime-") and f"-{tag}-" in w]
+            print("python", tag, "wheels:", [os.path.basename(w) for w in whl], flush=True)
+            if ort:
+                links = []
+                for d in sorted(set(os.path.dirname(w) for w in whl)):
+                    links += ["--find-links", d]
+                subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--no-index", *links, ort[0]],
+                               check=False)
+            try:
+                import onnxruntime  # noqa: F401
+            except ImportError:
+                print(f"onnxruntime missing for {tag}: classical fallback", flush=True)
+                return {}
     return kw
 
 
