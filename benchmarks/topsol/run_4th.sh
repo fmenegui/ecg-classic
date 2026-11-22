@@ -43,6 +43,12 @@ if [ "${TS_KAGGLE:-1}" = "1" ]; then
   if [ -n "${TS_LIMIT:-}" ]; then IDS=$(echo "$IDS" | tr ',' '\n' | head -n $(( (TS_LIMIT + 8) / 9 )) | paste -sd,); echo "$IDS" > "$W/kaggle_ids.txt"; fi
   PREP="$PREP --kaggle-dir /root/kaggle --kaggle-ids $IDS"
 fi
+if [ "${TS_PROBE:-0}" = "1" ]; then
+  # probe pages: the Kaggle template geometry, then one change at a time (probe_pages.py)
+  pip install -q wfdb matplotlib 2>&1 | tail -1
+  python benchmarks/topsol/probe_pages.py --out /root/probe --n "${TS_PROBE_N:-20}" | tail -3
+  PREP="$PREP --probe-dir /root/probe"
+fi
 python benchmarks/topsol/prepare.py --out "$W/data" $PREP
 
 python benchmarks/topsol/nb2sh.py "$NB" "$W/run.sh"
@@ -66,6 +72,9 @@ python benchmarks/topsol/to_npz_sub.py "$TS_WORK/submission.csv" "$W/data/test.c
 
 JOBS=${TS_JOBS:-$(python -c "import os; print(min(16, len(os.sched_getaffinity(0))))")}
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+if [ "${TS_PROBE:-0}" = "1" ]; then
+  python benchmarks/topsol/score_probe.py --probe /root/probe --npz "$W/ext" --out "$OUT_DIR/probe_results.json" | tee "$OUT_DIR/probe_report.md"
+fi
 if [ "${TS_PM:-1}" = "1" ]; then
   ECGDIG_EXTERNAL="$W/ext" python benchmarks/pmcardio/eval_pm.py --root /root/pm/visual_data --gt /root/pm/final_data/data \
     --meta /root/pm/final_data/metadata.csv --list "$W/pm_sel.csv" --out "$W/pm" --jobs "$JOBS" | tail -15

@@ -62,9 +62,16 @@ GRIDS = {   # (minor colour, major colour)
 }
 
 
-def _get(url: str) -> bytes:
-    with urllib.request.urlopen(url, timeout=120) as r:
-        return r.read()
+def _get(url: str, tries: int = 8) -> bytes:
+    import time
+    for i in range(tries):   # PhysioNet answers 502/503 in bursts
+        try:
+            with urllib.request.urlopen(url, timeout=120) as r:
+                return r.read()
+        except Exception:  # noqa: BLE001
+            if i == tries - 1:
+                raise
+            time.sleep(min(60, 3 * 2 ** i) * random.uniform(0.6, 1.0))
 
 
 def _record(filename_hr: str, cache: Path) -> np.ndarray:

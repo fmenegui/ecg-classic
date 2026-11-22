@@ -32,6 +32,7 @@ def main():
     ap.add_argument("--pm-list", type=Path)
     ap.add_argument("--kaggle-dir", type=Path)
     ap.add_argument("--kaggle-ids", default="")
+    ap.add_argument("--probe-dir", type=Path, help="probe pages (benchmarks/topsol/probe_pages.py): keys as they are")
     ap.add_argument("--resize", default="", help="WxH: fit every image inside it, aspect kept, white padding "
                                                   "(a method that expects the size of its training images)")
     a = ap.parse_args()
@@ -81,6 +82,12 @@ def main():
                 else:
                     (a.out / "test" / f"{key}.png").write_bytes(png.read_bytes())
                 rows += rows_for(key, fs)
+    if a.probe_dir:
+        for r in list(csv.DictReader(open(a.probe_dir / "test.csv"))):
+            if r["lead"] == "I":
+                img = cv2.imread(str(a.probe_dir / "test" / f"{r['id']}.png"))
+                cv2.imwrite(str(a.out / "test" / f"{r['id']}.png"), fit(img))
+            rows.append((r["id"], r["lead"], int(r["fs"]), int(r["number_of_rows"])))
     with open(a.out / "test.csv", "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["id", "lead", "fs", "number_of_rows"])
