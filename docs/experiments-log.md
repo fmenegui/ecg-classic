@@ -458,15 +458,11 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
   JPEG: 0.05 mm error. Regenerated exactly by the commands in `kit/README.md`. PDFs sent to the
   owner to print and photograph.
 
-## 6. Running now (Nov 20, 23:12 UTC; credit added)
+## 6. Running now (Nov 22, ~08:45 UTC)
 
 | Run | What | Limit | Worst case |
 |---|---|---|---|
-| 44834948746 | env-check | 1 h | cents |
-| 44834954765 | rowheavy4 smoke: done, OK | | 0.08 USD |
-| 44837522288 | rowheavy4: done (1.21 USD); dev benchmarks running | | |
-| 44834958768 | PM dev, rowheavy3e + page v3, free runners: 19 of 20 shards (shard 7 runner shut down twice) | | free |
-| 44834962498 | Open-ECG-Digitizer, Kaggle dev again: done, 10.35 dB | | 1.28 USD |
-| 44834966288 / 44834969780 / 44834973129 | Open-ECG-Digitizer input size: none / 2200x1700 / 3300x2550, 1 PM-ECG-ID ECG per scenario | 1 h each | 1.5 USD |
-| 44834976689 | 2nd place, PM-ECG-ID 3x4+1R pages: done (1 of 300 read) | | 0.16 USD |
-
+| 44991334960 | Kaggle: waiting for the hybrid submission's score (ref 58705110) | 5.5 h | free |
+| 45003441294 | env-check: RunPod, volume, proxy, Kaggle archive OK; tests failed only on test_kaggle_budget without pandas (fixed); balance 13.76 USD | done | cents |
+| 45003632612 | rowheavy5 smoke (10 min): rowheavy3e + heavy_aug down to 1/24 and blur sigma to 10 px (`--heavy-down-max 24 --heavy-blur-max 10`), real strips from the volume | 0.6 h | 0.3 USD |
+| 45003726790 / 45003732873 / 45003738548 | PM-ECG-ID, 130 ECGs (40 the default turned + the 45 brightness +40 and 45 digital), hybrid default: base / `EXT_ON_D` / `ORIENT_PRIOR` (free runners, `ecgs` list) | 5 h | free |
