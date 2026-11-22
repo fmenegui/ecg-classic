@@ -126,6 +126,9 @@ def start(exclude=(), cloud="ALL"):
                 return got
             print(f"no cheap card in {vdc} with the volume ({got}); retry {attempt + 1}", file=sys.stderr)
             time.sleep(60)
+        if os.environ.get("VOLUME_ONLY") == "true":
+            # the job needs what is on the volume (built strips): a pod elsewhere would only stop
+            sys.exit(f"no cheap card in {vdc} with the volume after {os.environ.get('VOLUME_TRIES', '3')} tries")
         print("training without the data volume (nothing cached)", file=sys.stderr)
     env = env + [{"key": "CACHE", "value": "/workspace/cache"}]
     t_end = time.time() + 60 * WAIT_MIN

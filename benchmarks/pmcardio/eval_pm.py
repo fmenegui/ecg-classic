@@ -381,7 +381,13 @@ def main():
             cfg[k] = v
     m = pd.read_csv(a.meta)
     if a.list is not None:
-        sel = set(pd.read_csv(a.list).iloc[:, 0])
+        lst = pd.read_csv(a.list) if a.list.stat().st_size > 0 else pd.DataFrame()
+        if lst.empty:   # an empty shard (e.g. id_parity leaves some shards without ECGs)
+            print("no images in the list: nothing to evaluate", flush=True)
+            (a.out).mkdir(parents=True, exist_ok=True)
+            (a.out / "results.json").write_text(json.dumps(dict(config=cfg, rows=[])))
+            return
+        sel = set(lst.iloc[:, 0])
         m = m[m["Image relative path"].isin(sel)]
     m = m[[(a.root / p).exists() for p in m["Image relative path"]]]
     a.out.mkdir(parents=True, exist_ok=True)

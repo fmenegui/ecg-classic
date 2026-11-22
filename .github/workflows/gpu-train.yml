@@ -46,6 +46,11 @@ on:
         required: false
         default: 'gpu'
         type: string
+      volume_only:
+        description: 'With use_volume: wait for a card in the volume data center (up to ~45 min) instead of starting elsewhere without the volume'
+        required: false
+        default: false
+        type: boolean
       disk_gb:
         description: 'Container disk of the pod in GB (the 4th place solution downloads ~70 GB of weights)'
         required: false
@@ -88,6 +93,8 @@ jobs:
           GPU: ${{ inputs.gpu }}
           MAX_HOURS: ${{ inputs.max_hours }}
           DISK_GB: ${{ inputs.disk_gb }}
+          VOLUME_ONLY: ${{ inputs.volume_only }}
+          VOLUME_TRIES: ${{ inputs.volume_only && '40' || '3' }}
           JOB: ${{ inputs.job }}
           REF: ${{ github.ref_name }}
           VOLUME_ID: ${{ steps.vol.outputs.volume_id }}
