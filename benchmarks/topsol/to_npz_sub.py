@@ -31,7 +31,9 @@ def main(sub, test_csv, out):
     vals = defaultdict(dict)
     for r in csv.DictReader(open(sub)):
         key, idx, lead = r["id"].rsplit("_", 2)
-        vals[(key, lead)][int(idx)] = float(r["value"])
+        v = (r["value"] or "").strip()
+        # an unread image is written as NaN, which pandas saves as an empty field (patch_4th.py)
+        vals[(key, lead)][int(idx)] = float(v) if v and v.lower() != "nan" else float("nan")
     done = 0
     for key in keys:
         if not any((key, L) in vals for L in LEADS):

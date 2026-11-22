@@ -45,3 +45,15 @@ def test_nb2sh(tmp_path):
     s = (tmp_path / "r.sh").read_text()
     assert "export A=$TS_INPUT/d" in s and "export B='1,2;3'" in s and "python t.py --o $TS_WORK/s.csv" in s
     assert "%%capture" not in s and "pip install x" in s
+
+
+def test_empty_values_are_nan(tmp_path):
+    import csv as _csv
+    sub = tmp_path / "sub.csv"; test = tmp_path / "test.csv"
+    with open(test, "w", newline="") as f:
+        w = _csv.writer(f); w.writerow(["id", "lead", "fs", "number_of_rows"]); w.writerow(["E2_000", "I", 500, 2])
+    with open(sub, "w", newline="") as f:
+        w = _csv.writer(f); w.writerow(["id", "value"]); w.writerow(["E2_000_0_I", ""]); w.writerow(["E2_000_1_I", "nan"])
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmarks" / "topsol"))
+    import to_npz_sub as T
+    T.main(str(sub), str(test), str(tmp_path / "out"))
