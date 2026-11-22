@@ -915,9 +915,64 @@ ADAPT_MORE = [True]
 GLEV_RETRY = [True]
 PULSE_HALF = [True]
 COL_GAP = [True]
+# row starts extended over a chain of trace pieces holding beats (faint start of a photo broken
+# into pieces by the binarization: the row started late and the time axis stretched to fit).
+# Off until a whole-database paired run (local: PM brightness +40, 45 ECGs, +0.36 dB; digital 0)
+EXT_ON_D = [False]
 _PULSE_ROWS = [True]
 _ROW_BEAT_THR = [0.3]
 _ROW_BEAT_DEBUG = False
+
+
+def _extend_ext_on_d(B, rows, ext, pulses, half, R, text_mask=None, gap_mm=12.0, tall_mm=5.0, rr_mm=8.0):
+    """Extend the start of each row to the left over pieces of trace that the row extent left
+    out: a faint stretch (lighter end of a photo) breaks the binarized trace into short pieces
+    that never reach a long stretch, so the row starts late and the time axis stretches to fit
+    the page duration. Going left from the start, pieces of ink in the row band up to gap_mm
+    apart form a chain; the chain is accepted when it holds at least two beats (pieces at least
+    tall_mm high, at least rr_mm apart: a QRS each, not grid lines 5 mm apart). Rows with a
+    calibration pulse keep their start (the pulse marks it); text is masked out first."""
+    H, W = B.shape
+    out = list(ext)
+    gap = int(gap_mm * R)
+    for i, (y, e) in enumerate(zip(rows, ext)):
+        if not e or pulses[i] is not None or e[0] < 2 * R:
+            continue
+        a_, b_ = max(0, int(y - half)), min(H, int(y + half))
+        band = B[a_:b_, :int(e[0])]
+        tm = text_mask[a_:b_, :int(e[0])] if text_mask is not None and text_mask.shape == B.shape else None
+        has = band.any(0)
+        if not has.any():
+            continue
+        d = np.diff(np.r_[0, has.astype(np.int8), 0])
+        st, en = np.nonzero(d == 1)[0], np.nonzero(d == -1)[0]
+        # the chain runs over every piece (short baseline pieces look like text); labels are
+        # only kept out of the start
+        edge, start, tall, first = int(e[0]), None, [], None
+        for s_, e_ in zip(st[::-1], en[::-1]):
+            if edge - e_ > gap:
+                break
+            pc = band[:, s_:e_]
+            rows_ = np.nonzero(pc.any(1))[0]
+            is_text = tm is not None and (pc & tm[:, s_:e_]).sum() >= 0.8 * pc.sum()
+            if len(rows_) and rows_[-1] - rows_[0] + 1 >= tall_mm * R and not is_text:
+                tall.append(0.5 * (s_ + e_))
+            edge = s_
+            if not is_text:
+                first = s_
+            if len(tall) >= 2 and max(tall) - min(tall) >= rr_mm * R:
+                start = first
+        if start is not None:
+            out[i] = (int(start), e[1])
+    # the rows of a page start together: kept only when at least half of the rows moved, to a
+    # common start (within 3 mm of their median)
+    moved = [i for i, (a, b) in enumerate(zip(out, ext)) if a != b]
+    n_rows = sum(1 for e in ext if e)
+    if moved:
+        xs = np.array([out[i][0] for i in moved], float)
+        if len(moved) < max(min(2, n_rows), int(np.ceil(0.5 * n_rows))) or np.abs(xs - np.median(xs)).max() > 3 * R:
+            return list(ext)
+    return out
 
 
 def _t_after_qrs(Bc, pk, ext, R):
@@ -1764,6 +1819,8 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
 
     _edge_rows.text_mask = text_like_mask(B, R)
     _edge_rows.speckle = bool(getattr(ink_map, "dark_grid", False))
+    if EXT_ON_D[0]:
+        ext = _extend_ext_on_d(B, rows, ext, pulses, half, R, _edge_rows.text_mask)
 
     # ---------------------------------------------------- speed and duration
     xlr0, xer0, wkr0 = _edge_rows(D, B, rows, ext, pulses, half, lev0, R, lw0 / 2, return_weak=True)

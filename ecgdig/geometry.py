@@ -555,6 +555,7 @@ SCALE_MAJOR5 = [True]
 
 
 H_FALLBACK = [True]
+CELL_MAX_MM = [0.0]   # largest accepted local (cell) field rms, mm; 0 = no limit
 NONRIGID_CLIP = [True]
 CLIP_MARGIN = [0.1]
 
@@ -683,6 +684,12 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
             # synthetic pages without folds the local residual stays at 0.01-0.04 mm (phase
             # noise) and applying it only moves marginal decisions; creases and photos give 0.09-0.7 mm
             if loc is not None and loc[2] < cell_min_mm:
+                rms_cell = loc[2]
+                loc = None
+            # a local field far above what creases and photos give (0.09-0.7 mm) is a phase
+            # locked on the wrong line (dotted fine grid, dense trace): a flat digital page came
+            # out crumpled with 1.35 mm (PM-ECG-ID ECG 24). 0 = no limit
+            if loc is not None and CELL_MAX_MM[0] and loc[2] > CELL_MAX_MM[0]:
                 rms_cell = loc[2]
                 loc = None
             if loc is not None:

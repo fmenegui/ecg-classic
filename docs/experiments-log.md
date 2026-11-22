@@ -89,10 +89,6 @@ Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-
 | 17/11 | row v2 (rowphoto) | 8.52 → 9.41 (6,000) | — |
 | 17/11 | `edge_stroke` | — | whole set (8,793): small gain; 0001 decomposition: sub-sample lag up to +1-2.6 dB on some images |
 | 17/11 | classical official late submission | — | hidden test: 12.67 public, 13.03 private |
-| 22/11 | hybrid kernel check 1 (kaggle-submit.yml 44987230477, submit=false) | Kaggle CPU, free | ran, but `models: none`: the dataset folders arrive zipped and the image is Python 3.13 (wheels only ≤3.12) |
-| 22/11 | hybrid kernel check 2 (44987623093) | Kaggle CPU, free | models found; onnxruntime install failed (pip found no wheel for the running Python) |
-| 22/11 | hybrid kernel check 3 (44987916841) | Kaggle CPU, free | OK: both networks load, 2 public images ~100 s each (2 workers × 2 threads on 4 CPUs). Too slow for ~1,000 hidden images in 9 h, so the kernel got an 8.3 h budget: networks while the time left covers the rest classically, then classical, then zeros |
-| 22/11 | hybrid (rowheavy3e + page v3 + photo_norm) late submission (44988601240, submit=true) | Kaggle CPU, free | (running) |
 | 18/11 | rowreal | 8.52 → 9.46 (5,990) | holdout 17.42 → 17.88 (1,854) |
 | 18/11 | photo invariance fixes (5 mm rescue, lone pulse) | 9.46 → 9.56 (5,997) | 18.08 → 18.08 (8,793) |
 | 18/11 | pulse-column gain | 9.56 → 9.55 (5,999): neutral | — |
@@ -101,6 +97,10 @@ Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-
 | 19/11 | page v1 + select, same-layout margin 0.1 | — | 18.13 → 17.82 (8,352, 95%): 384 images 3x4+1 → 3x4 |
 | 19/11 | rhythm-drop margin 0.5 (simulated from the two runs above) | −0.03 dB (5,700) | +0.31 dB back to 18.13 |
 | 21/11 | rowheavy3e + page v3 + photo_norm (vs rowheavy) | 9.69 → **10.43** (5,918, 98.6%) | 18.14 → **18.30** all, 18.07 → 18.21 holdout (8,352, 95%; 44902767154 vs 44420729713); 0001 +0.28, 0006 −0.09, others ±0.09 |
+| 22/11 | hybrid kernel check 1 (kaggle-submit.yml 44987230477, submit=false) | Kaggle CPU, free: ran, but `models: none`: the dataset folders arrive zipped and the image is Python 3.13 (wheels only ≤3.12) | — | see change |
+| 22/11 | hybrid kernel check 2 (44987623093) | Kaggle CPU, free: models found; onnxruntime install failed (pip found no wheel for the running Python) | — | see change |
+| 22/11 | hybrid kernel check 3 (44987916841) | Kaggle CPU, free: OK: both networks load, 2 public images ~100 s each (2 workers × 2 threads on 4 CPUs). Too slow for ~1,000 hidden images in 9 h, so the kernel got an 8.3 h budget: networks while the time left covers the rest classically, then classical, then zeros | — | see change |
+| 22/11 | hybrid (rowheavy3e + page v3 + photo_norm) late submission (44988601240, submit=true) | Kaggle CPU, free: submitted (ref 58705110, kernel version with the 8.3 h budget); the workflow's score wait stopped at once (it matched the old COMPLETE row): fixed, and a status-only mode waits for the score (44991334960) | — | see change |
 
 ## 4. Development-set experiments (Nov 20; `docs/leaderboard.md`)
 
@@ -383,6 +383,59 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
       fit-inside resize shrinks the grid, so the input size may matter more than the page size.
       A sensitivity check (no resize / 2200x1700 / larger) on ~30 images is the next step before
       calling this its final number.
+
+- **PM-ECG-ID: where the gap to PMcardio is (Nov 22, whole run 44908014040, no new compute).**
+  - The database is 100 ECGs × 60 scenarios, so a failure on one ECG repeats in up to 60 scenarios.
+  - Our 19 worst scenarios average 4.46 dB, the middle 29 12.20, the best 12 16.20 (PMcardio's
+    groups: 11.10 / 15.79 / 16.68). If the groups matched, the 60-mean gap (10.55 vs 14.48) splits
+    into ~2.1 dB from the hard scenarios, ~1.7 from the middle ones and ~0.1 from the easy ones.
+  - The same ECG swings by tens of dB between easy scenarios (ECG 59: 22 dB digital, −2 to +6 dB
+    on its augmented photo). Per-ECG structure, not the trace shape, drives much of it.
+  - `results.json` diag `rows_y_mm` divided rectified pixels by the source px/mm (wrong unit); now
+    by `Config.R`. The diag also records the horizontal scale, the assumed duration and the grid
+    residuals.
+- **Time-scale oracle (Nov 22, local, free; classical reader).** Per lead, the best linear time map
+  (scale ±6%, shift) against the truth; script in the session scratchpad, numbers here.
+  - brightness +40 (one augmented photo per ECG, 45 ECGs, 534 leads): 14.11 → 15.06 dB.
+  - Calibration on clean digital pages (opacity 1, 45 ECGs): 18.59 → 19.40 dB. The oracle fits
+    +0.5-0.8 dB on correct pages, so the photo-specific part of the horizontal geometry is only
+    ~+0.15 dB. A grid-based horizontal correction is not a large lever on PM-ECG-ID.
+  - Exception: ECG 59's photo has a non-uniform horizontal scale (left column +3.2%, right −1%,
+    0.18 s shift); its faint blue grid gave no local cell field.
+- **Structural failures seen on single ECGs (Nov 22).**
+  - ECG 15 (3x4+1R, pulses at the row ends): a faint row start (lighter left side of the photo)
+    breaks the binarized trace into short pieces; the row starts 34 mm late and the time axis
+    stretches to 20.8 mm/s (−2.1 dB on brightness +40).
+  - ECG 35 (6x2): left column read 0.8 s short, plus a 1% stretch.
+  - ECG 24 (3x4) and 23 (6x2): each column has its own row positions (rows placed by amplitude);
+    rows found across the page mix the columns. Fails even on the digital page.
+  - ECG 45 (6x2, page cut at the left, huge overlapping V2-V4): fails even on the digital page.
+  - 12x1 pages: 7-10 dB with PCC 0.94 (shape, not gain).
+- **Row start over a chain of beats (`digitize.EXT_ON_D`, Nov 22, local, free).**
+  - v1, walk on the ink map: brightness +40 13.95 → 13.75 (ECG 15 +14.2; five 6x2/3x4 pages
+    −1.7 to −9: the walk followed leaked grid lines to the grid border); digital 18.48 → 18.39.
+    Dropped.
+  - v2, chain of binarized pieces accepted when it holds two beats (≥5 mm tall, ≥8 mm apart):
+    brightness +40 13.95 → 14.21 (ECG 15 +16.0, ECG 45 −4.5); digital 18.48 → 18.39 (ECG 39
+    −3.3).
+  - v3, kept only when at least half of the rows move to a common start: brightness +40
+    13.95 → **14.31** (only ECG 15 changes, +16.0; no page worse); digital 18.39 → 18.39 (no page
+    changes: no faint starts there). Off by default (`EXT_ON_D=False`) until a whole-database
+    paired run.
+  - Baselines were rerun with the flag off: brightness +40 reproduces 13.95 exactly. The first
+    digital baseline (18.48) did not reproduce (18.39 twice with the same code, ECG 39 16.38 vs
+    13.11); the digital comparison uses the rerun.
+- **Local grid field on a flat digital page (Nov 22).** PM ECG 24, digital: the cell field came out
+  at 1.35 mm rms (poly 0.36 mm; creases and photos give 0.09-0.7 mm) and visibly crumpled the
+  flat page (dotted fine grid, dense trace). `geometry.CELL_MAX_MM` (0 = off) drops such a field;
+  not measured yet. ECG 24 still fails without it (poly: −4.2 dB): its layout is read as 6x2+2
+  (columns with their own row heights).
+- **Print kit (Nov 22, `kit/`).** 40 training pages (PTB-XL folds 1-9) and 20 test pages (fold
+  10, pages 100-119), A4, six layouts, six grid colours, pulse left/right/both, four ArUco markers
+  per page. No PM-ECG-ID ECG or patient, no lead-II match with an evaluation ECG. `read_photo.py`
+  gives page, homography and every trace sample in photo pixels; simulated perspective + blur +
+  JPEG: 0.05 mm error. Regenerated exactly by the commands in `kit/README.md`. PDFs sent to the
+  owner to print and photograph.
 
 ## 6. Running now (Nov 20, 23:12 UTC; credit added)
 
