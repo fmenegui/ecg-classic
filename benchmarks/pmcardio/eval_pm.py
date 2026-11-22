@@ -59,7 +59,7 @@ def oracle_layout(fmt, n_pages, page, n_cols, n_rows, n_rhythm):
     raise ValueError(f"no oracle layout for {fmt} on {n_pages} pages")
 
 
-def _diag(r):
+def _diag(r, R_MM=10.0):
     """Per-page structure diagnosis kept in results.json (small, JSON-safe)."""
     li = r.get("layout_info") or {}
     it = r.get("internals") or {}
@@ -67,7 +67,8 @@ def _diag(r):
     q = (r.get("quality") or {}).get("page") or {}
     f = lambda v: None if v is None else round(float(v), 3)
     return dict(rows_found=r.get("rows_found"), rows=len(it.get("rows", [])),
-                rows_y_mm=[round(y / max(r.get("ppmm") or 1, 1e-6), 1) for y in it.get("rows", [])],
+                # rows are in the rectified frame (Config.R px/mm)
+                rows_y_mm=[round(y / R_MM, 1) for y in it.get("rows", [])],
                 layout_rows=[len(x) for x in r.get("layout_rows", [])],
                 ranking=li.get("ranking"), confidence=f(li.get("confidence")), warning=li.get("warning"),
                 parts={k: f(v) for k, v in (li.get("parts") or {}).items() if isinstance(v, (int, float))},
@@ -76,6 +77,8 @@ def _diag(r):
                 speed=r.get("speed_mm_per_s"), speed_src=r.get("speed_source"), duration=f(r.get("duration_s")),
                 gain=f(r.get("gain_mm_per_mv")), ppmm=f(r.get("ppmm")), angle=f(r.get("angle")),
                 pulses_ratio=f(q.get("pulses_ratio")),
+                hscale=f(r.get("horizontal_scale")), duration_assumed=r.get("duration_assumed"),
+                grid_res_mm=f(r.get("grid_residual_mm")), grid_res_cell_mm=f(r.get("grid_residual_cell_mm")),
                 hybrid={k: v for k, v in (r.get("hybrid") or {}).items() if k != "errors"} or None)
 
 
@@ -115,7 +118,7 @@ def _digitize(job):
                    seg={k: [np.nonzero(np.isfinite(m))[0][[0, -1]] if np.isfinite(m).any() else None for m in v]
                         for k, v in r.get("per_segment", {}).items()},
                    layout=r.get("layout"), quality=r.get("quality"), sec=time.time() - t0,
-                   diag=_diag(r), select=r.get("page_select"), dewarp=r.get("dewarp_select"))
+                   diag=_diag(r, float(cfg_kw.get("R", 10.0))), select=r.get("page_select"), dewarp=r.get("dewarp_select"))
     except Exception as e:  # noqa: BLE001
         out = dict(ok=False, err=f"{type(e).__name__}: {e}", sec=time.time() - t0)
     signal.alarm(0)

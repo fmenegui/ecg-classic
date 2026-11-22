@@ -31,6 +31,11 @@ on:
         required: false
         default: ''
         type: string
+      status_only:
+        description: 'Only wait for the newest submission score (no upload, run or submit)'
+        required: false
+        default: false
+        type: boolean
 permissions:
   contents: read
   actions: read
@@ -49,7 +54,7 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0
       - name: Dataset with the ecgdig source (private)
-        if: inputs.kernel_version == ''
+        if: inputs.kernel_version == '' && !inputs.status_only
         env:
           GH_TOKEN: ${{ github.token }}
           ROW_RUN: ${{ inputs.row_model_run }}
@@ -106,7 +111,7 @@ jobs:
           done
       - name: Push the CPU script kernel and wait for its run
         id: kernel
-        if: inputs.kernel_version == ''
+        if: inputs.kernel_version == '' && !inputs.status_only
         run: |
           U="$KAGGLE_USERNAME"; K=dist/kernel; SLUG=${{ inputs.row_model_run != '' && 'ecgdig-hybrid-submission' || 'ecgdig-classical-submission' }}
           mkdir -p $K && cp kaggle/submission.py $K/
@@ -127,7 +132,7 @@ jobs:
           ls -la kout; tail -30 kout/*.log 2>/dev/null || true
           echo "$s" | grep -qi complete
       - name: Submit and wait for the score
-        if: inputs.submit
+        if: inputs.submit && !inputs.status_only
         env:
           SLUG: ${{ steps.kernel.outputs.slug }}
           VER: ${{ inputs.kernel_version || steps.kernel.outputs.version }}
@@ -148,9 +153,13 @@ jobs:
                   resp = getattr(e, "response", None)
                   print("submit failed with", fn, e, resp.text[:1000] if resp is not None else "")
           PY
-          for i in $(seq 1 150); do
-            out=$(kaggle competitions submissions "$COMP" 2>&1 | head -4); echo "$(date -u +%H:%M)"; echo "$out"
-            echo "$out" | grep -qiE "complete|error" && break; sleep 120
+      - name: Wait for the newest submission's score
+        if: (inputs.submit || inputs.status_only)
+        run: |
+          # the newest submission is the first data row (row 3); older rows are COMPLETE already
+          for i in $(seq 1 160); do
+            out=$(kaggle competitions submissions "$COMP" 2>&1 | head -6); echo "$(date -u +%H:%M)"; echo "$out"
+            echo "$out" | sed -n 3p | grep -qiE "complete|error" && break; sleep 120
           done
           echo "$out" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
