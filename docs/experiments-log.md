@@ -457,6 +457,42 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
   from beat to beat, sometimes split in two. The blur (σ ≈ 0.45 mm) smears the steep QRS edges over
   ~1.5 mm and the row network puts the jump anywhere inside it; its training blur stopped at
   σ 0.5 mm with rarely that much. rowheavy5 trains on blur up to σ 1 mm and on 1/24 resolution.
+- **Why the Kaggle winners do not read common ECGs (Nov 22).** Their code: the hengck23 pipeline
+  (1st, 2nd, 3rd) finds nine lead-name keypoints with a network and maps them by homography onto
+  their places in ONE Kaggle image; snaps a 44 x 57 lattice of 5 mm grid points over the whole page
+  onto that image's lattice; reads the signal at fixed places of the 2200 x 1700 result (zero mV at
+  y = 703.5 / 987.5 / 1271.5 / 1531.5, 79 px/mV, 10 s from x = 118 to 2080, four 2.5 s columns;
+  3x4 + II only). The 4th place classifies the absolute index of each grid line of the Kaggle sheet
+  and reads 4 fixed bands. Probe pages (`benchmarks/topsol/probe_pages.py`, `probe_eik.py`,
+  `score_probe.py`): 20 PTB-XL fold-10 records (no PM-ECG-ID ECG or patient), one change per
+  variant; SNR in dB, PMcardio style (failed segment 0 dB):
+
+  | Variant | 2nd | 3rd | ours (hybrid) |
+  |---|---|---|---|
+  | K0 template geometry, our drawing | 0/20 read | 0.00 | **20.85** |
+  | K1 rows 25 mm apart | 0/20 | 0.00 | 20.52 |
+  | K2 grid only in a box | 2/20, −0.98 | −1.60 | 22.08 |
+  | K3 page 8% smaller | 0/20 | 0.00 | 20.84 |
+  | K4 no labels | 0/20 | 0.00 | 21.09 |
+  | K5 6x2 | 16/20, −6.55 | −9.46 | 20.47 |
+  | K6 our print-kit page | 0/20 | 0.00 | 21.93 |
+  | E0 ecg-image-kit default sheet (the Kaggle generator) | **29.86** | **27.11** | 25.17 |
+  | E1 no lead names | 0/20 | 0.00 | 25.74 |
+  | E2 blue grid | −9.47 | −16.65 | 21.57 |
+  | E3 page 8% smaller | 28.39 | 27.18 | 22.65 |
+  | E4 rotated 3°, JPEG 70 | 28.33 | 27.44 | (running) |
+  | E5 6x2 | 1/20, −0.22 | −0.43 | (running) |
+  | E6 rows 30% closer | 0/20 | 0.00 | (running) |
+  | E7 top 12% cut off | 29.91 | 25.29 | (running) |
+
+  - On the Kaggle generator's own sheet the winners generalise to unseen ECGs (~27-30 dB; ours 25)
+    and survive scale, rotation, JPEG and a cut page: the homography takes care of those.
+  - Any one of these breaks them completely: no lead names or names drawn in another style (K0,
+    E1: stage 0 finds no keypoints), a grid colour they did not train on (E2), any layout or row
+    spacing other than the Kaggle 3x4 + II (E5, E6, K1, K5). PM-ECG-ID pages have at least one of
+    them, hence 1 of 300 read.
+  - Ours reads every variant (20.5-25.7 dB). On the clean generator sheet we are 2-5 dB below the
+    template readers: trace precision, not structure.
 - **Print kit (Nov 22, `kit/`).** 40 training pages (PTB-XL folds 1-9) and 20 test pages (fold
   10, pages 100-119), A4, six layouts, six grid colours, pulse left/right/both, four ArUco markers
   per page. No PM-ECG-ID ECG or patient, no lead-II match with an evaluation ECG. `read_photo.py`
@@ -471,7 +507,11 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
 | 44991334960 | Kaggle: waiting for the hybrid submission's score (ref 58705110) | 5.5 h | free |
 | 45003441294 | env-check: RunPod, volume, proxy, Kaggle archive OK; tests failed only on test_kaggle_budget without pandas (fixed); balance 13.76 USD | done | cents |
 | 45003632612 | rowheavy5 smoke (10 min): rowheavy3e + heavy_aug down to 1/24 and blur sigma to 10 px (`--heavy-down-max 24 --heavy-blur-max 10`), real strips from the volume | done: 4000 Ada 0.28 USD/h, ~0.4 h, ~0.12 USD; caches hit, 20,000 real strips, 0.9 s/step, data wait 1-5% | |
-| 45004819752 | rowheavy5: same, 270 min, then dev benchmarks with page v3 (free runners) | 5.5 h | 2.75 USD (card ≤ 0.5 USD/h) |
+| 45004819752 | rowheavy5: same, 270 min, then dev benchmarks with page v3 (free runners) | done: 4000 Ada 0.28 USD/h, 4.6 h, ~1.28 USD; 20,327 steps; validation column error median 0.27 px, p90 1.47 (real strips 0.29 / 1.33); dev benchmarks 45027498706 (PM) and 45027500873 (Kaggle), free | |
+| 45014548754 / 45014555918 | Kaggle winners on probe pages K0-K6 (our drawing, template geometry): 2nd / 3rd place | done: RTX 4000 Ada 0.28 / A5000 0.27 USD/h, 0.33 / 0.78 h, ~0.09 / 0.21 USD (results §5) | |
+| 45018566846 / 45018572676 / 45018578869 | same + ecg-image-kit pages E0-E7: 2nd / 3rd / 4th place | 2nd: 3090 0.5 USD/h, 0.76 h, 0.38 USD; 3rd: 3090, 1.55 h, 0.78 USD; 4th: 4000 Ada, 2.0 h, 0.56 USD **lost**: 20 pages unreadable aborted its whole submission (now patched, `patch_4th.py`) | |
+| 45028920152 | 4th place on the probe pages again, with the patch | 3 h | 0.84 USD |
+| 45028959725 | Kaggle: waiting for the hybrid's score again (still PENDING after 8 h; the first wait ended) | 5.5 h | free |
 | 45003726790 / 45003732873 / 45003738548 | PM-ECG-ID, 130 ECGs (40 the default turned + the 45 brightness +40 and 45 digital), hybrid default: base / `EXT_ON_D` / `ORIENT_PRIOR` v1 (free runners, `ecgs` list) | done: base 12.26; EXT_ON_D **12.36** (ECG 15 +16.1; 2 pages −2.5/−1.7 that change the same way in the orientation run too: run-to-run noise); ORIENT_PRIOR v1 **12.63** (the 40 turned ECGs 0.92 → 2.14, turned ECGs 38 → 29; the other 90 17.31 → 17.29) | free |
 | 45006493923 | same 130 ECGs, ORIENT_PRIOR v2 (never 90° for a sheet lying landscape: rows run along the long side) | done: 12.26 → **12.70**; the 40 turned ECGs 0.92 → 2.39 (ECGs with a turned page 38 → 11), the other 90 17.31 → 17.29 | free |
 | 45006500371 / 45006529376 | Kaggle dev (stride 20 = 60 images here), ORIENT_PRIOR v2 / base | done: 14.61 → 14.61, no image changed (none of them turned) | free |
