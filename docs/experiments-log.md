@@ -193,10 +193,10 @@ default, is never released, and its numbers are never reported as our PM-ECG-ID 
 |---|---|---|
 | strips (32 vCPU pod, volume, ~1 h, ~1.1 USD) | 44963401452 | 1,355 pages of 20 even ECGs per scenario; **899 kept (66%)**, ~8,300 strips in 21 chunks, 888 s of labelling |
 | training, first try | 44968424722 | no card free in EU-RO-1 with the volume; the pod started elsewhere and stopped at once (the guard: strips not there), cents. `gpu-train.yml volume_only` now waits for the volume's data center |
-| training: rowheavy3e + 150 min with the PM strips as the only real strips (35%) | 44969275121 | (running) |
+| training: rowheavy3e + 150 min with the PM strips as the only real strips (35%) | 44969275121 | 4000 Ada, 0.28 (EU-RO-1, volume), 2.6 h, ~0.7 USD; 11,240 steps; 7,544 PM strips in memory; held-out PM strip column error 0.54 px median, 2.46 px p90 (Kaggle real strips with rowheavy3e: 0.29 / 1.32) |
 | training | | |
 | evaluation, rowheavy3e (baseline), odd ECGs, 5 per scenario | 44963430509 | done (the 10 even shards had no odd ECG and failed on the empty list; fixed) |
-| evaluation, diagnostic model, same ECGs | | |
+| evaluation, diagnostic model, same ECGs | 44981336273 | (running) |
 
 ### Assisted mode (what PMcardio's evaluation may have given its algorithm)
 
