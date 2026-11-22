@@ -430,6 +430,27 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
   flat page (dotted fine grid, dense trace). `geometry.CELL_MAX_MM` (0 = off) drops such a field;
   not measured yet. ECG 24 still fails without it (poly: −4.2 dB): its layout is read as 6x2+2
   (columns with their own row heights).
+- **Geometry variants on the 45 digital pages (Nov 22, local, classical, free).** The digital pages
+  are flat, yet the reading depends a lot on the geometry stage:
+  - `nonrigid=poly`: 18.39 → 17.13; `nonrigid=none`: 18.39 → 16.26 (several pages lose their
+    layout and score 0; a few gain +2 to +3.6). Best of cell/none per page (oracle): 18.87.
+  - `geometry.H_SELECT_MM=0.15` (keep the homography only when it beats rotation + scale + shift
+    by 0.15 mm; ECG 41 digital had a 1% top-to-bottom horizontal scale change from it): digital
+    18.39 → 18.18 (+7.2 and +7.1 on two pages, −19.8 on one); brightness +40 unchanged (photos
+    keep their homography). Not adopted.
+  - `geometry.CELL_MAX_MM=0.8`: digital 18.39 → 17.11 (the same four pages fall as with poly).
+    Not adopted.
+  - Choosing between cell and the variant by the mean lead quality score: +0.10 (H_SELECT) or
+    worse; the internal score does not track these errors.
+  - Mixed swings of ±7-20 dB on single pages from small geometric changes: the structure stage
+    (rows, layout) is fragile, and that, more than the geometry itself, is what to fix.
+- **Orientation (Nov 22).** PM-ECG-ID pages are never turned, yet the default turned 183 of 6,199
+  pages (whole run 44908014040): 96 by 180°, 87 by 90°; those ECGs average 0.9 dB (others 10.8).
+  Mostly faint (opacity 0.15/0.2), blurred (21-41), 1/16 resolution, brightness ±160. On Kaggle dev
+  4 of 540 images are turned by 90°, correctly (portrait photos of a landscape sheet). Flag
+  `digitize.ORIENT_PRIOR` (off): a landscape sheet stays landscape unless standing rows win by
+  1.5×, 180° needs more pulses or labels (not the T wave alone), the page network turns an upright
+  reading only at 3× its score. Hybrid test on 78 pages the default turned: (running).
 - **Print kit (Nov 22, `kit/`).** 40 training pages (PTB-XL folds 1-9) and 20 test pages (fold
   10, pages 100-119), A4, six layouts, six grid colours, pulse left/right/both, four ArUco markers
   per page. No PM-ECG-ID ECG or patient, no lead-II match with an evaluation ECG. `read_photo.py`

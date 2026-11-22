@@ -11,6 +11,7 @@ image <-> mm correspondences, and from them the homography.
 from __future__ import annotations
 
 import heapq
+import os as _os
 import numpy as np
 import cv2
 
@@ -556,6 +557,7 @@ SCALE_MAJOR5 = [True]
 
 H_FALLBACK = [True]
 CELL_MAX_MM = [0.0]   # largest accepted local (cell) field rms, mm; 0 = no limit
+H_SELECT_MM = [0.0]   # the homography must lower the residual by this much (mm) over rotation + scale; 0 = off
 NONRIGID_CLIP = [True]
 CLIP_MARGIN = [0.1]
 
@@ -639,6 +641,25 @@ def rectify(img: np.ndarray, R: float = 10.0, ppmm_hint: float | None = None, no
             Hm = np.eye(3)
         elif rescued:
             rescued_ok = True
+        if H_SELECT_MM[0] and Hm is not None and inl is not None and inl.sum() >= 8 and not np.allclose(Hm, np.eye(3)):
+            # the homography must earn its place: on a flat page (scan, digital render) the
+            # rotation + scale frame is already right, and correspondences pulled by dense trace
+            # or a dotted grid tilt it (PM-ECG-ID ECG 41, digital: 1% horizontal scale change
+            # from top to bottom). Keep it only when it lowers the inliers' residual by
+            # H_SELECT_MM or more
+            k_ = inl.ravel().astype(bool)
+            d_, s_ = np.asarray(dst, float)[k_], np.asarray(src, float)[k_]
+            ph = cv2.perspectiveTransform(d_.reshape(-1, 1, 2), Hm).reshape(-1, 2)
+            r1 = float(np.sqrt(np.mean(np.sum((s_ - ph) ** 2, 1)))) / s
+            # the simpler model: rotation + scale + shift on the same inliers
+            Ap, _ = cv2.estimateAffinePartial2D(d_, s_, method=cv2.LMEDS)
+            if Ap is not None:
+                pa = d_ @ Ap[:, :2].T + Ap[:, 2]
+                r0 = float(np.sqrt(np.mean(np.sum((s_ - pa) ** 2, 1)))) / s
+                if _os.environ.get("ECGDIG_DBG_H"):
+                    print("HSEL", round(r0, 3), round(r1, 3), int(k_.sum()), len(k_))
+                if r0 - r1 < H_SELECT_MM[0]:
+                    Hm = np.vstack([Ap, [0, 0, 1]])
     else:
         Hm = np.eye(3)
     # rectified frame: u,v in mm*R. coarse(x,y) = Hm @ (u/R*s, v/R*s)

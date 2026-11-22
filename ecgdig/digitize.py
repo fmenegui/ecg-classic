@@ -1034,6 +1034,14 @@ def _orient(arrs, R):
         B0 = clean_grid_segments(B, R) if GRID_SEGS[0] else B
         sh2, sv2 = _hv(B0, 4 * R)
         vert = sv2 > sh2 and sv2 >= 150 * R
+        if vert and ORIENT_PRIOR[0]:
+            # a landscape sheet in the picture is read as it lies unless the standing rows
+            # clearly win: blurred or faint pages turn grid columns and QRS stacks into "rows"
+            ys_, xs_ = np.nonzero(pap)
+            if len(xs_) and np.ptp(xs_) > 1.15 * np.ptp(ys_):
+                vert = sv2 >= 1.5 * sh2
+            if os.environ.get("ECGDIG_DBG_ORIENT"):
+                print("ORIENT", sh, sv, sh2, sv2, vert)
     cands = [cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE] if vert else [None, cv2.ROTATE_180]
 
     def rot(a, c):
@@ -1074,6 +1082,10 @@ def _orient(arrs, R):
         scores.append(float(score))
         if score > best_score:
             best, best_score = c, score
+    if ORIENT_PRIOR[0] and cands[0] is None and best == cv2.ROTATE_180 and len(hard) == 2 and hard[1] <= hard[0]:
+        # upside down only with more pulses or readable labels that way: the T wave alone
+        # (wrong on ~1 page in 10) does not turn a photo over
+        best = None
     # decision margin (so the caller knows whether it was weak) and forced choice
     _orient.margin = abs(scores[0] - scores[1]) if len(scores) == 2 else float("inf")
     # "weak" decision: pulses and labels differ by at most 2 between the two orientations (a
@@ -1090,7 +1102,11 @@ def _orient(arrs, R):
         allc = [None, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_180, cv2.ROTATE_90_COUNTERCLOCKWISE]
         sc_ = [orientation_score(rot(rect, c), R, NET_ORIENT[0]) for c in allc]
         nb = int(np.argmax(sc_))
-        if allc[nb] != best and sc_[nb] >= NET_ORIENT_MARGIN[0] * max(sc_[allc.index(best)], 1e-6):
+        prior_ok = True
+        if ORIENT_PRIOR[0] and best is None and allc[nb] is not None:
+            # the network turns a page read upright only with three times the score
+            prior_ok = sc_[nb] >= 3.0 * max(sc_[0], 1e-6)
+        if prior_ok and allc[nb] != best and sc_[nb] >= NET_ORIENT_MARGIN[0] * max(sc_[allc.index(best)], 1e-6):
             best = allc[nb]
             _orient.weak = False
     return [rot(a, best) for a in arrs], best
@@ -1098,6 +1114,9 @@ def _orient(arrs, R):
 
 PULSE_ROWS_GUARD = [True]
 ORIENT_WIGGLE = [True]
+# prior for the picture as taken: a landscape sheet stays landscape and upright unless the
+# evidence is clear (PM-ECG-ID, never rotated: 183 of 6,199 pages turned, 0.9 dB vs 10.8)
+ORIENT_PRIOR = [False]
 ORIENT_FORCE = [None]   # "keep" / "flip": fixes the 0 vs 180 degree choice (internal use)
 NET_ORIENT = [""]       # page-structure ONNX used for the orientation (set from Config.page_model)
 NET_ORIENT_MARGIN = [1.5]
