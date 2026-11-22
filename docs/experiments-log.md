@@ -89,6 +89,7 @@ Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-
 | 17/11 | row v2 (rowphoto) | 8.52 → 9.41 (6,000) | — |
 | 17/11 | `edge_stroke` | — | whole set (8,793): small gain; 0001 decomposition: sub-sample lag up to +1-2.6 dB on some images |
 | 17/11 | classical official late submission | — | hidden test: 12.67 public, 13.03 private |
+| 22/11 | hybrid (rowheavy3e + page v3 + photo_norm) late submission, kernel check first (kaggle-submit.yml 44987230477, submit=false) | — | (running) |
 | 18/11 | rowreal | 8.52 → 9.46 (5,990) | holdout 17.42 → 17.88 (1,854) |
 | 18/11 | photo invariance fixes (5 mm rescue, lone pulse) | 9.46 → 9.56 (5,997) | 18.08 → 18.08 (8,793) |
 | 18/11 | pulse-column gain | 9.56 → 9.55 (5,999): neutral | — |
