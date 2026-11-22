@@ -2,6 +2,10 @@
 import importlib.util
 import os
 
+import pytest
+
+pytest.importorskip("pandas")   # the kernel imports pandas (present on Kaggle)
+
 
 def _load():
     os.environ.setdefault("ECG_COMP_DIR", "/nonexistent")
