@@ -14,7 +14,7 @@ no network (Nov 19-20 numbers, before the normalisation):
 |---|---|---|---|
 | [PM-ECG-ID](benchmarks/pmcardio/), whole database (6,000 ECGs, 60 capture scenarios), PMcardio-style SNR | **10.49 dB** (5,730 ECGs, 95.5%; PCC 0.756, 9.1% failed leads; same ECGs with the previous default: 9.63) | 8.51 dB (PCC 0.686, 13.6% failed leads) | PMcardio: 14.48 dB (60-subset mean of its paper); 14.05 dB, PCC 0.885, 6.62% failed in its supplementary table |
 | [PhysioNet (Kaggle)](benchmarks/physionet/) training records, all 8,793 images, official metric | **18.30 dB** (8,352 images, 95%; holdout records never trained on: 18.21) | 17.58 dB (8,352 images, 95%) | leaders 22.6-23.3 dB on the hidden test (other images) |
-| Kaggle hidden test, official late submission | not submitted yet | 13.03 dB (private) | 1st place 23.33 dB |
+| Kaggle hidden test, official late submission | 13.39 dB private, 13.10 public (Nov 22; CPU kernel with a 9 h budget: networks while time allows, then classical) | 13.03 dB (private) | 1st place 23.33 dB |
 | [LITFL](benchmarks/litfl/), real pages without a signal ground truth (70 of the 102 the site served to CI) | | layout 93%, rhythm strips 94%, layout + speed + duration + gain 91% | hand-reviewed reference |
 
 SNR and PCC follow each benchmark's own metric: per lead, with a small time alignment and the

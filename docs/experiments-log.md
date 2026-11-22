@@ -16,9 +16,9 @@ Per-scenario tables: [`results/`](results/). Current development ranking: [`lead
 | PM-ECG-ID dev (300 ECGs) | 9.34 dB (rowheavy3, 44653806160) | 300 / 6,000 (5%) | |
 | Kaggle training records, whole | **18.30 dB** all, 18.21 holdout (rowheavy3e + page v3 + photo_norm, Nov 21) | 8,352 / 8,793 (95%) | leaders 22.6-23.3 dB on the hidden test (private LB), not the same images |
 | Kaggle dev (540 images) | 17.95 dB all, 17.67 holdout (rowheavy3) | 540 / 8,793 (6.1%) | |
-| Kaggle hidden test (official) | 13.03 dB private, classical only, late submission (Nov 17) | ~1,000 hidden images | 1st place 23.33 dB |
+| Kaggle hidden test (official) | 13.39 dB private / 13.10 public, hybrid late submission (Nov 22; classical 13.03 / 12.67) | ~1,000 hidden images | 1st place 23.33 dB |
 
-The hybrid (row network) has not been submitted to the hidden test yet. Our local numbers (~18 dB)
+The hybrid was submitted on Nov 22 (13.39 private). Our local numbers (~18 dB)
 cannot be subtracted from the leaders' private score: the images differ, and the leaders themselves
 saw CV-to-private drops of ~4 dB.
 
@@ -511,13 +511,15 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
 | 45003441294 | env-check: RunPod, volume, proxy, Kaggle archive OK; tests failed only on test_kaggle_budget without pandas (fixed); balance 13.76 USD | done | cents |
 | 45003632612 | rowheavy5 smoke (10 min): rowheavy3e + heavy_aug down to 1/24 and blur sigma to 10 px (`--heavy-down-max 24 --heavy-blur-max 10`), real strips from the volume | done: 4000 Ada 0.28 USD/h, ~0.4 h, ~0.12 USD; caches hit, 20,000 real strips, 0.9 s/step, data wait 1-5% | |
 | 45004819752 | rowheavy5: same, 270 min, then dev benchmarks with page v3 (free runners) | done: 4000 Ada 0.28 USD/h, 4.6 h, ~1.28 USD; 20,327 steps; validation column error median 0.27 px, p90 1.47 (real strips 0.29 / 1.33); dev benchmarks 45027498706 (PM) and 45027500873 (Kaggle), free | |
+| 45027498706 / 45027500873 | rowheavy5 dev benchmarks (with page v3 + photo_norm), vs 44905591721 / 44856569576 | done: PM dev 300 ECGs (5%) 10.54 → **10.79 dB** (+0.25), PCC 0.757 → 0.762, failed leads 9.2% → 9.4%, Kaggle metric on the PM leads 14.33 → 15.91; blur +0.92, resolution +0.80, digital +0.34, rotation +0.31, phones −0.8 to 0. Kaggle dev 540 images 17.96 → 17.96 (holdout 17.67 → 17.64; 0004 +0.20, 0006 −0.11). Candidate: whole-database pair next | free |
 | 45014548754 / 45014555918 | Kaggle winners on probe pages K0-K6 (our drawing, template geometry): 2nd / 3rd place | done: RTX 4000 Ada 0.28 / A5000 0.27 USD/h, 0.33 / 0.78 h, ~0.09 / 0.21 USD (results §5) | |
 | 45018566846 / 45018572676 / 45018578869 | same + ecg-image-kit pages E0-E7: 2nd / 3rd / 4th place | 2nd: 3090 0.5 USD/h, 0.76 h, 0.38 USD; 3rd: 3090, 1.55 h, 0.78 USD; 4th: 4000 Ada, 2.0 h, 0.56 USD **lost**: 20 pages unreadable aborted its whole submission (now patched, `patch_4th.py`) | |
-| 45028920152 | 4th place on the probe pages again, with the patch | 3 h | 0.84 USD |
-| 45028959725 | Kaggle: waiting for the hybrid's score again (still PENDING after 8 h; the first wait ended) | 5.5 h | free |
+| 45028920152 | 4th place on the probe pages again, with the patch | 4000 Ada 0.28 USD/h, 2.0 h, 0.58 USD **lost again**: the patch worked (20 pages written as NaN) but our converter failed on the empty fields; `to_npz_sub.py` fixed | |
+| 45052758197 | 4th place, third try (K0 + E0-E7 only) | 2.5 h | 0.70 USD |
+| 45028959725 | Kaggle: waiting for the hybrid's score again | done: **hidden test 13.10 public / 13.39 private** (classical 12.67 / 13.03: +0.36 private) | free |
 | 45029638951 / 45029645225 | Kaggle whole training set (stride 1), default / + `EXT_ON_D` + `ORIENT_PRIOR` (pairs with the PM whole run 45010034441) | 5 h each | free |
 | 45003726790 / 45003732873 / 45003738548 | PM-ECG-ID, 130 ECGs (40 the default turned + the 45 brightness +40 and 45 digital), hybrid default: base / `EXT_ON_D` / `ORIENT_PRIOR` v1 (free runners, `ecgs` list) | done: base 12.26; EXT_ON_D **12.36** (ECG 15 +16.1; 2 pages −2.5/−1.7 that change the same way in the orientation run too: run-to-run noise); ORIENT_PRIOR v1 **12.63** (the 40 turned ECGs 0.92 → 2.14, turned ECGs 38 → 29; the other 90 17.31 → 17.29) | free |
 | 45006493923 | same 130 ECGs, ORIENT_PRIOR v2 (never 90° for a sheet lying landscape: rows run along the long side) | done: 12.26 → **12.70**; the 40 turned ECGs 0.92 → 2.39 (ECGs with a turned page 38 → 11), the other 90 17.31 → 17.29 | free |
 | 45006500371 / 45006529376 | Kaggle dev (stride 20 = 60 images here), ORIENT_PRIOR v2 / base | done: 14.61 → 14.61, no image changed (none of them turned) | free |
-| 45010034441 | PM-ECG-ID whole database, default + `EXT_ON_D` + `ORIENT_PRIOR` (pairs with 44908014040); Kaggle whole pair (base + flags) after rowheavy5's dev benchmarks | 5 h | free |
+| 45010034441 | PM-ECG-ID whole database, default + `EXT_ON_D` + `ORIENT_PRIOR` (pairs with 44908014040) | done: 5,670 of 6,000 ECGs (94.5%): 10.49 → **10.53 dB** (+0.04), PCC 0.756 → 0.759, failed leads 9.1% → 9.0%, Kaggle metric 13.04 → 13.05, 60-scenario mean 10.56 → 10.60; contrast +0.10, padding +0.09, Samsung +0.27, blur ±0, rotation −0.03 | free |
 | 45008970196 / 45008976316 | Kaggle, the 20 records with the most turned images in the whole run (61 of 8,352 turned; 52 portrait photos, 9 landscape photos turned 180° that read well, up to 20.9 dB): base / ORIENT_PRIOR v2 | done: 180 images, 17.92 → 17.92; the same 21 images turned in both (12 by 90°, 9 by 180°): the prior keeps the genuine turns | free |
