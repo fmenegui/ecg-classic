@@ -196,7 +196,18 @@ default, is never released, and its numbers are never reported as our PM-ECG-ID 
 | training: rowheavy3e + 150 min with the PM strips as the only real strips (35%) | 44969275121 | 4000 Ada, 0.28 (EU-RO-1, volume), 2.6 h, ~0.7 USD; 11,240 steps; 7,544 PM strips in memory; held-out PM strip column error 0.54 px median, 2.46 px p90 (Kaggle real strips with rowheavy3e: 0.29 / 1.32) |
 | training | | |
 | evaluation, rowheavy3e (baseline), odd ECGs, 5 per scenario | 44963430509 | done (the 10 even shards had no odd ECG and failed on the empty list; fixed) |
-| evaluation, diagnostic model, same ECGs | 44981336273 | (running) |
+| evaluation, diagnostic model, same ECGs | 44981336273 | 300 odd ECGs (5 per scenario): **9.95 → 10.30 dB (+0.35)**, PCC 0.748 → 0.754, failed leads 8.1% → 8.1%, Kaggle metric on the PM leads 12.67 → 12.94 |
+
+**Reading of the diagnostic.** Training the row network on the benchmark's own captures (other
+ECGs) gives only +0.35 dB: JPEG +0.85, scans +0.90, screens +0.71, digital +0.64, phones +0.5-0.6;
+blur, rotation and brightness ±0.1-0.3; bent and crumpled photos −0.3. It does not close the ~4 dB
+gap. Caveat: the strips are labelled with the classical reader's own geometry and kept only where
+reading and truth agree (66% of the pages), so the pages we fail on (blur, low resolution, bent
+photos) hardly enter the training; the row network also only reads strips around rows the reader
+has already found. The gap therefore sits mostly before the row network (page geometry, rows and
+layout on degraded images), and more real photos labelled the same way would help little. Real
+photos would help if their labels did not depend on our reader: pages printed with fiducial
+markers (known page geometry) can be labelled whatever our reader does.
 
 ### Assisted mode (what PMcardio's evaluation may have given its algorithm)
 
