@@ -61,7 +61,7 @@ jobs:
           # onnxruntime wheels for the offline kernel
           if [ -n "$ROW_RUN$PAGE_RUN" ]; then
             mkdir -p $D/models $D/wheels
-            for py in 3.10 3.11 3.12; do
+            for py in 3.10 3.11 3.12 3.13; do   # Kaggle's image is on 3.13 (Nov 22)
               python -m pip download -q onnxruntime==1.20.1 --only-binary=:all: --python-version $py \
                 --platform manylinux_2_27_x86_64 --platform manylinux_2_28_x86_64 -d $D/wheels || true
             done

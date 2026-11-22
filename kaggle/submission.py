@@ -62,11 +62,24 @@ def _find_ecgdig():
     raise ImportError("ecgdig source not found in /kaggle/input")
 
 
+def _unzip_dirs():
+    """Kaggle stores the dataset's folders as <folder>.zip (kaggle datasets create -r zip): unpack
+    models.zip and wheels.zip to /kaggle/working."""
+    for name in ("models", "wheels"):
+        for z in sorted(glob.glob(f"/kaggle/input/**/{name}.zip", recursive=True)):
+            dst = f"/kaggle/working/{name}"
+            if not os.path.isdir(dst):
+                with zipfile.ZipFile(z) as zf:
+                    zf.extractall(dst)
+
+
 def _models():
     """Config fields for the networks found in the attached dataset (models/row.onnx, models/page.onnx)."""
+    _unzip_dirs()
     kw = {}
     for name, key in (("row.onnx", "row_model"), ("page.onnx", "page_model")):
         hits = sorted(glob.glob(f"/kaggle/input/**/models/{name}", recursive=True)) + \
+            sorted(glob.glob(f"/kaggle/working/models/**/{name}", recursive=True)) + \
             sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", name)))
         if hits:
             kw[key] = hits[0]
@@ -75,7 +88,8 @@ def _models():
             import onnxruntime  # noqa: F401
         except ImportError:
             import subprocess
-            wheels = sorted(set(os.path.dirname(w) for w in glob.glob("/kaggle/input/**/wheels/*.whl", recursive=True)))
+            wheels = sorted(set(os.path.dirname(w) for w in glob.glob("/kaggle/input/**/wheels/*.whl", recursive=True)
+                                + glob.glob("/kaggle/working/wheels/**/*.whl", recursive=True)))
             for d in wheels:
                 subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--no-index", "--find-links", d,
                                 "onnxruntime"], check=False)
@@ -152,6 +166,8 @@ def main():
     _find_ecgdig()
     MODELS = _models()
     print("models:", MODELS or "none (classical)", flush=True)
+    if not MODELS:
+        print("inputs:", sorted(glob.glob("/kaggle/input/**", recursive=True))[:40], flush=True)
     test = pd.read_csv(os.path.join(COMP, "test.csv"))
     jobs = []
     for image_id, g in test.groupby("id", sort=False):
