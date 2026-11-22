@@ -1,4 +1,8 @@
-"""Kaggle "PhysioNet - Digitization of ECG Images": offline CPU submission of the classical ecgdig.
+"""Kaggle "PhysioNet - Digitization of ECG Images": offline CPU submission of ecgdig.
+
+Hybrid when the attached dataset has models/row.onnx (and models/page.onnx): the row network and
+the page-structure network inside the classical pipeline, as on our benchmarks (photo_norm is on by
+default). onnxruntime is installed from the dataset's wheels/ when the image lacks it (no internet).
 
 Runs as a Kaggle script kernel with the competition data and a dataset holding the ecgdig source
 (kaggle/README.md). Reads test.csv (id, lead, fs, number_of_rows), digitizes every test image once
@@ -58,6 +62,30 @@ def _find_ecgdig():
     raise ImportError("ecgdig source not found in /kaggle/input")
 
 
+def _models():
+    """Config fields for the networks found in the attached dataset (models/row.onnx, models/page.onnx)."""
+    kw = {}
+    for name, key in (("row.onnx", "row_model"), ("page.onnx", "page_model")):
+        hits = sorted(glob.glob(f"/kaggle/input/**/models/{name}", recursive=True)) + \
+            sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", name)))
+        if hits:
+            kw[key] = hits[0]
+    if kw:
+        try:
+            import onnxruntime  # noqa: F401
+        except ImportError:
+            import subprocess
+            wheels = sorted(set(os.path.dirname(w) for w in glob.glob("/kaggle/input/**/wheels/*.whl", recursive=True)))
+            for d in wheels:
+                subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--no-index", "--find-links", d,
+                                "onnxruntime"], check=False)
+            import onnxruntime  # noqa: F401
+    return kw
+
+
+MODELS = {}
+
+
 def _fill(v):
     """Unknown samples from the nearest known ones (linear inside, constant at the ends)."""
     m = np.isfinite(v)
@@ -104,7 +132,7 @@ def _one(job):
         from ecgdig import Config, digitize
         signal.signal(signal.SIGALRM, _alarm)
         signal.alarm(PER_IMAGE_S)
-        r = digitize(os.path.join(COMP, "test", f"{image_id}.png"), Config())
+        r = digitize(os.path.join(COMP, "test", f"{image_id}.png"), Config(**MODELS))
         signal.alarm(0)
         names = list(r["leads"])
         for lead, fs, n in leads:
@@ -120,7 +148,10 @@ def _one(job):
 
 
 def main():
+    global MODELS
     _find_ecgdig()
+    MODELS = _models()
+    print("models:", MODELS or "none (classical)", flush=True)
     test = pd.read_csv(os.path.join(COMP, "test.csv"))
     jobs = []
     for image_id, g in test.groupby("id", sort=False):
@@ -128,7 +159,9 @@ def main():
                                      zip(g["lead"], g["fs"], g["number_of_rows"])]))
     print(len(jobs), "images,", os.cpu_count(), "CPUs", flush=True)
     ids, vals = [], []
-    with ProcessPoolExecutor(max_workers=max(1, os.cpu_count() or 1)) as ex:
+    # each ONNX session uses 2 threads: half the CPUs as workers when networks are on
+    nw = max(1, (os.cpu_count() or 1) // (2 if MODELS else 1))
+    with ProcessPoolExecutor(max_workers=nw) as ex:
         for image_id, res in ex.map(_one, jobs, chunksize=1):
             for lead, v in res.items():
                 v = np.nan_to_num(np.asarray(v, np.float64), nan=0.0, posinf=0.0, neginf=0.0)
