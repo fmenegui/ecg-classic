@@ -183,7 +183,8 @@ default, is never released, and its numbers are never reported as our PM-ECG-ID 
 
 | Step | Run | Result |
 |---|---|---|
-| strips (32 vCPU pod, volume) | 44963401452 | (running) |
+| strips (32 vCPU pod, volume, ~1 h, ~1.1 USD) | 44963401452 | 1,355 pages of 20 even ECGs per scenario; **899 kept (66%)**, ~8,300 strips in 21 chunks, 888 s of labelling |
+| training: rowheavy3e + 150 min with the PM strips as the only real strips (35%) | 44968424722 | (running) |
 | training | | |
 | evaluation, rowheavy3e (baseline), odd ECGs, 5 per scenario | 44963430509 | (running) |
 | evaluation, diagnostic model, same ECGs | | |
