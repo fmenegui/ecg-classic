@@ -239,6 +239,20 @@ minutes with a short smoke run first.
 
 ## 5. Recipes
 
+### 5.0 Ablation switches and chosen subsets (Nov 22)
+
+- `ECGDIG_FLAGS="module.FLAG=value;..."` sets the 1-element flags of `ecgdig.*` at import
+  (`ecgdig.apply_flags`), in every evaluator, runner and pod. Workflows: `pmcardio.yml flags`,
+  `kaggle-full.yml flags`.
+- `pmcardio.yml ecgs="scenario:image_id,..."` (with `per_scenario=0`) evaluates only those ECGs,
+  every page of each, over the 20 shards: a subset chosen from a whole run (e.g. the pages a
+  default turned) on free runners.
+- `kaggle-full.yml records="id,id,..."` (with `stride=1`) evaluates only those training records.
+- A local classical evaluation of 45 PM pages takes ~15 min on this machine's 2 CPUs; the hybrid
+  (page network reads twice) ~2.5 h for 78 pages: use the free runners for hybrid subsets.
+- Runs of the same configuration differ on ~1-2% of PM pages by up to ±2.5 dB (ONNX threads):
+  a paired change below that on a single page is noise.
+
 ### 5.1 A training run
 
 ```
