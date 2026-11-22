@@ -464,5 +464,6 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
 |---|---|---|---|
 | 44991334960 | Kaggle: waiting for the hybrid submission's score (ref 58705110) | 5.5 h | free |
 | 45003441294 | env-check: RunPod, volume, proxy, Kaggle archive OK; tests failed only on test_kaggle_budget without pandas (fixed); balance 13.76 USD | done | cents |
-| 45003632612 | rowheavy5 smoke (10 min): rowheavy3e + heavy_aug down to 1/24 and blur sigma to 10 px (`--heavy-down-max 24 --heavy-blur-max 10`), real strips from the volume | 0.6 h | 0.3 USD |
+| 45003632612 | rowheavy5 smoke (10 min): rowheavy3e + heavy_aug down to 1/24 and blur sigma to 10 px (`--heavy-down-max 24 --heavy-blur-max 10`), real strips from the volume | done: 4000 Ada 0.28 USD/h, ~0.4 h, ~0.12 USD; caches hit, 20,000 real strips, 0.9 s/step, data wait 1-5% | |
+| 45004819752 | rowheavy5: same, 270 min, then dev benchmarks with page v3 (free runners) | 5.5 h | 2.75 USD (card ≤ 0.5 USD/h) |
 | 45003726790 / 45003732873 / 45003738548 | PM-ECG-ID, 130 ECGs (40 the default turned + the 45 brightness +40 and 45 digital), hybrid default: base / `EXT_ON_D` / `ORIENT_PRIOR` (free runners, `ecgs` list) | 5 h | free |
