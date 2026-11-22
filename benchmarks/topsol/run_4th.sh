@@ -27,6 +27,8 @@ while read kind ref; do
   else kaggle kernels output "$ref" -p "$TS_INPUT/$slug" -q > /dev/null || echo "could not download $ref"; fi
 done < "$W/sources.txt"
 du -sh "$TS_INPUT"/* 2>/dev/null
+# an image the solution cannot read aborts its whole submission: NaN for it instead (patch_4th.py)
+find "$TS_INPUT" -name run_ecg_digitization_inference.py -exec python benchmarks/topsol/patch_4th.py {} +
 
 PREP=""
 if [ "${TS_PM:-1}" = "1" ]; then
