@@ -52,3 +52,9 @@ def test_rows_must_move_together():
     # only the first of two rows has the faint start: not a page start, the rows stay
     out = _extend_ext_on_d(B, [100, 300], [(500, 2500), (500, 2500)], [None, None], 40, 10.0)
     assert out == [(500, 2500), (500, 2500)]
+
+
+def test_landscape_sheet():
+    from ecgdig.digitize import _landscape
+    pap = np.zeros((210, 297), np.uint8); pap[5:200, 5:290] = 1
+    assert _landscape(pap) and not _landscape(pap.T)

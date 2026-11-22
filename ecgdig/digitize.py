@@ -1009,6 +1009,12 @@ def _t_after_qrs(Bc, pk, ext, R):
 
 
 
+def _landscape(pap, ratio=1.15):
+    """The paper lies landscape in the picture (its bounding box is wider than tall)."""
+    ys_, xs_ = np.nonzero(pap)
+    return bool(len(xs_)) and np.ptp(xs_) > ratio * np.ptp(ys_)
+
+
 def _orient(arrs, R):
     """Pick the rotation (0/90/180/270) in which the traces are horizontal and the
     calibration pulses on the left."""
@@ -1034,12 +1040,11 @@ def _orient(arrs, R):
         B0 = clean_grid_segments(B, R) if GRID_SEGS[0] else B
         sh2, sv2 = _hv(B0, 4 * R)
         vert = sv2 > sh2 and sv2 >= 150 * R
-        if vert and ORIENT_PRIOR[0]:
-            # a landscape sheet in the picture is read as it lies unless the standing rows
-            # clearly win: blurred or faint pages turn grid columns and QRS stacks into "rows"
-            ys_, xs_ = np.nonzero(pap)
-            if len(xs_) and np.ptp(xs_) > 1.15 * np.ptp(ys_):
-                vert = sv2 >= 1.5 * sh2
+        if vert and ORIENT_PRIOR[0] and _landscape(pap):
+            # rows of 10 s (250 mm) or of four 2.5 s columns run along the sheet's long side:
+            # a sheet lying landscape in the picture is not turned by 90 degrees. Blurred or
+            # faint pages otherwise turn grid columns and QRS stacks into standing "rows"
+            vert = False
             if os.environ.get("ECGDIG_DBG_ORIENT"):
                 print("ORIENT", sh, sv, sh2, sv2, vert)
     cands = [cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE] if vert else [None, cv2.ROTATE_180]
@@ -1104,8 +1109,10 @@ def _orient(arrs, R):
         nb = int(np.argmax(sc_))
         prior_ok = True
         if ORIENT_PRIOR[0] and best is None and allc[nb] is not None:
-            # the network turns a page read upright only with three times the score
-            prior_ok = sc_[nb] >= 3.0 * max(sc_[0], 1e-6)
+            # the network turns a page read upright only with three times the score, and never
+            # by 90 degrees a sheet that lies landscape
+            prior_ok = sc_[nb] >= 3.0 * max(sc_[0], 1e-6) and not (
+                allc[nb] in (cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE) and _landscape(pap))
         if prior_ok and allc[nb] != best and sc_[nb] >= NET_ORIENT_MARGIN[0] * max(sc_[allc.index(best)], 1e-6):
             best = allc[nb]
             _orient.weak = False
