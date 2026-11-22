@@ -45,8 +45,11 @@ if [ "${TS_KAGGLE:-1}" = "1" ]; then
 fi
 if [ "${TS_PROBE:-0}" = "1" ]; then
   # probe pages: the Kaggle template geometry, then one change at a time (probe_pages.py)
-  pip install -q wfdb matplotlib 2>&1 | tail -1
+  pip install -q wfdb matplotlib pyyaml 2>&1 | tail -1
   python benchmarks/topsol/probe_pages.py --out /root/probe --n "${TS_PROBE_N:-20}" | tail -3
+  # the same records drawn by ecg-image-kit, the generator of the Kaggle images (probe_eik.py)
+  git clone -q --depth 1 https://github.com/alphanumericslab/ecg-image-kit.git /root/eik && \
+    python benchmarks/topsol/probe_eik.py --eik /root/eik --records /root/probe/.records --out /root/probe --n "${TS_PROBE_N:-20}" | tail -3
   PREP="$PREP --probe-dir /root/probe"
 fi
 python benchmarks/topsol/prepare.py --out "$W/data" $PREP
