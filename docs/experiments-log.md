@@ -451,6 +451,12 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
   `digitize.ORIENT_PRIOR` (off): a landscape sheet stays landscape unless standing rows win by
   1.5×, 180° needs more pulses or labels (not the T wave alone), the page network turns an upright
   reading only at 3× its score. Hybrid test on 78 pages the default turned: (running).
+- **Blur (Nov 22).** On blur 21-31 the read leads' PCC falls to 0.57 / 0.34 (blur 11: 0.91), even
+  where layout and rows are right. One page looked at (ECG 14, blur 21, hybrid, 2.45 dB): the wave
+  shapes are right, but each QRS is placed 10-20 samples (20-40 ms) early or late, differently
+  from beat to beat, sometimes split in two. The blur (σ ≈ 0.45 mm) smears the steep QRS edges over
+  ~1.5 mm and the row network puts the jump anywhere inside it; its training blur stopped at
+  σ 0.5 mm with rarely that much. rowheavy5 trains on blur up to σ 1 mm and on 1/24 resolution.
 - **Print kit (Nov 22, `kit/`).** 40 training pages (PTB-XL folds 1-9) and 20 test pages (fold
   10, pages 100-119), A4, six layouts, six grid colours, pulse left/right/both, four ArUco markers
   per page. No PM-ECG-ID ECG or patient, no lead-II match with an evaluation ECG. `read_photo.py`
