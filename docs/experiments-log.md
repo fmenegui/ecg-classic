@@ -89,7 +89,10 @@ Released weights (no Kaggle data): page v1-v3, dewarp v1-v2 in `fmenegui/ecgdig-
 | 17/11 | row v2 (rowphoto) | 8.52 → 9.41 (6,000) | — |
 | 17/11 | `edge_stroke` | — | whole set (8,793): small gain; 0001 decomposition: sub-sample lag up to +1-2.6 dB on some images |
 | 17/11 | classical official late submission | — | hidden test: 12.67 public, 13.03 private |
-| 22/11 | hybrid (rowheavy3e + page v3 + photo_norm) late submission, kernel check first (kaggle-submit.yml 44987230477, submit=false) | — | (running) |
+| 22/11 | hybrid kernel check 1 (kaggle-submit.yml 44987230477, submit=false) | Kaggle CPU, free | ran, but `models: none`: the dataset folders arrive zipped and the image is Python 3.13 (wheels only ≤3.12) |
+| 22/11 | hybrid kernel check 2 (44987623093) | Kaggle CPU, free | models found; onnxruntime install failed (pip found no wheel for the running Python) |
+| 22/11 | hybrid kernel check 3 (44987916841) | Kaggle CPU, free | OK: both networks load, 2 public images ~100 s each (2 workers × 2 threads on 4 CPUs). Too slow for ~1,000 hidden images in 9 h, so the kernel got an 8.3 h budget: networks while the time left covers the rest classically, then classical, then zeros |
+| 22/11 | hybrid (rowheavy3e + page v3 + photo_norm) late submission (44988601240, submit=true) | Kaggle CPU, free | (running) |
 | 18/11 | rowreal | 8.52 → 9.46 (5,990) | holdout 17.42 → 17.88 (1,854) |
 | 18/11 | photo invariance fixes (5 mm rescue, lone pulse) | 9.46 → 9.56 (5,997) | 18.08 → 18.08 (8,793) |
 | 18/11 | pulse-column gain | 9.56 → 9.55 (5,999): neutral | — |
