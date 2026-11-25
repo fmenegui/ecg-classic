@@ -82,6 +82,7 @@ class Config:
     grid_model: str = ""        # ONNX of the grid-phase network: grid map seen by the network (hybrid geometry)
     row_model: str = ""
     row_mode: str = "fuse"      # "fuse": network only where the classical reading fails; "replace": everywhere
+    row_xup: int = 1            # the row network reads strips stretched horizontally by this (trained with --xup)
     prewarp: bool = False          # coarse perspective from the outline of the gridded area
     adaptive_threshold: bool = True  # light trace: redo the binarization with a lower threshold
     pulse_rows: bool = True       # baselines from the calibration pulses when there are >= 3
@@ -2128,12 +2129,22 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     _row_maps = {}
 
     def _row_signal(r_, yc_):
-        """Row network: per-column height (image y) of row r_'s signal and its confidence."""
+        """Row network: per-column height (image y) of row r_'s signal and its confidence, at the
+        rectified columns, plus (x, y, conf) at the network's own columns (xup per rectified
+        column when the network reads stretched strips)."""
         if r_ not in _row_maps:
             from .inkmodel import predict_row, decode_columns
-            y0_, P_ = predict_row(rect, yc_, cfg.row_model)
+            xu = max(1, int(cfg.row_xup))
+            y0_, P_ = predict_row(rect, yc_, cfg.row_model, xup=xu)
+            yh_, ch_ = decode_columns(P_, y0_)
+            xh_ = (np.arange(len(yh_), dtype=np.float64) + 0.5) / xu - 0.5
+            if xu > 1:
+                xb_ = np.arange(rect.shape[1], dtype=np.float64)
+                yl_, cl_ = np.interp(xb_, xh_, yh_), np.interp(xb_, xh_, ch_)
+            else:
+                yl_, cl_ = yh_, ch_
             _row_maps.clear()        # one row at a time (memory)
-            _row_maps[r_] = decode_columns(P_, y0_)
+            _row_maps[r_] = (yl_, cl_, xh_, yh_, ch_)
         return _row_maps[r_]
     for r, (y, spec) in enumerate(zip(rows, rows_spec)):
         base0 = base_q[r]
@@ -2195,9 +2206,12 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
                 sel = viterbi_track(runs, base0, R, others=others, lw=lw0, w_edge=0.3, **br_kw(xa))
             seg_jobs.append(dict(lead=lead, row=r, n0=n0, n1=n1, xa=xa, runs=runs, sel=sel))
             if cfg.row_model:   # the row network's signal height replaces the classical centreline
-                ym_, cf_ = _row_signal(r, base0)
+                ym_, cf_, xh_, yh_, ch_ = _row_signal(r, base0)
                 seg_jobs[-1]["yc_model"] = ym_[xa:xa + len(sel)].copy()
                 seg_jobs[-1]["cf_model"] = cf_[xa:xa + len(sel)].copy()
+                if cfg.row_xup > 1:
+                    kh_ = (xh_ >= xa - 0.5) & (xh_ < xa + len(sel) - 0.5)
+                    seg_jobs[-1]["hr_model"] = (xh_[kh_].copy(), yh_[kh_].copy(), ch_[kh_].copy())
 
     # "full ink" level and trace radius (half thickness) on flat stretches
     pks = []
@@ -2353,6 +2367,13 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         if good.sum() < 10:
             good = valid
         xg, yg = xs[good], yc[good]
+        if j.get("model_used") and cfg.row_mode == "replace" and "hr_model" in j:
+            # the network's own columns (xup per rectified column): no interpolation between
+            # the 10 px/mm columns
+            xh_, yh_, ch_ = j["hr_model"]
+            okh = np.isfinite(yh_) & (ch_ >= ROW_CONF[0]) & (xh_ > lo_cut) & (xh_ < hi_cut)
+            if okh.sum() >= 10:
+                xg, yg = xh_[okh], yh_[okh].astype(np.float64)
         if cfg.steep_subpx and len(xg) > 4 and not j.get("model_used"):
             xg, yg = refine_steep(D, xg, yg, rad_h)
         if cfg.synth and len(xg) > 20 and not j.get("model_used"):

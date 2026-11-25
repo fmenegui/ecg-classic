@@ -114,17 +114,21 @@ def _warp(rng, H, W):
     return (xx + dx).astype(np.float32), (yy + dy).astype(np.float32)
 
 
-def _sparse_label(xs, ys, mx, my, yc, H, W, S, gap):
+def _sparse_label(xs, ys, mx, my, yc, H, W, S, gap, xup=1):
     """Signal height per output column after the residual warp, split over 2 pixels.
 
     Coordinates use the pixel-centre convention (row i at y = i). The polyline was drawn at
-    supersampled integer positions, i.e. at (v * S) // 1 -> centre (v + 0.5 / S - 0.5)."""
+    supersampled integer positions, i.e. at (v * S) // 1 -> centre (v + 0.5 / S - 0.5).
+    xup > 1: the strip is stretched horizontally by xup (cv2.resize convention: output column j
+    is at x = (j + 0.5) / xup - 0.5), so the label has W * xup columns, each with the true height
+    at its own position (not interpolated between the base columns)."""
     xc = xs + 0.5 / S - 0.5
     yv = ys + 0.5 / S - 0.5
-    cols = np.arange(W, dtype=np.float64)
-    dy = my[0, :].astype(np.float64)                                  # my = y + dy(x)
+    cols = (np.arange(W * xup, dtype=np.float64) + 0.5) / xup - 0.5
+    dy = np.interp(cols, np.arange(W, dtype=np.float64), my[0, :].astype(np.float64))   # my = y + dy(x)
     dx = float(mx[int(np.clip(yc, 0, H - 1)), 0])                     # mx = x + dx(y), at the row
     sc = cols + dx
+    W = W * xup
     ok = (sc >= xc[0]) & (sc <= xc[-1])
     if gap is not None:
         ok &= ~((sc >= gap[0]) & (sc <= gap[1]))
@@ -138,9 +142,15 @@ def _sparse_label(xs, ys, mx, my, yc, H, W, S, gap):
     return lab
 
 
-def sample(rng, size=512, width=None):
+XUP = [int(os.environ.get("ROWGEN_XUP", "1"))]   # horizontal stretch (2 = 20 px/mm across, 10 down)
+
+
+def sample(rng, size=512, width=None, xup=None):
     """One strip: BGR uint8 (H, W, 3), label float32 (H, W): the centre row's signal height per
-    column (sparse, sub-pixel over 2 pixels)."""
+    column (sparse, sub-pixel over 2 pixels). xup > 1: the strip is drawn at 10 px/mm, degraded,
+    then stretched horizontally by xup exactly as inference stretches the rectified strip, and
+    labelled at the stretched columns (W * xup wide)."""
+    xup = int(xup or XUP[0])
     H, W = size, width or size
     S = 4
     paper = np.array(_rand_color(rng, dark=False), np.float32)
@@ -207,8 +217,10 @@ def sample(rng, size=512, width=None):
     img = _distractors(rng, img, H, W, ink)
     mx, my = _warp(rng, H, W)
     img = cv2.remap(img, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-    lab = _sparse_label(xs_t, ys_t, mx, my, yc, H, W, S, gap)
+    lab = _sparse_label(xs_t, ys_t, mx, my, yc, H, W, S, gap, xup)
     img = _degrade(rng, img)
+    if xup > 1:
+        img = cv2.resize(img, (W * xup, H), interpolation=cv2.INTER_CUBIC)
     return img, lab
 
 

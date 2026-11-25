@@ -5,6 +5,7 @@ pulses, tracking, synthesis and constraints stay classical. Optional dependency:
 """
 from __future__ import annotations
 
+import cv2
 import numpy as np
 
 _SESS = {}
@@ -42,18 +43,24 @@ def predict(rect_bgr: np.ndarray, model_path: str, tile: int = 512, margin: int 
     return out
 
 
-def predict_row(rect_bgr: np.ndarray, yc: float, model_path: str, h: int = 512):
+def predict_row(rect_bgr: np.ndarray, yc: float, model_path: str, h: int = 512, xup: int = 1):
     """Row network: coverage (0..1) of the trace of the row whose baseline is near y = yc, in a
-    strip of height h centred there. Returns (y0, P) with P of shape (h, W) and y0 the strip's
-    first image row (may be negative: the strip is padded with the image's edge)."""
+    strip of height h centred there. Returns (y0, P) with P of shape (h, W * xup) and y0 the
+    strip's first image row (may be negative: the strip is padded with the image's edge).
+    xup > 1: the strip is stretched horizontally by xup before the network (a network trained on
+    stretched strips, hybrid/rowgen.py); column j of P is at image x = (j + 0.5) / xup - 0.5."""
     sess = _session(model_path)
     H, W = rect_bgr.shape[:2]
     y0 = int(round(yc)) - h // 2
     ya, yb = max(0, y0), min(H, y0 + h)
     strip = rect_bgr[ya:yb]
-    strip = np.pad(strip, ((ya - y0, y0 + h - yb), (0, (-W) % 32), (0, 0)), mode="edge")
+    strip = np.pad(strip, ((ya - y0, y0 + h - yb), (0, 0), (0, 0)), mode="edge")
+    if xup > 1:
+        strip = cv2.resize(strip, (W * xup, h), interpolation=cv2.INTER_CUBIC)
+    Wx = strip.shape[1]
+    strip = np.pad(strip, ((0, 0), (0, (-Wx) % 32), (0, 0)), mode="edge")
     x = strip[..., ::-1].astype(np.float32).transpose(2, 0, 1)[None] / 255.0
-    lg = sess.run(None, {"x": x})[0][0, 0][:, :W]
+    lg = sess.run(None, {"x": x})[0][0, 0][:, :Wx]
     return y0, (1.0 / (1.0 + np.exp(-lg))).astype(np.float32)
 
 

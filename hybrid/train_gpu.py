@@ -89,8 +89,20 @@ class RealPool:
         import cv2
         im = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
         S = im.shape[0]
-        lab = np.zeros((S, S), np.float32)
         hh = np.asarray(h, np.float32)
+        xup = rowgen.XUP[0]
+        if xup > 1:
+            # stretched like the synthetic strips; the label between two base columns is
+            # interpolated (the real strips store one height per 10 px/mm column)
+            im = cv2.resize(im, (im.shape[1] * xup, S), interpolation=cv2.INTER_CUBIC)
+            xb = np.arange(len(hh), dtype=np.float64)
+            xh = (np.arange(len(hh) * xup) + 0.5) / xup - 0.5
+            ok = np.isfinite(hh)
+            hi = np.interp(xh, xb[ok], hh[ok]) if ok.sum() >= 2 else np.full(len(xh), np.nan)
+            near = np.interp(xh, xb, (~ok).astype(float)) > 0.0
+            hi[near] = np.nan
+            hh = hi.astype(np.float32)
+        lab = np.zeros((S, len(hh)), np.float32)
         c = np.flatnonzero(np.isfinite(hh))
         i = np.floor(hh[c]).astype(int); f = hh[c] - i
         ok = (i >= 0) & (i + 1 < S)
@@ -249,8 +261,16 @@ def main():
                     help="heavy_aug: largest down-and-up sampling factor (PM-ECG-ID 1/16 and 1/32 photos: ~12-24x at 10 px/mm)")
     ap.add_argument("--heavy-blur-max", type=float, default=5.0,
                     help="heavy_aug: largest blur sigma, px at 10 px/mm (PM-ECG-ID blur 21-41: sigma ~4.5-9 px)")
+    ap.add_argument("--xup", type=int, default=1,
+                    help="rowgen: horizontal stretch of the strips (2 = 20 px/mm across, 10 px/mm down); "
+                         "the strips are size x size*xup and the label has one height per stretched column")
     ap.add_argument("--out", type=Path, default=Path("hybrid/out_gpu"))
     a = ap.parse_args()
+    if a.xup > 1:
+        if a.gen != "rowgen" or a.render_frac > 0:
+            sys.exit("--xup needs --gen rowgen and no GPU-rendered strips (--render-frac 0)")
+        rowgen.XUP[0] = a.xup
+        os.environ["ROWGEN_XUP"] = str(a.xup)   # the spawned data workers re-import rowgen
     HEAVY_DOWN_MAX[0], HEAVY_BLUR_MAX[0] = a.heavy_down_max, a.heavy_blur_max
     a.out.mkdir(parents=True, exist_ok=True)
     if a.workers <= 0:
@@ -490,7 +510,7 @@ def main():
     export()
     (a.out / "meta.json").write_text(json.dumps(dict(encoder=a.encoder, parameters=n_par, steps=step,
                                                      best_val_iou=best, size=a.size, batch=a.batch,
-                                                     reuse=a.reuse, gen=a.gen)))
+                                                     reuse=a.reuse, gen=a.gen, xup=a.xup)))
     print("ok", a.out / "trace_seg.onnx", flush=True)
 
 

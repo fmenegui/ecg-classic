@@ -58,6 +58,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--variants", default="", help="only these variants, comma separated")
+    ap.add_argument("--save-pred", type=Path, default=None, help="--ecgdig: also write each reading as <key>.npz here")
     a = ap.parse_args()
     keys = sorted(p.stem for p in (a.probe / "gt").glob("*.npz"))
     if a.variants:
@@ -88,6 +89,9 @@ def main():
             for k, S in zip(keys, ex.map(_read_ecgdig, [(str(a.probe / "test" / f"{k}.png"), cfg) for k in keys])):
                 if S is not None:
                     preds[k] = S
+                    if a.save_pred:
+                        a.save_pred.mkdir(parents=True, exist_ok=True)
+                        np.savez_compressed(a.save_pred / f"{k}.npz", leads=np.array(LEADS), signals=S)
     rows, by = [], defaultdict(list)
     for k in keys:
         segs, lin = score_page(a.probe / "gt" / f"{k}.npz", preds.get(k))
