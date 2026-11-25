@@ -523,3 +523,43 @@ Runs (row3e + page v3, free runners): PM dev 44856538010, Kaggle dev 44856569576
 | 45006500371 / 45006529376 | Kaggle dev (stride 20 = 60 images here), ORIENT_PRIOR v2 / base | done: 14.61 → 14.61, no image changed (none of them turned) | free |
 | 45010034441 | PM-ECG-ID whole database, default + `EXT_ON_D` + `ORIENT_PRIOR` (pairs with 44908014040) | done: 5,670 of 6,000 ECGs (94.5%): 10.49 → **10.53 dB** (+0.04), PCC 0.756 → 0.759, failed leads 9.1% → 9.0%, Kaggle metric 13.04 → 13.05, 60-scenario mean 10.56 → 10.60; contrast +0.10, padding +0.09, Samsung +0.27, blur ±0, rotation −0.03 | free |
 | 45008970196 / 45008976316 | Kaggle, the 20 records with the most turned images in the whole run (61 of 8,352 turned; 52 portrait photos, 9 landscape photos turned 180° that read well, up to 20.9 dB): base / ORIENT_PRIOR v2 | done: 180 images, 17.92 → 17.92; the same 21 images turned in both (12 by 90°, 9 by 180°): the prior keeps the genuine turns | free |
+
+## 7. Nov 25: new repository, precision on clean pages
+
+**Lost with the old repository (blocked by GitHub on Nov 22, ~18:20 UTC).** Their results and
+artifacts are unreachable: 45052758197 (4th place on the probe pages, third try; 4000 Ada, up to
+2.5 h, ≤ 0.70 USD; the pod was to be terminated by hand), 45029638951 / 45029645225 (Kaggle whole
+training set, default vs `EXT_ON_D` + `ORIENT_PRIOR`, free). Every model artifact of the old runs
+went too; rowheavy3e and page v3 survive in the private Kaggle dataset `ecgdig-src`.
+
+| Run | What | Result | Cost |
+|---|---|---|---|
+| 45687811192 | env-check, first try in fmenegui/ecg-classic | tests OK (50); RunPod and Kaggle failed: the secrets were not set yet | free |
+| 45695258992 | `models-from-kaggle.yml` | row network (row.onnx, sha256 b85b6c8f…) and page v3 (sha256 0a0aa979…, identical to the released page v3) copied from `ecgdig-src` into this run's artifacts: use 45695258992 as row/page model run (7 days) | free |
+| 45695253156 | env-check | all OK (tests, Kaggle archive from GitHub and from the pod, RunPod volume, proxy); balance 19.98 USD (MCP get-balance) | cents |
+| local | ecg-image-kit default sheet E0 (20 pages, `probe_eik.py`), hybrid default (fuse) | 20/20, segment SNR 25.20 dB, PCC 0.995, Kaggle-style 26.38 (pod run on Nov 22: 25.17) | free |
+| local | same, `row_mode=replace` (rowheavy3e everywhere) | 23.48 dB, Kaggle-style 24.56: the 10 px/mm row network is 1.7 dB less precise than the classical centreline on clean pages | free |
+| 45696445289 | row network at 20 px/mm across (`--xup 2`), smoke, 10 min, volume | trains: RTX 3090 (EU-RO-1, on the volume), batch 16 of 512 x 1024, 0.29 s/step, data wait 2%, 10.9 GB; 1,700 steps. Killed by its own 0.7 h limit just before export: setup took 18 min and the PTB-XL bank was rebuilt (30 min, now cached as bank-26dd5bd22762) | ~1.0 h, ~0.4 USD |
+| 45706509393 / 45706519680 | row network from scratch, synthetic strips only (rowgen + bank, heavy 0.3, down to 1/24, blur 10 px), 270 min, batch 16: `--xup 1` / `--xup 2` (the A/B for horizontal resolution) | (running) | ≤ 2 × 5.6 h × 0.5 USD |
+
+**Where the error is on clean pages (`benchmarks/topsol/decompose_probe.py`, cumulative oracles,
+segment dB / Kaggle-style).**
+
+| Stage | E0, fuse | E0, replace | our synthetic pages (15, no degradation), fuse |
+|---|---|---|---|
+| reading | 25.20 / 26.38 | 23.48 / 24.56 | 20.88 / 22.71 |
+| + sub-sample time shift | 26.91 / 28.38 | 24.36 / 25.57 | 21.47 / 23.42 |
+| + time scale | 27.08 / 28.48 | 24.51 / 25.67 | 21.68 / 23.60 |
+| + gain | 27.32 / 28.74 | 25.23 / 26.42 | 22.22 / 24.03 |
+| ceiling, truth every 4 ms (10 px/mm) | 31.07 / 32.83 | | 27.39 / 29.37 |
+| ceiling, every 2 ms (20 px/mm) | 34.00 / 35.80 | | 30.39 / 32.38 |
+
+- On ecg-image-kit pages our reading lags the truth by a constant ~0.2 samples (0.4 ms, 0.1 px at
+  10 px/mm) on almost every segment of every page. One constant shift of the whole reading:
+  E0 25.20 → 26.45 (+1.25; Kaggle-style +1.63); Kaggle 0001 (5 local records) 26.05 → 27.10
+  (+1.05); 0003 +0.15, 0011 +0.19. On our own cv2-drawn synthetic pages there is no such lag
+  (best shift 0-0.05 samples): it belongs to the generator's drawing (anti-aliasing profile of
+  the line start, likely), not to our estimator. A per-generator constant is a calibration to
+  the Kaggle sheet, so it is not applied; worth about +0.65 dB on the Kaggle development score.
+- After every oracle the shape error remains: 3.8 dB below the 10 px/mm ceiling, and the
+  20 px/mm ceiling is 3 dB higher. Hence the row network at 20 px/mm (`--xup 2`).
