@@ -28,7 +28,7 @@ sys.path.insert(0, str(HERE))
 import compare as C  # noqa: E402
 import metrics as MT  # noqa: E402
 
-REPO = "fmenegui/ecg-digitalization-classic"
+REPO = "fmenegui/ecg-classic"
 
 
 def _artifacts():

@@ -1,0 +1,60 @@
+name: Models from the private Kaggle dataset
+# The repository moved (Nov 22, 2026) and the old training runs' artifacts went with the old one.
+# The networks of the hybrid Kaggle submission live in the private Kaggle dataset
+# KAGGLE_USERNAME/ecgdig-src (models/row.onnx: row network; models/page.onnx: page network v3).
+# This run copies them into its own artifacts, so its run id works as row_model_run /
+# page_model_run (and models=row=ID page=ID) of the evaluation workflows. Artifacts of a public
+# repository can be downloaded by any signed-in GitHub user, as the old runs' were: these expire
+# after 7 days and hold ONNX only. Kaggle-trained weights are never released to
+# fmenegui/ecgdig-models. Needs the secret KAGGLE_API_TOKEN and the variable KAGGLE_USERNAME.
+on:
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: 'Kaggle dataset slug under KAGGLE_USERNAME'
+        required: false
+        default: 'ecgdig-src'
+        type: string
+permissions:
+  contents: read
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ vars.KAGGLE_USERNAME }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q kaggle==2.2.5 kagglesdk==0.1.38 six==1.17.0 onnxruntime
+      - name: Download and unpack
+        run: |
+          set -e
+          [ -n "$KAGGLE_API_TOKEN" ] || { echo "KAGGLE_API_TOKEN is not set"; exit 1; }
+          [ -n "$KAGGLE_USERNAME" ] || { echo "the repository variable KAGGLE_USERNAME is not set"; exit 1; }
+          mkdir -p dl && cd dl
+          kaggle datasets download -d "$KAGGLE_USERNAME/${{ inputs.dataset }}" --unzip
+          # directories of a dataset uploaded with -r zip come back as zip files
+          for z in $(find . -name '*.zip'); do unzip -q -o "$z" -d "${z%.zip}" && rm "$z"; done
+          find . -name '*.onnx' -exec ls -la {} \;
+      - name: Check and stage
+        run: |
+          set -e
+          mkdir -p out/row out/page
+          r=$(find dl -name row.onnx | head -1); p=$(find dl -name page.onnx | head -1)
+          [ -n "$r" ] && [ -n "$p" ] || { echo "row.onnx or page.onnx missing"; exit 1; }
+          python -c "import onnxruntime as o, sys; [o.InferenceSession(f) for f in sys.argv[1:]]" "$r" "$p"
+          cp "$r" out/row/trace_seg.onnx; cp "$p" out/page/page_best.onnx
+          sha256sum out/row/trace_seg.onnx out/page/page_best.onnx | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: row-kaggle-dataset
+          path: out/row
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: page-kaggle-dataset
+          path: out/page
+          retention-days: 7

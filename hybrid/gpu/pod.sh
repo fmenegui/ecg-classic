@@ -13,7 +13,7 @@ REPO=${REPO_DIR:-/workspace/repo}
 mkdir -p "$OUT"
 cd /workspace
 # GET of $OUT, and PUT /in/<name> with the run's one-time upload token (models for evaluations)
-curl -fsSL "https://raw.githubusercontent.com/fmenegui/ecg-digitalization-classic/${REF}/hybrid/gpu/podserve.py" -o /podserve.py \
+curl -fsSL "https://raw.githubusercontent.com/fmenegui/ecg-classic/${REF}/hybrid/gpu/podserve.py" -o /podserve.py \
   && (python /podserve.py > /dev/null 2>&1 &) || (python -m http.server 8000 --directory "$OUT" > /dev/null 2>&1 &)
 # a RunPod container restart (host hiccup, out of memory) runs this script again: keep the
 # code and the checkpoints, and let train_gpu.py resume from $OUT/unet.pt
@@ -25,7 +25,7 @@ echo "setup" > "$OUT/status.txt"
   # a pod whose DNS or network to GitHub is broken cannot get the code: retry, then let the
   # workflow replace the pod (same path as a broken GPU)
   for i in 1 2 3 4 5 6; do
-    [ -d "$REPO" ] || git clone --depth 1 -b "$REF" https://github.com/fmenegui/ecg-digitalization-classic "$REPO" && break
+    [ -d "$REPO" ] || git clone --depth 1 -b "$REF" https://github.com/fmenegui/ecg-classic "$REPO" && break
     sleep 20
   done
   if [ ! -d "$REPO" ]; then echo "nogpu" > "$OUT/status.txt"; echo "cannot clone the repository on this pod"; sleep infinity; fi

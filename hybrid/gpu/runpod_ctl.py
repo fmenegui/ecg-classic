@@ -104,7 +104,7 @@ def start(exclude=(), cloud="ALL"):
             env.append({"key": k, "value": os.environ[k]})
     if os.environ.get("RENDERER_TOKEN"):   # read-only token for the private ecg-torch-renderer repo, if set
         env.append({"key": "RENDERER_TOKEN", "value": os.environ["RENDERER_TOKEN"]})
-    cmd = ("bash -c 'curl -fsSL https://raw.githubusercontent.com/fmenegui/ecg-digitalization-classic/"
+    cmd = ("bash -c 'curl -fsSL https://raw.githubusercontent.com/fmenegui/ecg-classic/"
            "${REF}/hybrid/gpu/pod.sh -o /pod.sh && bash /pod.sh'")
     asked = os.environ.get("GPU") or ""
     gpus = ([asked] if asked else []) + [g for g in FALLBACK_GPUS if g != asked]

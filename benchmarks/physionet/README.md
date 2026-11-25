@@ -23,7 +23,7 @@ It runs on GitHub Actions with the repository secret `KAGGLE_API_TOKEN` and the 
 Each run's artifact has `results.json` (per-image diagnosis: layout, gains, duration, ppmm, grid residuals, per-row origins), `sig/*.npz` (ground truth and prediction at 250 Hz), `img/*.jpg` (overlays) and `raw/` (raw images and ground truth of the first 5 records, for local debugging).
 
 ```bash
-gh run download <run_id> -R fmenegui/ecg-digitalization-classic -D art
+gh run download <run_id> -R fmenegui/ecg-classic -D art
 python benchmarks/physionet/diagnose.py art/physionet-eval-<run_id>        # -> decomposition.json
 python benchmarks/physionet/report_html.py art/physionet-eval-<run_id> --before <previous_artifact> -o report.html
 ```

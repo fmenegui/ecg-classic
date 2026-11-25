@@ -107,7 +107,7 @@ def cpu_start():
     for k in ("KAGGLE_API_TOKEN", "KAGGLE_USERNAME"):   # only when the run asks for Kaggle data
         if os.environ.get(k):
             env[k] = os.environ[k]
-    args = ("bash -c 'curl -fsSL https://raw.githubusercontent.com/fmenegui/ecg-digitalization-classic/"
+    args = ("bash -c 'curl -fsSL https://raw.githubusercontent.com/fmenegui/ecg-classic/"
             "${REF}/hybrid/gpu/pod.sh -o /pod.sh && bash /pod.sh'")
     vcpu = int(os.environ.get("VCPU", "32"))
     t_end = time.time() + 60 * float(os.environ.get("WAIT_MIN", "30"))
