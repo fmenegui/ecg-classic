@@ -592,3 +592,12 @@ kept locally).** Per scenario, single pages whose layout was read as printed vs 
 - The other ~2.6 dB to PMcardio is the reading on degraded pages even with the right layout: on
   blur ≥ 21, resolution ≤ 1/16 and crumpled or bent photos it stays at −0.6 to +3 dB (PCC
   0.3-0.6). The trace on degraded images is the shared lever of both benchmarks.
+- **The page-network selection loses structure it had (same run).** On 5,415 single pages with
+  both readings, 1,329 have exactly one of them with the printed layout: the classical one on 738,
+  the page network's on 591. The current choice (`_reading_score`, internal quality + limb
+  closure) is right on 956 (72%); shifting its margin moves that by at most ±30 pages (best
+  961 at −0.1). An oracle choice would fix the other 373 pages (an upper bound of ~+0.6 dB on the
+  whole database). The two scores barely separate the cases (score difference when the network
+  is right: median −0.09, IQR −0.41..0.20; when the classical one is: 0.46, 0.03..0.83), so a
+  better selector needs other evidence. It cannot be fitted on PM-ECG-ID (no training on the
+  benchmark): synthetic pages of every layout, read both ways, would be the calibration set.
