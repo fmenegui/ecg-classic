@@ -31,6 +31,9 @@ LOCAL15 = set(("1257259783,2587667307,3042142152,426433979,994226251,119693645,1
                "235672018,2841936136,3574249147,3646789790,3879757040,4050029009,644026427").split(","))
 
 
+XUP = [int(os.environ.get("REALSTRIPS_XUP", "1"))]   # labels at the stretched columns (--xup)
+
+
 def is_holdout(rid: str) -> bool:
     return int(rid) % 5 == 0 or rid in LOCAL15
 
@@ -45,7 +48,7 @@ def _work(args):
         rect, segs, info = RS.page_labels(img, G)
         if info["n_jobs"] == 0 or info["kept"] < 0.6 * info["n_jobs"]:
             return rid, typ, None, info
-        X, Y = RS.strips(rect, segs, np.random.default_rng(seed), per_row=2)
+        X, Y = RS.strips(rect, segs, np.random.default_rng(seed), per_row=2, xup=XUP[0])
         if not len(X):
             return rid, typ, None, info
         # compact: JPEG strips (q 92) and the label as one height per column (NaN = none)
@@ -53,7 +56,7 @@ def _work(args):
         S = Y.shape[1]
         rows = np.arange(S, dtype=np.float32)[:, None]
         w = Y.sum(1)
-        h = np.where(w > 0.5, (Y * rows[None]).sum(1) / np.maximum(w, 1e-6), np.nan).astype(np.float16)
+        h = np.where(w > 0.5, (Y * rows[None]).sum(1) / np.maximum(w, 1e-6), np.nan).astype(np.float32 if XUP[0] > 1 else np.float16)
         return rid, typ, (jp, h), info
     except Exception as e:  # noqa: BLE001
         return rid, typ, None, dict(error=f"{type(e).__name__}: {e}"[:200])
@@ -67,11 +70,15 @@ def main():
     ap.add_argument("--chunk", type=int, default=400, help="strips per chunk file")
     ap.add_argument("--readers", type=int, default=8, help="threads reading pages from the archive")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--xup", type=int, default=1,
+                    help="labels at the columns of strips stretched this many times (train_gpu.py --xup)")
     ap.add_argument("--wait-hours", type=float, default=2.0, help="keep retrying the archive this long")
     ap.add_argument("--cache", type=Path, default=None,
                     help="folder (a persistent volume) keeping finished strip sets by content key; OUT becomes "
                          "a link to the cached set (reused when complete, built in place otherwise)")
     a = ap.parse_args()
+    XUP[0] = a.xup
+    os.environ["REALSTRIPS_XUP"] = str(a.xup)   # the labelling workers
     import kaggle_zip as KZ
     if a.cache:
         import hashlib
@@ -79,7 +86,7 @@ def main():
         here = Path(__file__).resolve().parent
         for f in [here / "realstrips.py", Path(__file__).resolve()]:
             h.update(f.read_bytes())
-        h.update(f"{a.max_pages} {a.chunk} {a.seed}".encode())
+        h.update(f"{a.max_pages} {a.chunk} {a.seed}".encode() + (f" xup{a.xup}".encode() if a.xup > 1 else b""))
         cdir = a.cache / f"real-{h.hexdigest()[:12]}"
         cdir.mkdir(parents=True, exist_ok=True)
         if a.out.exists() or a.out.is_symlink():

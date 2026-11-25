@@ -91,7 +91,9 @@ class RealPool:
         S = im.shape[0]
         hh = np.asarray(h, np.float32)
         xup = rowgen.XUP[0]
-        if xup > 1:
+        if xup > 1 and len(hh) == im.shape[1] * xup:   # labelled at the stretched columns (realstrips --xup)
+            im = cv2.resize(im, (im.shape[1] * xup, S), interpolation=cv2.INTER_CUBIC)
+        elif xup > 1:
             # stretched like the synthetic strips; the label between two base columns is
             # interpolated (the real strips store one height per 10 px/mm column)
             im = cv2.resize(im, (im.shape[1] * xup, S), interpolation=cv2.INTER_CUBIC)

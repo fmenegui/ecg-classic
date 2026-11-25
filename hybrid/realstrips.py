@@ -135,8 +135,11 @@ def page_labels(img_bgr, G, cfg=None):
     return rect, segs, info
 
 
-def strips(rect, segs, rng, per_row=2, size=512, jitter=8.0):
-    """Training strips: (n, size, size, 3) uint8 BGR and (n, size, size) float32 sparse labels."""
+def strips(rect, segs, rng, per_row=2, size=512, jitter=8.0, xup=1):
+    """Training strips: (n, size, size, 3) uint8 BGR and (n, size, size * xup) float32 sparse
+    labels. xup > 1: the label is given at the columns of the strip stretched xup times
+    horizontally (column j at x = (j + 0.5) / xup - 0.5), from the true signal itself (500 Hz,
+    denser than the 10 px/mm columns), for a row network trained with --xup."""
     from rowgen import _sparse_label
     H, W = rect.shape[:2]
     rows = {}
@@ -158,8 +161,8 @@ def strips(rect, segs, rng, per_row=2, size=512, jitter=8.0):
                 continue
             crop[ya - y0:yb - y0, xa - x0:xb - x0] = rect[ya:yb, xa:xb]
             # columns between segments (lead switches) carry no label: gap > 1.5 px between samples
-            lab = np.zeros((size, size), np.float32)
-            cols = np.arange(size) + x0
+            lab = np.zeros((size, size * xup), np.float32)
+            cols = (np.arange(size * xup) + 0.5) / xup - 0.5 + x0
             ok = (cols >= lo) & (cols <= hi)
             gaps = np.flatnonzero(np.diff(xs) > 1.5)
             for g in gaps:
@@ -171,7 +174,7 @@ def strips(rect, segs, rng, per_row=2, size=512, jitter=8.0):
             lab[i[c] + 1, c] = f[c]
             X.append(crop); Y.append(lab)
     if not X:
-        return np.zeros((0, size, size, 3), np.uint8), np.zeros((0, size, size), np.float32)
+        return np.zeros((0, size, size, 3), np.uint8), np.zeros((0, size, size * xup), np.float32)
     return np.stack(X), np.stack(Y)
 
 
