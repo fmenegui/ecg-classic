@@ -563,3 +563,32 @@ segment dB / Kaggle-style).**
   the Kaggle sheet, so it is not applied; worth about +0.65 dB on the Kaggle development score.
 - After every oracle the shape error remains: 3.8 dB below the 10 px/mm ceiling, and the
   20 px/mm ceiling is 3 dB higher. Hence the row network at 20 px/mm (`--xup 2`).
+
+**PM-ECG-ID: structure or trace? (Nov 25, no new compute; the whole run 45010034441, 5,908 images,
+kept locally).** Per scenario, single pages whose layout was read as printed vs not:
+
+| Scenario | SNR | layout right | SNR when right | SNR when wrong | failed leads | PCC when right |
+|---|---|---|---|---|---|---|
+| photos_crumbles | −1.23 | 37% | 0.61 | −2.09 | 25% | 0.554 |
+| blur 31 | −0.50 | 49% | −0.30 | −0.68 | 32% | 0.433 |
+| blur 41 | −0.50 | 31% | −0.56 | −0.43 | 45% | 0.342 |
+| resolution 1/32 | −0.18 | 27% | −0.20 | −0.15 | 50% | 0.275 |
+| resolution 1/16 | 0.75 | 55% | 1.30 | 0.09 | 23% | 0.484 |
+| photos_bents | 0.81 | 52% | 3.14 | −1.71 | 15% | 0.589 |
+| blur 21 | 1.21 | 55% | 2.25 | −0.02 | 27% | 0.596 |
+| brightness −160 | 3.06 | 57% | 7.09 | −1.64 | 16% | 0.726 |
+| resolution 1/8 | 3.31 | 80% | 4.27 | 0.12 | 12% | 0.687 |
+| perspective 40 | 5.18 | 79% | 6.81 | −0.26 | 9% | 0.746 |
+| brightness +160 | 6.22 | 70% | 8.51 | 0.81 | 15% | 0.771 |
+| JPEG 2% | 6.88 | 77% | 9.16 | 0.51 | 2% | 0.857 |
+| padding extra large | 7.40 | 71% | 10.31 | −0.19 | 16% | 0.866 |
+| opacity 0.15 | 8.43 | 64% | 13.50 | −0.32 | 29% | 0.860 |
+| opacity 0.2 | 9.20 | 65% | 14.36 | 0.48 | 26% | 0.873 |
+
+- If every single page had its printed layout, at the SNR the scenario reaches when it does:
+  60-scenario mean 10.59 → 11.86 (+1.3; hard 19: 4.46 → 6.20, middle 29: 12.26 → 13.34, easy 12:
+  16.25 → 17.25). Structure is worth ~1.3 dB, mostly from the middle scenarios (opacity,
+  brightness, padding, JPEG, perspective: 20-45% wrong layouts).
+- The other ~2.6 dB to PMcardio is the reading on degraded pages even with the right layout: on
+  blur ≥ 21, resolution ≤ 1/16 and crumpled or bent photos it stays at −0.6 to +3 dB (PCC
+  0.3-0.6). The trace on degraded images is the shared lever of both benchmarks.
