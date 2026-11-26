@@ -39,7 +39,8 @@ def design(rows, names=None):
             if n == "same_layout":
                 X[i, j] = float(r.get("layout_classical") == r.get("layout_network"))
             else:
-                X[i, j] = float(r["features_network"].get(n, 0.0)) - float(r["features_classical"].get(n, 0.0))
+                X[i, j] = float(r["features_network"].get(n, 0.0) or 0.0) - float(r["features_classical"].get(n, 0.0) or 0.0)
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
     return X, names
 
 
