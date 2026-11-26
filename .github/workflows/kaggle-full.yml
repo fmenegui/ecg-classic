@@ -7,6 +7,10 @@ name: Kaggle evaluation, whole training set (20 parallel runners)
 on:
   workflow_dispatch:
     inputs:
+      jobs:
+        description: 'Images read at a time per runner (4 vCPU, 16 GB): 4; 2 for row networks at row_xup=2 (twice the activations)'
+        required: false
+        default: '4'
       config:
         description: 'Config fields, space separated, e.g. "hybrid=model synth=False" (optional)'
         required: false
@@ -154,7 +158,7 @@ jobs:
           [ -f model/row.onnx ] && ARGS="$ARGS --config row_model=$PWD/model/row.onnx"
           [ -f model/page.onnx ] && ARGS="$ARGS --config page_model=$PWD/model/page.onnx"
           [ -f model/dewarp.onnx ] && ARGS="$ARGS --config dewarp_model=$PWD/model/dewarp.onnx"
-          python benchmarks/physionet/run.py eval --n 1000 --jobs 4 --keep-raw 0 --ids "$ID" --out results/physionet $ARGS
+          python benchmarks/physionet/run.py eval --n 1000 --jobs ${{ inputs.jobs || '4' }} --keep-raw 0 --ids "$ID" --out results/physionet $ARGS
       - name: Error decomposition (numbers only; the signals stay on the runner)
         if: always()
         run: |
