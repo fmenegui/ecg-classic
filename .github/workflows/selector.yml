@@ -1,0 +1,143 @@
+name: Selector calibration (synthetic pages, free runners)
+# Calibrates the choice between the classical and the page network's reading
+# (benchmarks/selector) on synthetic pages: PTB-XL signals (folds 1-9, PM-ECG-ID ECGs removed),
+# printed layouts, one generic degradation each. No PM-ECG-ID or Kaggle image is used. The
+# pages are made once (cache), read both ways by 10 shards, and fit.py fits the rule.
+on:
+  workflow_dispatch:
+    inputs:
+      n:
+        description: 'Synthetic pages'
+        default: '600'
+      row_model_run:
+        description: 'Row network run (trace_seg.onnx or unet_best.pt)'
+        required: false
+        default: ''
+      page_model_run:
+        description: 'Page network run (page_best.onnx)'
+        required: true
+      config:
+        description: 'Config fields, space separated (e.g. "row_mode=replace row_xup=2")'
+        required: false
+        default: ''
+      jobs:
+        description: 'Images read at a time per runner'
+        default: '2'
+      tag:
+        default: 'sel'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q -e . wfdb pandas onnxruntime
+      - name: Models
+        run: |
+          mkdir -p model
+          if [ -n "${{ inputs.row_model_run }}" ]; then
+            gh run download "${{ inputs.row_model_run }}" -D dl_row
+            f=$(find dl_row -name trace_seg.onnx | head -1)
+            if [ -n "$f" ]; then cp "$f" model/row.onnx; else
+              p=$(find dl_row -name unet_best.pt | head -1)
+              python -m pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
+              python -m pip install -q segmentation-models-pytorch==0.3.4 timm onnx onnxscript
+              python - "$p" model/row.onnx <<'PY'
+          import sys, torch, segmentation_models_pytorch as smp
+          m = smp.Unet(encoder_name="resnet34", encoder_weights=None, in_channels=3, classes=1)
+          m.load_state_dict(torch.load(sys.argv[1], map_location="cpu")); m.eval()
+          torch.onnx.export(m, torch.zeros(1, 3, 256, 256), sys.argv[2], input_names=["x"], output_names=["logit"],
+                            dynamic_axes={"x": {0: "n", 2: "h", 3: "w"}, "logit": {0: "n", 2: "h", 3: "w"}}, opset_version=17, dynamo=False)
+          PY
+            fi
+          fi
+          gh run download "${{ inputs.page_model_run }}" -D dl_page
+          for f in $(find dl_page -name page_best.onnx) $(find dl_page -name page.onnx); do
+            python -c "import onnxruntime as o, sys; o.InferenceSession(sys.argv[1])" "$f" && cp "$f" model/page.onnx && break
+          done
+          rm -rf dl_row dl_page; ls -la model
+      - name: Pages
+        run: |
+          python hybrid/ptbxl/ptbxl_bank.py --out bank.npy --work /tmp/ptbxl --jobs 4
+          python benchmarks/selector/make_pages.py --bank bank.npy --out pages --n ${{ inputs.n }}
+          du -sh pages; rm -rf /tmp/ptbxl bank.npy
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            model
+            pages
+          key: selector-${{ github.run_id }}
+  shard:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q -e . onnxruntime
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            model
+            pages
+          key: selector-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - name: Read both ways
+        run: |
+          mkdir -p mine
+          i=0; for f in pages/*.png; do
+            if [ $(( i % 10 )) -eq ${{ matrix.part }} ]; then ln -s "$PWD/$f" mine/; ln -s "$PWD/${f%.png}.npz" mine/; fi
+            i=$((i+1))
+          done
+          ARGS="--config row_model=$PWD/model/row.onnx --config page_model=$PWD/model/page.onnx"
+          [ -f model/row.onnx ] || ARGS="--config page_model=$PWD/model/page.onnx"
+          for kv in ${{ inputs.config }}; do ARGS="$ARGS --config $kv"; done
+          export ECGDIG_MEM_LIMIT_MB=$(( 14000 / ${{ inputs.jobs }} ))
+          python benchmarks/selector/read_pages.py --pages mine --out rows-${{ matrix.part }}.jsonl --jobs ${{ inputs.jobs }} $ARGS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sel-${{ inputs.tag }}-${{ matrix.part }}
+          path: rows-${{ matrix.part }}.jsonl
+  fit:
+    needs: shard
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -q numpy
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sel-${{ inputs.tag }}-*
+          merge-multiple: true
+          path: rows
+      - run: |
+          cat rows/*.jsonl > rows.jsonl; wc -l rows.jsonl
+          python benchmarks/selector/fit.py rows.jsonl --out selector.json | tee report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sel-${{ inputs.tag }}-fit
+          path: |
+            rows.jsonl
+            selector.json
+            report.md
