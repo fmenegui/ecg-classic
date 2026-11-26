@@ -2,6 +2,10 @@ name: PM-ECG-ID (PMcardio) full database
 on:
   workflow_dispatch:
     inputs:
+      start_model_run:
+        description: 'Row-start network run (start.onnx, hybrid/startnet.py) (optional)'
+        required: false
+        default: ''
       jobs:
         description: 'Images read at a time per runner: 2; 1 for row networks at row_xup=2 (twice the activations)'
         required: false
@@ -119,6 +123,13 @@ jobs:
                             dynamic_axes={"x": {0: "n", 2: "h", 3: "w"}, "logit": {0: "n", 2: "h", 3: "w"}}, opset_version=17, dynamo=False)
           PY
           ls -la model
+      - name: Row-start model
+        if: ${{ inputs.start_model_run != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download ${{ inputs.start_model_run }} -D st_dl
+          mkdir -p model; cp "$(find st_dl -name start.onnx | head -1)" model/start.onnx; rm -rf st_dl; ls -la model
       - name: Page-structure model
         if: ${{ inputs.page_model_run != '' }}
         env:
@@ -182,6 +193,7 @@ jobs:
           if [ -f model/grid_phase.onnx ]; then ARGS="$ARGS --config grid_model=$PWD/model/grid_phase.onnx"; fi
           if [ -f model/row.onnx ]; then ARGS="$ARGS --config row_model=$PWD/model/row.onnx"; fi
           if [ -f model/page.onnx ]; then ARGS="$ARGS --config page_model=$PWD/model/page.onnx"; fi
+          if [ -f model/start.onnx ]; then ARGS="$ARGS --config start_model=$PWD/model/start.onnx"; fi
           if [ -f model/dewarp.onnx ]; then ARGS="$ARGS --config dewarp_model=$PWD/model/dewarp.onnx"; fi
           if [ "${{ inputs.oracle }}" = "true" ]; then ARGS="$ARGS --oracle-layout"; fi
           for kv in ${{ inputs.config }}; do ARGS="$ARGS --config $kv"; done
