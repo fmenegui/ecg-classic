@@ -83,6 +83,8 @@ class Config:
     row_model: str = ""
     row_mode: str = "fuse"      # "fuse": network only where the classical reading fails; "replace": everywhere
     row_xup: int = 1            # the row network reads strips stretched horizontally by this (trained with --xup)
+    page_select_keep: bool = False   # page_select: also return both readings' features and the other reading
+    page_selector: str = ""     # page_select: a fitted choice (benchmarks/selector/fit.py JSON) instead of the score margin
     prewarp: bool = False          # coarse perspective from the outline of the gridded area
     adaptive_threshold: bool = True  # light trace: redo the binarization with a lower threshold
     pulse_rows: bool = True       # baselines from the calibration pulses when there are >= 3
@@ -1459,6 +1461,47 @@ def _reading_score(res):
     return sc
 
 
+_SELECTORS = {}
+
+
+def _selector_prefers_network(path, rc, rn):
+    """The fitted choice (benchmarks/selector/fit.py): logistic regression on the network-minus-
+    classical feature differences and a same-layout flag."""
+    import json as _json
+    m = _SELECTORS.get(path)
+    if m is None:
+        with open(path) as f_:
+            m = _SELECTORS[path] = _json.load(f_)
+    fc, fn = reading_features(rc), reading_features(rn)
+    x = np.array([float(rc.get("layout") == rn.get("layout")) if n_ == "same_layout"
+                  else float(fn.get(n_, 0.0)) - float(fc.get(n_, 0.0)) for n_ in m["features"]])
+    z = (x - np.array(m["mean"])) / np.array(m["std"])
+    return bool(z @ np.array(m["coef"]) + m["bias"] > 0)
+
+
+def reading_features(res):
+    """Numbers a reading carries about itself (no ground truth): the inputs a learned choice
+    between two readings of the same page may use (benchmarks/selector)."""
+    q = res.get("quality") or {}
+    pg = q.get("page") or {}
+    li = res.get("layout_info") or {}
+    parts = li.get("parts") or {}
+    sig = np.asarray(res.get("signals"), float) if res.get("signals") is not None else np.zeros((0, 0))
+    f = dict(score=_reading_score(res), quality=float(q.get("score") or 0.0),
+             layout_confidence=float(pg.get("layout_confidence") or 0.0),
+             pulses_ratio=float(pg.get("pulses_ratio") or 0.0),
+             layout_warning=float(bool(pg.get("layout_warning"))),
+             rows_found=float(res.get("rows_found") or 0), pulses_found=float(res.get("pulses_found") or 0),
+             n_layout_rows=float(len(res.get("layout_rows") or [])),
+             coverage=float(np.isfinite(sig).mean()) if sig.size else 0.0,
+             grid_residual_mm=float(res.get("grid_residual_mm") or 0.0),
+             horizontal_scale=float(res.get("horizontal_scale") or 1.0))
+    for k_, v_ in parts.items():
+        if isinstance(v_, (int, float)) and np.isfinite(v_):
+            f[f"part_{k_}"] = float(v_)
+    return f
+
+
 def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     """Image -> signals. When the 0 vs 180 degree choice was weak (no pulse or label to break
     the tie), the page is also read in the other orientation and the better layout wins:
@@ -1555,10 +1598,18 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         if rc is not None and rn is not None and _drops_rhythm(rc.get("layout"), rn.get("layout")):
             margin = max(margin, cfg.page_margin_rhythm)
         use_n = rc is None or (rn is not None and sn_ > sc_ + margin)
+        if cfg.page_selector and rc is not None and rn is not None:
+            use_n = _selector_prefers_network(cfg.page_selector, rc, rn)
         out = rn if use_n else rc
         out["page_select"] = dict(chosen="network" if use_n else "classical", score_classical=sc_,
                                   score_network=sn_, layout_classical=None if rc is None else rc.get("layout"),
                                   layout_network=None if rn is None else rn.get("layout"), errors=err)
+        if cfg.page_select_keep:   # calibration of the choice (benchmarks/selector): both readings
+            out["page_select"]["features_classical"] = None if rc is None else reading_features(rc)
+            out["page_select"]["features_network"] = None if rn is None else reading_features(rn)
+            other = rc if use_n else rn
+            out["page_select"]["other"] = None if other is None else dict(
+                leads=list(other["leads"]), signals=np.asarray(other["signals"]), layout=other.get("layout"))
         return out
     _orient.weak = False
     res = _digitize_once(image, cfg, return_debug)
