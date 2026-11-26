@@ -58,10 +58,30 @@ def predict_row(rect_bgr: np.ndarray, yc: float, model_path: str, h: int = 512, 
     if xup > 1:
         strip = cv2.resize(strip, (W * xup, h), interpolation=cv2.INTER_CUBIC)
     Wx = strip.shape[1]
-    strip = np.pad(strip, ((0, 0), (0, (-Wx) % 32), (0, 0)), mode="edge")
-    x = strip[..., ::-1].astype(np.float32).transpose(2, 0, 1)[None] / 255.0
-    lg = sess.run(None, {"x": x})[0][0, 0][:, :Wx]
+    if xup > 1 and Wx > ROW_TILE + 2 * ROW_TILE_PAD:
+        # stretched strips are long (~6,000 px): read them in overlapping tiles so the memory of
+        # one image stays that of a 10 px/mm strip (the network sees +-ROW_TILE_PAD px of context)
+        lg = np.empty((h, Wx), np.float32)
+        a = 0
+        while a < Wx:
+            b = min(Wx, a + ROW_TILE)
+            ta, tb = max(0, a - ROW_TILE_PAD), min(Wx, b + ROW_TILE_PAD)
+            lg[:, a:b] = _run_strip(sess, strip[:, ta:tb])[:, a - ta:b - ta]
+            a = b
+    else:
+        lg = _run_strip(sess, strip)
     return y0, (1.0 / (1.0 + np.exp(-lg))).astype(np.float32)
+
+
+ROW_TILE, ROW_TILE_PAD = 2048, 256
+
+
+def _run_strip(sess, strip):
+    """Network logits for one BGR strip (any width; padded to a multiple of 32 and cropped back)."""
+    w = strip.shape[1]
+    strip = np.pad(strip, ((0, 0), (0, (-w) % 32), (0, 0)), mode="edge")
+    x = strip[..., ::-1].astype(np.float32).transpose(2, 0, 1)[None] / 255.0
+    return sess.run(None, {"x": x})[0][0, 0][:, :w]
 
 
 def decode_columns(P: np.ndarray, y0: int = 0, half: int = 3):
