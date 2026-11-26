@@ -543,7 +543,18 @@ went too; rowheavy3e and page v3 survive in the private Kaggle dataset `ecgdig-s
 | 45706904250 | Kaggle dev baseline in the new repository (rowheavy3e as kept in `ecgdig-src` + page v3 + photo_norm; free runners, stride 20) | 540 of 8,793 images (6.1%): **17.59 dB** official metric (holes filled 17.76), PM-style SNR 15.82, PCC 0.957, failed leads 0.6%. Holdout records (117) 17.64 vs 17.67 on Nov 21, the other records 17.58 vs 18.04: `ecgdig-src` holds the best-validation checkpoint (unet_best.pt), the Nov 21 runs used the final one (trace_seg.onnx), which had seen those records' real strips longer. The holdout is the comparable number | free |
 | 45706509393 / 45706519680 | row network from scratch, synthetic strips only (rowgen + bank, heavy 0.3, down to 1/24, blur 10 px), 270 min, batch 16: `--xup 1` / `--xup 2` (the A/B for horizontal resolution) | RTX A5000 each (EU-RO-1, volume), 0.27 USD/h. x1: 107,464 steps (0.151 s/step, 5.5 GB); x2: 56,630 steps (0.286 s/step, 10.9 GB). Final validation column error: x1 0.28 px median, 1.42 px p90; x2 0.27 / 1.43 (x2 measured on its stretched columns) | 2 × 4.7 h, ~1.27 USD each |
 | local | E0 (20 pages, 20/20 read), `row_mode=replace`: x1 / x2 (`row_xup=2`) | segment SNR 22.04 / **23.24** (+1.20), Kaggle-style 22.39 / 23.33; after the time and gain oracles 24.16 / 25.78 (+1.6). Both below rowheavy3e in replace mode (23.48) and the default fuse (25.20): from scratch on synthetic strips only they lack rowheavy3e's real and rendered strips, but at equal training 20 px/mm wins on clean pages | free |
-| 45742413858 / 45742421025 | Kaggle dev (stride 20, free runners): x2 replace / x1 replace, page v3 | (running) | free |
+| 45742421025 | Kaggle dev, x1 replace + page v3 (540 of 540) | vs the baseline 45706904250: all 17.59 → 16.50, holdout 17.64 → 15.95; 0001 −2.94, but 0003 +0.50, 0004 +0.82, 0006 +0.85, 0009 +0.40, 0011 +0.27, 0012 +0.79 | free |
+| 45742413858 | Kaggle dev, x2 replace (`row_xup=2`) + page v3 | 5 of 20 runners died while reading (memory: twice the activations with 4 images at a time; `kaggle-full.yml jobs` added). On the 405 images in both (45 records, 4.6%): **x2 vs x1 +0.62 dB** (holdout +0.48), 0001 21.58 → 23.05 (+1.46), degraded types ±0.1. x2 vs the baseline: all 17.42 → 17.07, holdout 17.72 → 16.65; 0001 −1.28; 0003 +0.75, 0004 +0.77, 0006 +1.01, 0009 +0.36, 0010 +0.18, 0011 +0.62, 0012 +0.65 | free |
+| 45744820526 | real strips with labels at 20 px/mm (`realstrips_build.py --xup 2`), smoke, 40 pages | 37 of 40 pages kept, 292 strips; cpu5c 8 vCPU, EU-RO-1 | ~0.3 h, ~0.1 USD |
+| 45748479274 | real strips `--xup 2`, whole training set | (running) | 32 vCPU, ≤ 3 h × 1.12 USD |
+| 45748476389 | Kaggle dev, x2 in fuse mode (classical centreline on clean ink, the network elsewhere), 2 images at a time | (running) | free |
+
+**Reading.** At equal training, 20 px/mm across beats 10 px/mm on clean renders (+1.5 dB on 0001,
++1.2 on E0) and ties elsewhere. Trained on synthetic strips only and used everywhere, the network
+already beats the default on every degraded Kaggle type (+0.2 to +1.0 dB, photos +1.0) but loses
+1.3 dB on clean renders, where the classical centreline is still the most precise reading, and the
+linear mean follows the clean renders. Next: x2 in fuse mode (running), then x2 continued with the
+real strips labelled at 20 px/mm.
 
 **Where the error is on clean pages (`benchmarks/topsol/decompose_probe.py`, cumulative oracles,
 segment dB / Kaggle-style).**
