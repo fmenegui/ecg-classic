@@ -12,31 +12,73 @@ on:
         required: false
         default: ''
         type: string
+      row_model_run:
+        description: 'Row network run (trace_seg.onnx) (optional)'
+        required: false
+        default: ''
+        type: string
+      page_model_run:
+        description: 'Page network run (page_best.onnx) (optional)'
+        required: false
+        default: ''
+        type: string
+      jobs:
+        description: 'Images read at a time (2 with the networks, 1 at row_xup=2)'
+        required: false
+        default: '4'
+        type: string
+      tag:
+        required: false
+        default: 'litfl'
+        type: string
   pull_request:
     paths:
       - 'ecgdig/**'
       - 'benchmarks/litfl/**'
+permissions:
+  contents: read
+  actions: read
 jobs:
   litfl:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install -e .
+      - run: python -m pip install -e . onnxruntime
+      - name: Models
+        if: ${{ inputs.row_model_run != '' || inputs.page_model_run != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p model
+          if [ -n "${{ inputs.row_model_run }}" ]; then
+            gh run download "${{ inputs.row_model_run }}" -D dl_row
+            cp "$(find dl_row -name trace_seg.onnx | head -1)" model/row.onnx
+          fi
+          if [ -n "${{ inputs.page_model_run }}" ]; then
+            gh run download "${{ inputs.page_model_run }}" -D dl_page
+            for f in $(find dl_page -name page_best.onnx) $(find dl_page -name page.onnx); do
+              python -c "import onnxruntime as o, sys; o.InferenceSession(sys.argv[1])" "$f" && cp "$f" model/page.onnx && break
+            done
+          fi
+          rm -rf dl_row dl_page; ls -la model
       - name: Benchmark
         run: |
           ARGS=""
+          [ -f model/row.onnx ] && ARGS="$ARGS --config row_model=$PWD/model/row.onnx"
+          [ -f model/page.onnx ] && ARGS="$ARGS --config page_model=$PWD/model/page.onnx"
           for kv in ${{ inputs.config }}; do ARGS="$ARGS --config $kv"; done
-          python benchmarks/litfl/run.py --limit "${{ inputs.limit || '0' }}" --jobs 4 --compare benchmarks/litfl/baseline.json $ARGS
+          export ECGDIG_MEM_LIMIT_MB=$(( 14000 / ${{ inputs.jobs || '4' }} ))
+          python benchmarks/litfl/run.py --limit "${{ inputs.limit || '0' }}" --jobs ${{ inputs.jobs || '4' }} --compare benchmarks/litfl/baseline.json $ARGS
       - name: Report in the job summary
         if: always()
         run: cat results/litfl/report.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: litfl-benchmark
+          name: litfl-${{ inputs.tag || 'benchmark' }}
           path: results/litfl/
           retention-days: 14
