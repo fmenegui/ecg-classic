@@ -252,6 +252,9 @@ def main():
                     help="real strips kept in memory (the most recent); the full Nov 20 set has ~50,000 (125 chunks of 400)")
     ap.add_argument("--real-dir", default="", help="rowgen: directory where realstrips_build.py writes real strips")
     ap.add_argument("--real-frac", type=float, default=0.0, help="share of each batch from real strips (once available)")
+    ap.add_argument("--eik-dir", default="", help="rowgen: strips with exact labels from ecg-image-kit pages (hybrid/eikstrips_build.py)")
+    ap.add_argument("--eik-frac", type=float, default=0.0, help="share of each batch from --eik-dir")
+    ap.add_argument("--eik-cap", type=int, default=60000)
     ap.add_argument("--render-photo", type=float, default=0.0,
                     help="rowgen + render-frac: share of the rendered pages that are photos brought back "
                          "onto the flat page with their exact geometry (capture appearance, stage oracle)")
@@ -369,11 +372,13 @@ def main():
                         cerr.append(d.float().cpu())
         # real strips (Kaggle training pages, held-out chunks): the same column error, separately
         validate.real_err = validate.real_err90 = float("nan")
-        if a.gen == "rowgen" and real is not None and real.val_jpg:
+        validate.eik_err = validate.eik_err90 = float("nan")
+        for name_, pool_ in (("real", real), ("eik", eik)):
+          if a.gen == "rowgen" and pool_ is not None and pool_.val_jpg:
             rerr = []
             with torch.no_grad():
-                for i in range(0, min(256, len(real.val_jpg)), 16):
-                    got = [RealPool.decode(j, h) for j, h in zip(real.val_jpg[i:i + 16], real.val_h[i:i + 16])]
+                for i in range(0, min(256, len(pool_.val_jpg)), 16):
+                    got = [RealPool.decode(j, h) for j, h in zip(pool_.val_jpg[i:i + 16], pool_.val_h[i:i + 16])]
                     xr = torch.stack([g[0] for g in got]).to(dev); yr = torch.stack([g[1] for g in got]).to(dev)
                     with torch.autocast(dev, enabled=dev == "cuda"):
                         pr = torch.sigmoid(net(xr).float())[:, 0]
@@ -387,7 +392,8 @@ def main():
                     rerr.append((cp - cy).abs()[ok].float().cpu())
             re_ = torch.cat(rerr) if rerr else torch.zeros(0)
             if re_.numel():
-                validate.real_err, validate.real_err90 = float(re_.median()), float(re_.quantile(0.9))
+                setattr(validate, f"{name_}_err", float(re_.median()))
+                setattr(validate, f"{name_}_err90", float(re_.quantile(0.9)))
         net.train()
         ce = torch.cat(cerr) if cerr else torch.zeros(0)
         e5_ = torch.cat(e5s) if e5s else torch.zeros(0)
@@ -423,6 +429,7 @@ def main():
             print("ecg-torch-renderer not available, CPU strips only:", e, flush=True)
     t_render = 0.0
     real = RealPool(a.real_dir, cap=a.real_cap) if (a.real_dir and a.real_frac > 0) else None
+    eik = RealPool(a.eik_dir, cap=a.eik_cap) if (a.eik_dir and a.eik_frac > 0) else None
     t0 = time.time(); log = []; it = iter(dl); best = None; t_wait = 0.0
     g_aug = torch.Generator().manual_seed(7)
     for step in range(1, a.steps + 1):
@@ -452,6 +459,18 @@ def main():
                     xq, yq = got
                     xb = xb.clone(); yb = yb.clone()
                     xb[-n_q:] = xq.to(dev); yb[-n_q:] = yq.to(dev)
+            if eik is not None:   # strips of ecg-image-kit pages, exact labels: just before the real ones
+                if step % 200 == 1:
+                    ne = eik.refresh()
+                    if step % 2000 == 1:
+                        print(f"ecg-image-kit strips in memory: {ne}", flush=True)
+                n_q = int(round(a.real_frac * len(xb))) if real is not None else 0
+                n_e = int(round(a.eik_frac * len(xb)))
+                got = eik.batch(n_e) if n_e else None
+                if got is not None:
+                    xe, ye = got
+                    xb = xb.clone(); yb = yb.clone()
+                    xb[len(xb) - n_q - n_e:len(xb) - n_q] = xe.to(dev); yb[len(xb) - n_q - n_e:len(xb) - n_q] = ye.to(dev)
             x, y = xb, yb
         elif PHASE:   # photometric changes only: the targets are paper coordinates
             n_ = len(xb)
@@ -489,7 +508,9 @@ def main():
                   f"p90 {validate.col_err90:.2f} px"
                   + (f" (mm; 5 mm-only median {validate.e5:.3f} mm)" if PHASE else "")
                   + (f" | real strips median {validate.real_err:.2f} px p90 {validate.real_err90:.2f} px"
-                     if np.isfinite(getattr(validate, "real_err", float("nan"))) else ""), flush=True)
+                     if np.isfinite(getattr(validate, "real_err", float("nan"))) else "")
+                  + (f" | ecg-image-kit strips median {validate.eik_err:.2f} px p90 {validate.eik_err90:.2f} px"
+                     if np.isfinite(getattr(validate, "eik_err", float("nan"))) else ""), flush=True)
             (a.out / "train_log.json").write_text(json.dumps(log))
             torch.save(net.state_dict(), a.out / "unet.pt")
             # keep the checkpoint that reads the trace best (column error in px, real strips when
