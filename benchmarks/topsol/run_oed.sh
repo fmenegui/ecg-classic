@@ -5,7 +5,7 @@
 # Input size: TS_OED_SIZE=WxH fits every image inside WxH (aspect kept, white padding); the default,
 # none, keeps the images as they are (it resamples to 3000 px inside). Nov 20, 60 PM-ECG-ID ECGs:
 # 2200x1700 3.91 dB, own size 5.09, 3300x2550 5.12 (runs 44834969780, 44834966288, 44834973129). Generic layouts (lead_layouts_all.yml: 12x1, 6x2, 3x4 with 0-3 rhythm strips, ...).
-# Options as run_hengck.sh: TS_PM, TS_KAGGLE, TS_LIMIT, TS_PM_FORMATS, TS_PM_PER.
+# Options as run_hengck.sh: TS_PM, TS_KAGGLE, TS_LIMIT, TS_PM_FORMATS, TS_PM_PER, TS_PROBE (probe pages K0-K6, E0-E7).
 set -u
 W=/root/oed; mkdir -p "$W"
 git clone -q --depth 1 https://github.com/Ahus-AIM/Open-ECG-Digitizer "$W/code" || { echo "clone failed"; exit 1; }
@@ -30,6 +30,14 @@ if [ "${TS_KAGGLE:-1}" = "1" ]; then
   IDS=$(cat "$W/kaggle_ids.txt")
   if [ -n "${TS_LIMIT:-}" ]; then IDS=$(echo "$IDS" | tr ',' '\n' | head -n $(( (TS_LIMIT + 8) / 9 )) | paste -sd,); echo "$IDS" > "$W/kaggle_ids.txt"; fi
   PREP="$PREP --kaggle-dir /root/kaggle --kaggle-ids $IDS"
+fi
+if [ "${TS_PROBE:-0}" = "1" ]; then
+  # probe pages: the Kaggle template geometry, then one change at a time (probe_pages.py, probe_eik.py)
+  pip install -q wfdb 2>&1 | tail -1
+  python benchmarks/topsol/probe_pages.py --out /root/probe --n "${TS_PROBE_N:-20}" ${TS_PROBE_K:+--variants $TS_PROBE_K} | tail -3
+  git clone -q --depth 1 https://github.com/alphanumericslab/ecg-image-kit.git /root/eik && \
+    python benchmarks/topsol/probe_eik.py --eik /root/eik --records /root/probe/.records --out /root/probe --n "${TS_PROBE_N:-20}" | tail -3
+  PREP="$PREP --probe-dir /root/probe"
 fi
 RS="${TS_OED_SIZE:-none}"; [ "$RS" = none ] && RS=""      # none: the images as they are
 python benchmarks/topsol/prepare.py --out "$W/data" ${RS:+--resize $RS} $PREP
@@ -78,6 +86,9 @@ python benchmarks/topsol/to_npz_oed.py "$W/out" "$W/data/test.csv" "$W/ext"
 # with OpenBLAS threads each hit the thread limit and crashed the Kaggle scoring (Nov 20, 44801832861)
 JOBS=${TS_JOBS:-$(python -c "import os; print(min(16, len(os.sched_getaffinity(0))))")}
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+if [ "${TS_PROBE:-0}" = "1" ]; then
+  python benchmarks/topsol/score_probe.py --probe /root/probe --npz "$W/ext" --out "$OUT_DIR/probe_results.json" | tee "$OUT_DIR/probe_report.md"
+fi
 if [ "${TS_PM:-1}" = "1" ]; then
   ECGDIG_EXTERNAL="$W/ext" python benchmarks/pmcardio/eval_pm.py --root /root/pm/visual_data --gt /root/pm/final_data/data \
     --meta /root/pm/final_data/metadata.csv --list "$W/pm_sel.csv" --out "$W/pm" --jobs "$JOBS" | tail -15
