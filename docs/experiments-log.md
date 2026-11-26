@@ -623,3 +623,21 @@ kept locally).** Per scenario, single pages whose layout was read as printed vs 
   is right: median −0.09, IQR −0.41..0.20; when the classical one is: 0.46, 0.03..0.83), so a
   better selector needs other evidence. It cannot be fitted on PM-ECG-ID (no training on the
   benchmark): synthetic pages of every layout, read both ways, would be the calibration set.
+
+## 8. Nov 26: the four steps (owner's go, data kept as it is plus the new sources)
+
+1. Strips with exact labels from ecg-image-kit pages (`hybrid/eikstrips_build.py`): matplotlib's
+   pixel convention checked on the ink (the polyline at plotted_pixels − 0.5 overlaps the drawn
+   trace best, correlation 0.714 vs 0.634 at 0 or 1 px); 1.2 s per page on one core; 12 test
+   pages gave 114 strips, labels on the trace centre (visual check).
+2. A larger encoder on the same data (next, after the smoke test of step 1).
+3. Learned fine time and gain (design: a small network for the row start's sub-pixel position,
+   trained on exact labels of several renderers).
+4. The page-reading choice learned on synthetic pages (`benchmarks/selector`, `selector.yml`):
+   PTB-XL signals, printed layouts, one generic degradation per page; both readings scored.
+
+| Run | What | Result | Cost |
+|---|---|---|---|
+| 45815960826 | step 1 smoke: 200 ecg-image-kit pages + real strips + synthetic, init rowx2real, 5 min | (queued behind the whole-database runs) | ≤ 1 h × 0.5 USD |
+| 45817104093 | step 4: 600 synthetic pages read both ways with rowx2real replace + page v3, 10 shards | (queued) | free |
+
