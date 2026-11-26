@@ -56,6 +56,11 @@ on:
         required: false
         default: '60'
         type: string
+      data_centers:
+        description: 'Without the volume: only these RunPod data centers, comma separated, tried in order (empty = any; Nov 26: EU-RO-1 pods did not answer through the proxy, dc-probe 45908147885)'
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
   actions: write
@@ -93,6 +98,7 @@ jobs:
           GPU: ${{ inputs.gpu }}
           MAX_HOURS: ${{ inputs.max_hours }}
           DISK_GB: ${{ inputs.disk_gb }}
+          GPU_DCS: ${{ inputs.data_centers }}
           VOLUME_ONLY: ${{ inputs.volume_only }}
           VOLUME_TRIES: ${{ inputs.volume_only && '40' || '3' }}
           JOB: ${{ inputs.job }}

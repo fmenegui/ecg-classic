@@ -148,17 +148,20 @@ def _try_cards(gpus, asked, q, cloud, env, cmd, vol=None):
     last = None
     # preferred GPU first, with as many vCPU as possible (the crops are generated on the CPU)
     # a cheap card with 8 vCPU beats an expensive one with more: every card at 16 vCPU first, then at 8
-    for vcpu, g in [(16, g) for g in gpus] + [(8, g) for g in gpus]:
+    dcs = [d for d in os.environ.get("GPU_DCS", "").split(",") if d] if not vol else []
+    for vcpu, g, dc in [(16, g, dc) for g in gpus for dc in (dcs or [None])] + [(8, g, dc) for g in gpus for dc in (dcs or [None])]:
         inp = dict(cloudType=cloud, gpuCount=1, volumeInGb=0, containerDiskInGb=int(os.environ.get("DISK_GB") or 60), minVcpuCount=vcpu,
                    minMemoryInGb=int(os.environ.get("MIN_RAM_GB", "46")), gpuTypeId=g, name=NAME, imageName=IMAGE, dockerArgs=cmd,
                    ports="8000/http", volumeMountPath="/workspace", env=env)
         if vol:   # the data volume (caches of the bank and of the real strips): its data center only
             inp.update(cloudType="SECURE", networkVolumeId=vol[0], dataCenterId=vol[1])
+        elif dc:  # GPU_DCS: only the data centers asked for (one that does not answer through the proxy left out)
+            inp.update(dataCenterId=dc)
         try:
             d = gql(q, {"input": inp})["podFindAndDeployOnDemand"]
         except Exception as e:  # noqa: BLE001
             last = e
-            print(f"{g} ({vcpu} vCPU): {e}", file=sys.stderr)
+            print(f"{g} ({vcpu} vCPU{', ' + dc if dc else ''}): {e}", file=sys.stderr)
             continue
         if d and d.get("id") and g != asked and float(d.get("costPerHr") or 0) > MAX_USD_H:
             print(f"{g}: {d.get('costPerHr')} USD/h is above MAX_USD_H={MAX_USD_H}, terminating it", file=sys.stderr)
