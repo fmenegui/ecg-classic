@@ -85,6 +85,7 @@ class Config:
     row_xup: int = 1            # the row network reads strips stretched horizontally by this (trained with --xup)
     page_select_keep: bool = False   # page_select: also return both readings' features and the other reading
     page_selector: str = ""     # page_select: a fitted choice (benchmarks/selector/fit.py JSON) instead of the score margin
+    start_model: str = ""       # row-start network (hybrid/startnet.py): sub-pixel time origin
     prewarp: bool = False          # coarse perspective from the outline of the gridded area
     adaptive_threshold: bool = True  # light trace: redo the binarization with a lower threshold
     pulse_rows: bool = True       # baselines from the calibration pulses when there are >= 3
@@ -1461,6 +1462,25 @@ def _reading_score(res):
     return sc
 
 
+def _refine_starts(rect, rows, x0_r, model):
+    """Sub-pixel time origin from the row-start network (hybrid/startnet.py): one offset per row
+    from a crop around the estimated start, their median applied to every row (the rows share
+    the origin through the beat registration). Offsets beyond 2 px are not trusted."""
+    from .inkmodel import _session
+    from .startmodel import crop
+    sess = _session(model)
+    crops = [crop(rect, float(x0_r[r]), float(y)) for r, y in enumerate(rows) if np.isfinite(x0_r[r])]
+    if not crops:
+        return x0_r
+    x = np.stack(crops)[..., ::-1].astype(np.float32).transpose(0, 3, 1, 2) / 255.0
+    d = sess.run(None, {"x": np.ascontiguousarray(x)})[0][:, 0]
+    d = d[np.abs(d) <= 2.0]
+    _refine_starts.last = d
+    if len(d) == 0:
+        return x0_r
+    return x0_r + float(np.median(d))
+
+
 _SELECTORS = {}
 
 
@@ -2324,6 +2344,8 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
     xlr, _, wkr = _edge_rows(D, B, rows, ext, pulses, half, lev, R, rad, return_weak=True)
     x0_r, sc_r = _row_time_maps(rows, xlr, rad, x0, R, reg, weak=wkr,
                                 both_sided=getattr(_vote_x0, "both_sided", True))
+    if cfg.start_model and R == 10.0:
+        x0_r = _refine_starts(rect, rows, x0_r, cfg.start_model)
 
     # final baseline with the measured radius: 0 mV = centre of plateau 1 + level-1 gain
     for r_, p in enumerate(pulses_base):
