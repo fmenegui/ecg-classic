@@ -640,4 +640,7 @@ kept locally).** Per scenario, single pages whose layout was read as printed vs 
 |---|---|---|---|
 | 45815960826 | step 1 smoke: 200 ecg-image-kit pages + real strips + synthetic, init rowx2real, 5 min | (queued behind the whole-database runs) | ≤ 1 h × 0.5 USD |
 | 45817104093 | step 4: 600 synthetic pages read both ways with rowx2real replace + page v3, 10 shards | (queued) | free |
+| local | step 3 diagnosis: 8 ecg-image-kit pages without the calibration pulse (N0), hybrid default | 22.87 dB; best constant shift **−0.2 samples** (+1.42 dB), the opposite of E0 with the pulse (+0.2): the origin from the start edge is biased by how the line starts (pulse joined or not, cap style), constant along the row (median lag per column 0.15-0.22 samples on E0) | free |
+| local | step 3: row-start crops (2,500 pages: 1,491 ecg-image-kit, 1,009 cv2; 63,572 crops), first epoch on CPU | validation error median 0.27 px, p90 0.56 (signed −0.23): far from the 0.05 px needed; 30 min per epoch on this CPU, so training moved to a GPU | free |
+| 45825904025 | step 3: row-start network, 6,000 pages, 30 epochs | (queued) | ≤ 2 h × 0.5 USD |
 
