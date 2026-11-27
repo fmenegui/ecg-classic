@@ -672,3 +672,16 @@ kept locally).** Per scenario, single pages whose layout was read as printed vs 
 | 6ebafbe | **New default (owner's ok, Nov 27)**: `Config.row_mode="replace"`, `Config.row_xup=0` (the row network's own scale from its `meta.json` / `<model>.json`; 1 without), row network = step 1 (45935753835) + page v3; `kaggle-submit.yml` ships `meta.json` as `models/row.json` | tests 62 passed (`test_row_xup_auto.py` added) | |
 | 46033162261 | Kaggle kernel check (submit=false), hybrid with the new default | OK: models found (row.onnx, page.onnx, row.json with xup 2), 2 public images, submission.csv written in ~110 s | free |
 | 46034378600 | Kaggle late submission (submit=true), same kernel | (running) | free |
+
+## 9. Nov 27: the hard PM-ECG-ID scenarios, all fronts (owner's go)
+
+Where the hard scenarios lose (whole run 45983262367): the 19 worst average 5.2 dB (PMcardio's hard group 11.1); layout right on only 27-55% of their pages, and even with the right layout blur ≥ 21 stays at −0.6 to +3 dB. Fronts: (5) abstain on untrusted leads; (2) beat timing across simultaneous leads and heavier blur / low resolution in the row network; (1) page network on photo-rendered pages with extreme degradations; (3) dewarp for crumpled and bent photos; (4) real photos of the ArUco print kit (owner).
+
+- (5) Upper bound, oracle: every lead with SNR < 0 set to 0 (9.7% of the leads, mean −3.0 dB): 60-scenario mean 11.68 → 11.96 (+0.28), hard 19: 5.23 → 5.79. The evaluators now keep the reader's own per-lead quality (`lead_quality`), so a threshold can be calibrated on Kaggle images and applied to PM-ECG-ID untouched.
+- Bug found on the way: the evaluation workflows copied the row network without its `meta.json`, so the new default (`row_xup=0`) would have read step 1 at 10 px/mm there. Fixed (they copy it as `model/row.json`); the Kaggle submission already shipped it.
+
+| Run | What | Result | Cost |
+|---|---|---|---|
+| 46064133672 | Kaggle dev with `lead_quality`, first try | cancelled (the workflows did not carry meta.json yet) | free |
+| 46064220808 | Kaggle dev, new default (no config), with `lead_quality`: calibration set for front 5 and a check of the default path (should give 19.46) | (running) | free |
+| 46064595190 | PM dev, new default + `digitize.QRS_ALIGN` (front 2, classical part): pairs with 45963261022 | (running) | free |
