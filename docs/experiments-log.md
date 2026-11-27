@@ -683,5 +683,10 @@ Where the hard scenarios lose (whole run 45983262367): the 19 worst average 5.2 
 | Run | What | Result | Cost |
 |---|---|---|---|
 | 46064133672 | Kaggle dev with `lead_quality`, first try | cancelled (the workflows did not carry meta.json yet) | free |
-| 46064220808 | Kaggle dev, new default (no config), with `lead_quality`: calibration set for front 5 and a check of the default path (should give 19.46) | (running) | free |
+| 46064220808 | Kaggle dev, new default (no config), with `lead_quality`: calibration set for front 5 and a check of the default path (should give 19.46) | default path OK: 540 of 540, **19.46 / holdout 18.97, identical** to the explicit config. Abstention on Kaggle dev (PM-style mean, failed = 0): no threshold helps (t = 0: 17.23; 0.2: 17.22; 0.4: 17.11); even the oracle gains only +0.02 here, because Kaggle pages have few negative leads. Kaggle images cannot calibrate it; front 5 parked until a calibration set of hard synthetic pages exists (the selector pages) | free |
 | 46064595190 | PM dev, new default + `digitize.QRS_ALIGN` (front 2, classical part): pairs with 45963261022 | (running) | free |
+| 46065165044 | PM dev, new default + dewarp v2 (release `dewarp-v2`) with `dewarp_margin=0.3` (front 3: flattened reading kept only when its quality beats the plain one by 0.3) | (running) | free |
+| 46065183138 | page v4 smoke: page v3 (release) + harsher degradations (`--heavy 0.6 --heavy-down-max 10 --heavy-blur-max 6`), 8 min | runs: init from the page-v3 release, 1,154 steps at 2.6 it/s; val rows 0.46 / cols 0.38 / names 0.90 (v3's own val: 0.42 / 0.33 / 0.98) | 3090-class, 0.5 USD/h, ~0.4 h, ~0.2 USD |
+| 46065173473 | row network "rowheavy6" smoke: step 1 + `--heavy 0.5 --heavy-down-max 32 --heavy-blur-max 14`, 8 min | runs: all keys matched, caches hit, 0.68 s/step; VAL 0.28 / 1.46 px, real 0.27 / 1.26, eik 0.16 / 0.42 | 3090-class, 0.5 USD/h, ~0.8 h (waited for a card in EU-CZ-1), ~0.4 USD |
+| 46070008772 | **rowheavy6** (front 2): step 1 + heavier blur and low resolution, 220 min, ecgdig-data3 | (running) | ≤ 4.5 h × 0.5 USD |
+| 46070017485 | **page v4** (front 1): page v3 + harsher degradations, 220 min | (running) | ≤ 4.5 h × 0.5 USD |
