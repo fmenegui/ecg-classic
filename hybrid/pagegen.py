@@ -44,6 +44,13 @@ def _blur(x, s):
     return F.conv2d(x, w.view(1, 1, k, 1).repeat(C, 1, 1, 1), groups=C)
 
 
+# heavy low resolution (downscale factor) and blur (sigma, canvas px) reach up to these; set by
+# train_page.py / train_dewarp.py --heavy-down-max / --heavy-blur-max (PM-ECG-ID's hardest pages are
+# 1/16-1/32 and blur kernels 21-41 on 16 Mpx photos, about down 4-10 and sigma 1-2.5 at this canvas)
+HEAVY_DOWN_MAX = [4.5]
+HEAVY_BLUR_MAX = [3.0]
+
+
 def degrade(x, g, heavy=0.5):
     """Capture degradations of the canvas (n, 3, H, W) in [0, 1]."""
     n, _, H, W = x.shape
@@ -62,11 +69,11 @@ def degrade(x, g, heavy=0.5):
             a = 0.12 + 0.88 * r() if hv else 0.5 + 0.5 * r()
             xi = paper + a * (xi - paper)
         if r() < (0.5 if hv else 0.15):   # low resolution
-            k = 1.5 + (3.0 if hv else 1.0) * r()
+            k = 1.5 + ((HEAVY_DOWN_MAX[0] - 1.5) if hv else 1.0) * r()
             xi = F.interpolate(F.interpolate(xi, size=(max(8, int(H / k)), max(8, int(W / k))), mode="area"),
                                size=(H, W), mode="bilinear", align_corners=False)
         if r() < (0.6 if hv else 0.3):    # out of focus
-            xi = _blur(xi, 0.4 + (2.6 if hv else 0.8) * r())
+            xi = _blur(xi, 0.4 + ((HEAVY_BLUR_MAX[0] - 0.4) if hv else 0.8) * r())
         if r() < 0.5:                     # uneven light: smooth multiplicative field
             f = torch.rand(1, 1, 4, 6, generator=g).to(dev)
             f = F.interpolate(f, size=(H, W), mode="bicubic", align_corners=False)

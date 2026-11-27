@@ -90,6 +90,8 @@ def main():
     ap.add_argument("--lr", type=float, default=5e-4)
     ap.add_argument("--photo", type=float, default=0.4)
     ap.add_argument("--heavy", type=float, default=0.5)
+    ap.add_argument("--heavy-down-max", type=float, default=4.5, help="heavy low resolution: downscale up to this")
+    ap.add_argument("--heavy-blur-max", type=float, default=3.0, help="heavy blur: sigma (canvas px) up to this")
     ap.add_argument("--reuse", type=float, default=1.0, help="each rendered page is used ~this many times")
     ap.add_argument("--val", type=int, default=48)
     ap.add_argument("--init", type=Path, default=None)
@@ -108,6 +110,8 @@ def main():
     if a.init and a.init.exists():
         print("init from", a.init, net.load_state_dict(torch.load(a.init, map_location="cpu"), strict=False), flush=True)
     net = net.to(dev)
+    import pagegen as _pg
+    _pg.HEAVY_DOWN_MAX[0], _pg.HEAVY_BLUR_MAX[0] = a.heavy_down_max, a.heavy_blur_max
     gen = PageStructure(dev, canvas=canvas, pages=a.pages, photo_frac=a.photo, heavy=a.heavy, seed=int(time.time()) % 100000,
                         reuse=a.reuse)
     gv = PageStructure(dev, canvas=canvas, pages=4, photo_frac=a.photo, heavy=a.heavy, seed=999)
