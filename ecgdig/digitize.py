@@ -86,6 +86,9 @@ class Config:
     # the row network reads strips stretched horizontally by this (trained with --xup);
     # 0 = from the model's sidecar (<model>.json or meta.json beside it, key "xup"), else 1
     row_xup: int = 0
+    # appearance restoration before reading (ecgdig/restore.py): "" off, "classical" (Wiener
+    # deconvolution of blurred pages, upscale of tiny ones) or the path of an ONNX restorer
+    restore: str = ""
     page_select_keep: bool = False   # page_select: also return both readings' features and the other reading
     page_selector: str = ""     # page_select: a fitted choice (benchmarks/selector/fit.py JSON) instead of the score margin
     start_model: str = ""       # row-start network (hybrid/startnet.py): sub-pixel time origin
@@ -1559,6 +1562,14 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     ink map and with the network's, and the reading with the better internal quality is
     returned (res["hybrid"] says which and why)."""
     cfg = _resolve_row_xup(cfg or Config())
+    if cfg.restore:
+        if isinstance(image, (str, bytes)) or hasattr(image, "__fspath__"):
+            image = cv2.imread(str(image), cv2.IMREAD_COLOR)
+        from .restore import restore as _restore
+        image, ri = _restore(image, cfg.restore)
+        out = digitize(image, dataclasses.replace(cfg, restore=""), return_debug)
+        out["restore"] = ri
+        return out
     if cfg.photo_norm:
         if isinstance(image, (str, bytes)) or hasattr(image, "__fspath__"):
             image = cv2.imread(str(image), cv2.IMREAD_COLOR)
