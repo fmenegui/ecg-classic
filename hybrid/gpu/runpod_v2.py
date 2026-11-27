@@ -6,7 +6,7 @@ mount it, model upload, follow and terminate. Used by .github/workflows/pod-eval
     python hybrid/gpu/runpod_v2.py put FILE [FILE ...]     # sends files to the pod's /workspace/in
     python hybrid/gpu/runpod_v2.py stop                    # terminates POD_ID
 
-The volume (VOLUME_NAME, default ecgdig-data, VOLUME_GB) is created once in the first data center
+The volume (VOLUME_NAME, default ecgdig-data3, VOLUME_GB) is created once in the first data center
 of DATA_CENTERS that accepts it and is reused; the datasets on it are downloaded once (PM-ECG-ID
 from Zenodo, the Kaggle training records) and never leave it: the pod's HTTP port serves only its
 per-run output folder (logs, results.json, report.md). Never prints a pod's environment.
@@ -33,8 +33,9 @@ IMAGE = os.environ.get("CPU_IMAGE", "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-deve
 # the Kaggle archive all worked in EU-RO-1 on Nov 20, dc-probe 44774777374).
 # Nov 26: pods in EU-RO-1 stopped answering through the proxy, with or without ecgdig-data2 mounted
 # (env-check 45899861399, 45906947336; dc-probe 45908147885: EU-CZ-1, US-KS-2 and EUR-IS-1 fine).
-# The data volume is back to ecgdig-data (EUR-IS-1, already paid for), whose data center answers
-# again; ecgdig-data2 keeps its caches for when EU-RO-1 returns (VOLUME_NAME=ecgdig-data2).
+# ecgdig-data (EUR-IS-1) mounted still did not answer (env-check 45918125712, cancelled at 26 min),
+# so the data volume is now ecgdig-data3, created in the first data center below that accepts it;
+# ecgdig-data2 keeps its caches for when EU-RO-1 returns (VOLUME_NAME=ecgdig-data2).
 DATA_CENTERS = os.environ.get("DATA_CENTERS", "EU-CZ-1,US-KS-2,EUR-IS-1").split(",")
 NAME = "ecgdig-eval-" + os.environ.get("GITHUB_RUN_ID", "local") + "-" + os.environ.get("SHARD", "0")
 MAX_USD_H = float(os.environ.get("MAX_USD_H", "1.2"))
@@ -66,14 +67,14 @@ def out(k, v):
 
 
 def volume():
-    name = os.environ.get("VOLUME_NAME", "ecgdig-data")
+    name = os.environ.get("VOLUME_NAME", "ecgdig-data3")
     s, d = call("GET", "/network-volumes")
     for v in d.get("networkVolumes", []):
         if v.get("name") == name:
             print(f"volume {v['id']} {v.get('size')} GB in {v.get('dataCenter') or v.get('dataCenterId')}", file=sys.stderr)
             out("volume_id", v["id"]); out("data_center", v.get("dataCenter") or v.get("dataCenterId"))
             return
-    size = int(os.environ.get("VOLUME_GB", "60"))
+    size = int(os.environ.get("VOLUME_GB", "40"))
     for dc in DATA_CENTERS:
         s, d = call("POST", "/network-volumes", {"name": name, "size": size, "dataCenter": dc})
         if s in (200, 201) and d.get("id"):
