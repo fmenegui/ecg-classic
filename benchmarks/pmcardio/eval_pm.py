@@ -59,6 +59,13 @@ def oracle_layout(fmt, n_pages, page, n_cols, n_rows, n_rhythm):
     raise ValueError(f"no oracle layout for {fmt} on {n_pages} pages")
 
 
+def _lead_quality(p):
+    """The reader's own score per lead (ecgdig/quality.py; no ground truth): what an abstention
+    rule can use. {} when the page has none."""
+    q = ((p.get("quality") or {}).get("leads")) or {}
+    return {l: round(float(v.get("score", 0.0)), 3) for l, v in q.items() if isinstance(v, dict)}
+
+
 def _diag(r, R_MM=10.0):
     """Per-page structure diagnosis kept in results.json (small, JSON-safe)."""
     li = r.get("layout_info") or {}
@@ -420,7 +427,8 @@ def main():
                          leads=per, rhythms=rhy, err=[p.get("err") for p in pages if not p.get("ok")],
                          diag=[p.get("diag") for p in pages],
                          select=[p.get("select") for p in pages],
-                         dewarp=[p.get("dewarp") for p in pages]))
+                         dewarp=[p.get("dewarp") for p in pages],
+                         lead_quality=[_lead_quality(p) for p in pages]))
     if missing:
         print(f"PARTIAL: {len(rows)} of {len(rows) + missing} ECGs evaluated (deadline); the rest are "
               f"left out, not counted as failures", flush=True)

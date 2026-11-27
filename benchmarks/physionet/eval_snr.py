@@ -152,7 +152,10 @@ def _work(job):
                    grid_snap=r.get("grid_snap_mm"), grid_fine=r.get("grid_fine_mm"),
                    pulses_left=r.get("pulses_found"), pulses_right=r.get("pulses_right"),
                    x0_rows=[float(v) for v in it.get("x0_rows", [])], scale_rows=[float(v) for v in it.get("scale_rows", [])],
-                   image_shape=list(cv2.imread(str(img_p)).shape[:2]))
+                   image_shape=list(cv2.imread(str(img_p)).shape[:2]),
+                   # the reader's own score per lead (no ground truth), for abstention rules
+                   lead_quality={l: round(float(v.get("score", 0.0)), 3)
+                                 for l, v in (((r.get("quality") or {}).get("leads")) or {}).items() if isinstance(v, dict)})
         snr_raw, _ = _snr_record(G, P, fs, align=False)
         snr_al, per = _snr_record(G, P, fs, align=True)
         rec.update(snr_raw=snr_raw, snr=snr_al, per_lead=per)
