@@ -81,8 +81,11 @@ class Config:
     # (neighbours, grid, text removed); rows, layout, time axis and gain stay classical
     grid_model: str = ""        # ONNX of the grid-phase network: grid map seen by the network (hybrid geometry)
     row_model: str = ""
-    row_mode: str = "fuse"      # "fuse": network only where the classical reading fails; "replace": everywhere
-    row_xup: int = 1            # the row network reads strips stretched horizontally by this (trained with --xup)
+    # "replace" (default since Nov 27): the network everywhere; "fuse": only where the classical reading fails
+    row_mode: str = "replace"
+    # the row network reads strips stretched horizontally by this (trained with --xup);
+    # 0 = from the model's sidecar (<model>.json or meta.json beside it, key "xup"), else 1
+    row_xup: int = 0
     page_select_keep: bool = False   # page_select: also return both readings' features and the other reading
     page_selector: str = ""     # page_select: a fitted choice (benchmarks/selector/fit.py JSON) instead of the score margin
     start_model: str = ""       # row-start network (hybrid/startnet.py): sub-pixel time origin
@@ -1522,6 +1525,28 @@ def reading_features(res):
     return f
 
 
+def _row_model_meta(path: str) -> dict:
+    """The training metadata saved beside a row network: <model>.json, else meta.json in its folder."""
+    import json
+    for f in (os.path.splitext(path)[0] + ".json", os.path.join(os.path.dirname(path) or ".", "meta.json")):
+        if os.path.isfile(f):
+            try:
+                with open(f) as fh:
+                    m = json.load(fh)
+                return m if isinstance(m, dict) else {}
+            except (OSError, ValueError):
+                return {}
+    return {}
+
+
+def _resolve_row_xup(cfg: "Config") -> "Config":
+    """row_xup 0 = the row network's own horizontal scale (its metadata), 1 without a model or metadata."""
+    if cfg.row_xup > 0:
+        return cfg
+    xu = int(_row_model_meta(cfg.row_model).get("xup", 1) or 1) if cfg.row_model else 1
+    return dataclasses.replace(cfg, row_xup=max(1, xu))
+
+
 def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     """Image -> signals. When the 0 vs 180 degree choice was weak (no pulse or label to break
     the tie), the page is also read in the other orientation and the better layout wins:
@@ -1531,7 +1556,7 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
     Hybrid (cfg.ink_model with cfg.hybrid == "select"): the page is read with the classical
     ink map and with the network's, and the reading with the better internal quality is
     returned (res["hybrid"] says which and why)."""
-    cfg = cfg or Config()
+    cfg = _resolve_row_xup(cfg or Config())
     if cfg.photo_norm:
         if isinstance(image, (str, bytes)) or hasattr(image, "__fspath__"):
             image = cv2.imread(str(image), cv2.IMREAD_COLOR)
@@ -1691,7 +1716,7 @@ _LAYOUT_ONLY = [False]   # stop right after choosing the layout (no signal extra
 
 
 def _digitize_once(image, cfg: Config | None = None, return_debug: bool = False):
-    cfg = cfg or Config()
+    cfg = _resolve_row_xup(cfg or Config())
     if _PRE_USE[0] and _PRE[0] is not None:
         return _digitize_core(*_PRE[0], return_debug)
     img = cv2.imread(image, cv2.IMREAD_COLOR) if isinstance(image, str) else image

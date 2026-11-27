@@ -89,6 +89,8 @@ jobs:
                             dynamic_axes={"x": {0: "n", 2: "h", 3: "w"}, "logit": {0: "n", 2: "h", 3: "w"}}, opset_version=17, dynamo=False)
           PY
             fi
+            # the row network's training metadata (xup: its horizontal scale), read by Config(row_xup=0)
+            mt=$(find row_dl -name meta.json | head -1); if [ -n "$mt" ]; then cp "$mt" $D/models/row.json; cat $D/models/row.json; fi
             rm -rf row_dl
           fi
           if [ -n "$PAGE_RUN" ]; then
