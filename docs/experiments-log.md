@@ -690,3 +690,20 @@ Where the hard scenarios lose (whole run 45983262367): the 19 worst average 5.2 
 | 46065173473 | row network "rowheavy6" smoke: step 1 + `--heavy 0.5 --heavy-down-max 32 --heavy-blur-max 14`, 8 min | runs: all keys matched, caches hit, 0.68 s/step; VAL 0.28 / 1.46 px, real 0.27 / 1.26, eik 0.16 / 0.42 | 3090-class, 0.5 USD/h, ~0.8 h (waited for a card in EU-CZ-1), ~0.4 USD |
 | 46070008772 | **rowheavy6** (front 2): step 1 + heavier blur and low resolution, 220 min, ecgdig-data3 | (running) | ≤ 4.5 h × 0.5 USD |
 | 46070017485 | **page v4** (front 1): page v3 + harsher degradations, 220 min | (running) | ≤ 4.5 h × 0.5 USD |
+
+**Restoration before reading (owner's go, Nov 27).** A network that turns a degraded page into the
+clean page could help every stage, the classical structure steps too, which fail first on the hard
+scenarios. Upper bound: many hard PM-ECG-ID scenarios are synthetic degradations of the digital
+page (~15 dB). Done in sequence: (1) a classical probe (`Config.restore="classical"`: Wiener
+deconvolution of pages whose measured blur exceeds 2 px, upscale of pages under 1,600 px; sharp
+pages untouched); (2) a learned restorer (`hybrid/train_restore.py`: renderer pairs, the same page
+clean and through `pagegen.degrade`, 20% undegraded, L1 + gradient L1, residual output, no
+adversary; `ecgdig/restoremodel.py` runs it tiled at 1,980 px, same gate); (3) PM dev, Kaggle dev.
+Local check on 2 E0 pages blurred by sigma 5 px (classical reader, unaligned SNR): one page −13.7
+→ −1.0 dB, the other 10.2 → −2.3: mixed, the benchmarks decide.
+
+| Run | What | Result | Cost |
+|---|---|---|---|
+| 46079216899 | PM dev, new default + `restore=classical` | (running) | free |
+| 46079224690 | Kaggle dev, new default + `restore=classical` | (running) | free |
+| 46079353257 | restorer smoke, 8 min | (running) | ≤ 0.8 h × 0.5 USD |
