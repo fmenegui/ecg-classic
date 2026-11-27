@@ -1131,6 +1131,8 @@ ORIENT_WIGGLE = [True]
 # prior for the picture as taken: a landscape sheet stays landscape and upright unless the
 # evidence is clear (PM-ECG-ID, never rotated: 183 of 6,199 pages turned, 0.9 dB vs 10.8)
 ORIENT_PRIOR = [False]
+# beat-by-beat time alignment of the leads drawn over the same time window (ecgdig/qrsalign.py)
+QRS_ALIGN = [False]
 ORIENT_FORCE = [None]   # "keep" / "flip": fixes the 0 vs 180 degree choice (internal use)
 NET_ORIENT = [""]       # page-structure ONNX used for the orientation (set from Config.page_model)
 NET_ORIENT_MARGIN = [1.5]
@@ -2558,6 +2560,10 @@ def _digitize_core(cfg, rect, pap, D, B, glev, ginfo, return_debug=False):
         sig = einthoven_fuse(sig, nmeas, fill=cfg.fill_limb)
     if BASELINE_GUARD[0]:
         sig = _baseline_guard(sig, cfg.fs)
+    qrs_align = None
+    if QRS_ALIGN[0]:
+        from .qrsalign import align as _qrs_align
+        sig, qrs_align = _qrs_align(sig, cfg.fs)
     # quality score per lead (does not change the signal unless refuse_below asks for it)
     quality = None
     try:
