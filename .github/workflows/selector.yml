@@ -45,6 +45,7 @@ jobs:
           mkdir -p model
           if [ -n "${{ inputs.row_model_run }}" ]; then
             gh run download "${{ inputs.row_model_run }}" -D dl_row
+            mj=$(find dl_row -name meta.json | head -1); [ -n "$mj" ] && cp "$mj" model/row.json   # xup for Config(row_xup=0)
             f=$(find dl_row -name trace_seg.onnx | head -1)
             if [ -n "$f" ]; then cp "$f" model/row.onnx; else
               p=$(find dl_row -name unet_best.pt | head -1)

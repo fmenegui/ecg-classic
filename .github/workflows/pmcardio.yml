@@ -106,6 +106,8 @@ jobs:
           gh run download ${{ inputs.row_model_run }} -D row_dl
           p=$(find row_dl -name unet_best.pt | head -1); [ -n "$p" ] || p=$(find row_dl -name unet.pt | head -1)
           o=$(find row_dl -name trace_seg.onnx | head -1)   # an ONNX row network (models-from-kaggle.yml)
+          # its training metadata (xup) beside it: Config(row_xup=0) reads it
+          mkdir -p model; mjj=$(find row_dl -name meta.json | head -1); [ -n "$mjj" ] && cp "$mjj" model/row.json
           if [ -z "$p" ] && [ -n "$o" ]; then mkdir -p model; cp "$o" model/row.onnx; ls -la model; exit 0; fi
           python -m pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -q segmentation-models-pytorch==0.3.4 timm onnx onnxscript

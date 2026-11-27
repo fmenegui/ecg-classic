@@ -57,6 +57,7 @@ jobs:
           if [ -n "${{ inputs.row_model_run }}" ]; then
             gh run download "${{ inputs.row_model_run }}" -D dl_row
             cp "$(find dl_row -name trace_seg.onnx | head -1)" model/row.onnx
+            mj=$(find dl_row -name meta.json | head -1); [ -n "$mj" ] && cp "$mj" model/row.json   # xup for Config(row_xup=0)
           fi
           if [ -n "${{ inputs.page_model_run }}" ]; then
             gh run download "${{ inputs.page_model_run }}" -D dl_page

@@ -97,6 +97,8 @@ jobs:
           }
           get "${{ inputs.ink_model_run }}" ink
           get "${{ inputs.row_model_run }}" row
+          # its training metadata (xup) beside it: Config(row_xup=0) reads it
+          if [ -d dl_row ]; then mj=$(find dl_row -name meta.json | head -1); [ -n "$mj" ] && cp "$mj" model/row.json; fi
           if [ -n "${{ inputs.page_model_run }}" ]; then
             gh run download "${{ inputs.page_model_run }}" -D dl_page
             python -m pip install -q onnxruntime
