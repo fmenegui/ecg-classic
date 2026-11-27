@@ -51,7 +51,7 @@ on:
         default: ''
         type: string
       dewarp_model_run:
-        description: 'Page-flattening network: run id of a gpu-train run of hybrid/train_dewarp.py (optional)'
+        description: 'Page-flattening network: run id of a gpu-train run of hybrid/train_dewarp.py, or release:<tag> of fmenegui/ecgdig-models (optional)'
         required: false
         default: ''
         type: string
@@ -148,7 +148,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh run download ${{ inputs.dewarp_model_run }} -D dw_dl
+          R="${{ inputs.dewarp_model_run }}"
+          if [ "${R#release:}" != "$R" ]; then   # release:<tag> of the public fmenegui/ecgdig-models (no Kaggle data)
+            mkdir -p dw_dl && gh release download "${R#release:}" -R fmenegui/ecgdig-models -p dewarp_best.onnx -D dw_dl
+          else
+            gh run download "$R" -D dw_dl
+          fi
           mkdir -p model
           for f in $(find dw_dl -name dewarp_best.onnx) $(find dw_dl -name dewarp.onnx); do
             python -c "import onnxruntime as o, sys; o.InferenceSession(sys.argv[1])" "$f" && cp "$f" model/dewarp.onnx && break
