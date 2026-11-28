@@ -24,7 +24,7 @@ for p in sorted(pathlib.Path("benchmarks/litfl/images").glob("img_*")):
 PY
 echo "$(ls $W/in | wc -l) pages"
 t0=$(date +%s)
-( cd "$W/code" && python -m src.run.digitize -d "$W/in" -o "$W/out" -m models/M3/ -f True > "$W/run.log" 2>&1 )
+( cd "$W/code" && python -m src.run.digitize -d "$W/in" -o "$W/out" -m models/M3/ -f > "$W/run.log" 2>&1 )
 grep -E "Error|Traceback" "$W/run.log" | sort | uniq -c | sort -rn | head -8; grep -B8 -m1 "Error" "$W/run.log" | head -20; tail -3 "$W/run.log"
 echo "ECG-Digitiser ran in $(( $(date +%s) - t0 )) s; $(ls $W/out/*.hea 2>/dev/null | wc -l) outputs"
 python - "$W/out" "$W/ext" <<'PY'
