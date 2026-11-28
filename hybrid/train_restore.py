@@ -143,10 +143,13 @@ def main():
             (a.out / "val.json").write_text(json.dumps(hist))
     ev = evaluate(); ev["step"] = step; hist.append(ev); print("final val", json.dumps(ev), flush=True)
     (a.out / "val.json").write_text(json.dumps(hist))
-    torch.save(net.state_dict(), a.out / "restore.pt")
-    export()
+    # a small artifact (the smoke's four files kept its pod waiting ~1 h for the copy): the best
+    # checkpoint and its ONNX only; the final weights only if no best was kept
     if (a.out / "restore_best.pt").exists():
-        net.load_state_dict(torch.load(a.out / "restore_best.pt", map_location=dev)); export("_best")
+        net.load_state_dict(torch.load(a.out / "restore_best.pt", map_location=dev))
+    else:
+        torch.save(net.state_dict(), a.out / "restore_best.pt")
+    export("_best")
     (a.out / "meta.json").write_text(json.dumps(dict(kind="restore", residual=True, render_px_per_mm=7.0,
                                                     page_long_side=1980, crop=a.crop)))
     print("done", step, "steps", flush=True)
