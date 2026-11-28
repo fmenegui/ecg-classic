@@ -6,6 +6,10 @@ on:
         description: 'Row-start network run (start.onnx, hybrid/startnet.py) (optional)'
         required: false
         default: ''
+      restore_model_run:
+        description: 'Page-restoration network run (restore_best.onnx, hybrid/train_restore.py) = Config.restore (optional)'
+        required: false
+        default: ''
       jobs:
         description: 'Images read at a time per runner: 2; 1 for row networks at row_xup=2 (twice the activations)'
         required: false
@@ -132,6 +136,14 @@ jobs:
         run: |
           gh run download ${{ inputs.start_model_run }} -D st_dl
           mkdir -p model; cp "$(find st_dl -name start.onnx | head -1)" model/start.onnx; rm -rf st_dl; ls -la model
+      - name: Page-restoration model
+        if: ${{ inputs.restore_model_run != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download ${{ inputs.restore_model_run }} -D rs_dl
+          mkdir -p model; cp "$(find rs_dl -name restore_best.onnx | head -1)" model/restore.onnx
+          python -c "import onnxruntime as o; o.InferenceSession('model/restore.onnx')"; rm -rf rs_dl; ls -la model
       - name: Page-structure model
         if: ${{ inputs.page_model_run != '' }}
         env:
@@ -160,7 +172,7 @@ jobs:
           done
           rm -rf dw_dl; ls -la model
       - name: Share the models
-        if: ${{ inputs.ink_model_run != '' || inputs.grid_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' || inputs.dewarp_model_run != '' }}
+        if: ${{ inputs.ink_model_run != '' || inputs.grid_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' || inputs.dewarp_model_run != '' || inputs.restore_model_run != '' || inputs.start_model_run != '' }}
         uses: actions/cache/save@v4
         with:
           path: model
@@ -184,7 +196,7 @@ jobs:
       - name: Download the shard (Zenodo, by ranges)
         run: python benchmarks/pmcardio/fetch.py --out data/pm --shard ${{ matrix.part }} --nshards 20 --per-scenario ${{ inputs.per_scenario }} ${{ inputs.id_parity && format('--id-parity {0}', inputs.id_parity) || '' }} ${{ inputs.ecgs && format('--ecgs "{0}"', inputs.ecgs) || '' }}
       - name: Models (built once by the models job, shared through the cache)
-        if: ${{ inputs.ink_model_run != '' || inputs.grid_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' || inputs.dewarp_model_run != '' }}
+        if: ${{ inputs.ink_model_run != '' || inputs.grid_model_run != '' || inputs.row_model_run != '' || inputs.page_model_run != '' || inputs.dewarp_model_run != '' || inputs.restore_model_run != '' || inputs.start_model_run != '' }}
         uses: actions/cache/restore@v4
         with:
           path: model
@@ -202,6 +214,7 @@ jobs:
           if [ -f model/page.onnx ]; then ARGS="$ARGS --config page_model=$PWD/model/page.onnx"; fi
           if [ -f model/start.onnx ]; then ARGS="$ARGS --config start_model=$PWD/model/start.onnx"; fi
           if [ -f model/dewarp.onnx ]; then ARGS="$ARGS --config dewarp_model=$PWD/model/dewarp.onnx"; fi
+          if [ -f model/restore.onnx ]; then ARGS="$ARGS --config restore=$PWD/model/restore.onnx"; fi
           if [ "${{ inputs.oracle }}" = "true" ]; then ARGS="$ARGS --oracle-layout"; fi
           for kv in ${{ inputs.config }}; do ARGS="$ARGS --config $kv"; done
           J="${{ inputs.jobs || '2' }}"
