@@ -137,6 +137,20 @@ def evaluate_one(args):
                 e = V[0] - V[1] + V[2]
                 # normalized by the amplitude of the three (II alone may be almost flat)
                 out["einthoven_ratio"] = float(np.sqrt(np.mean(e ** 2)) / scale)
+    try:   # cross-lead consistency (benchmarks/litfl/crosslead.py): closure bursts, beat timing per lead
+        import crosslead
+        cl = crosslead.analyse(ps)
+        out["crosslead"] = cl
+        out["flags"] = crosslead.flags(cl)
+        if img_dir is not None:
+            crosslead.plot(ps, cl, Path(img_dir) / f"{key}_cl.png", title=f"{key} {r['layout']}")
+            import cv2
+            d = r["debug_image"]
+            sc = min(1.0, 2000 / d.shape[1])
+            cv2.imwrite(str(Path(img_dir) / f"{key}_hi.jpg"),
+                        cv2.resize(d, None, fx=sc, fy=sc, interpolation=cv2.INTER_AREA), [cv2.IMWRITE_JPEG_QUALITY, 80])
+    except Exception as e:  # noqa: BLE001  (a diagnostic never fails the benchmark)
+        out["crosslead_error"] = repr(e)[:200]
     lst = ps.get("II") or []
     if len(lst) >= 2:
         a, b = lst[0], lst[1]
