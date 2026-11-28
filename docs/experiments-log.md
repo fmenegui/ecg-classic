@@ -704,6 +704,7 @@ Local check on 2 E0 pages blurred by sigma 5 px (classical reader, unaligned SNR
 
 | Run | What | Result | Cost |
 |---|---|---|---|
-| 46079216899 | PM dev, new default + `restore=classical` | (running) | free |
-| 46079224690 | Kaggle dev, new default + `restore=classical` | (running) | free |
-| 46079353257 | restorer smoke, 8 min | (running) | ≤ 0.8 h × 0.5 USD |
+| 46079216899 | PM dev, new default + `restore=classical` | 300 ECGs (5%): **11.42 → 11.54 (+0.12)**, PCC 0.761 → 0.766, failed leads 9.5 → 9.7%, Kaggle metric on the PM leads 13.46 → 13.38; 60-scenario mean 11.42 → 11.54. Blur **+0.88** (PCC 0.43 → 0.52), resolution +0.21; bent photos −1.42 (5 ECGs: the gate fired there); every other group unchanged (gate off). Candidate; a gate that leaves photos alone is the next step | free |
+| 46079224690 | Kaggle dev, new default + `restore=classical` | 540 of 540: 19.46 / holdout 18.97, identical: the gate (measured blur > 2 px or a page under 1,600 px) did not fire on Kaggle images (the per-image `restore` field is not saved yet, so that is inferred) | free |
+| 46079353257 | restorer smoke, 8 min | trained: 2,600 steps at ~5.5 it/s, 8.1 GB; validation L1 degraded vs clean 0.127 → restored 0.044 (best) / 0.047 (final). The job then idled ~1 h with the GPU at 0% waiting for its result copy (four ~100 MB files; status empty) and ended in failure, artifact intact. The trainer now keeps only the best checkpoint and its ONNX | 3090-class, 0.5 USD/h, ~1.5 h, ~0.75 USD |
+| 46089457140 | restorer, full: 220 min on renderer pairs (`hybrid/train_restore.py`), ecgdig-data3 | (running) | ≤ 4.5 h × 0.5 USD |
