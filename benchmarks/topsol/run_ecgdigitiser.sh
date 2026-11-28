@@ -14,6 +14,17 @@ pip install -q wfdb==4.1.2 opencv-python-headless scikit-image tqdm matplotlib "
 ( cd "$W/code/nnUNet" && pip install -q . ) 2>&1 | tail -1
 pip install -q "pandas==2.2.2" 2>&1 | tail -1   # nnU-Net may pull a newer one
 python -c "import pandas, numpy, torch; print('pandas', pandas.__version__, 'numpy', numpy.__version__, 'torch', torch.__version__)"
+# torchvision now refuses a numpy angle; print what the segmentation found per page
+python - "$W/code/src/run/digitize.py" <<'PY'
+import sys, re
+p = sys.argv[1]; s = open(p).read()
+s = s.replace("image_rotated = rotate(image, rot_angle)", "image_rotated = rotate(image, float(rot_angle))")
+s = s.replace("        mask_to_use = predict_mask_nnunet(image_rotated, DATASET_NAME, args.model_folder)\n",
+              "        mask_to_use = predict_mask_nnunet(image_rotated, DATASET_NAME, args.model_folder)\n"
+              "        print('MASK', record, tuple(image_rotated.shape), torch.unique(mask_to_use).tolist(), flush=True)\n")
+open(p, "w").write(s)
+PY
+grep -c "float(rot_angle)\|'MASK'" "$W/code/src/run/digitize.py"
 mkdir -p "$W/in"
 python - "$W/in" <<'PY'
 import cv2, sys, pathlib
@@ -22,6 +33,14 @@ for p in sorted(pathlib.Path("benchmarks/litfl/images").glob("img_*")):
     if img is not None:
         cv2.imwrite(f"{sys.argv[1]}/{p.stem.replace('img_', '')}.png", img)
 PY
+if [ "${TS_PROBE_N:-0}" != "0" ]; then
+  pip install -q wfdb pandas==2.2.2 2>&1 | tail -1
+  python benchmarks/topsol/probe_pages.py --out /root/probe --n "$TS_PROBE_N" --variants K0 | tail -1
+  git clone -q --depth 1 https://github.com/alphanumericslab/ecg-image-kit.git /root/eik && \
+    python benchmarks/topsol/probe_eik.py --eik /root/eik --records /root/probe/.records --out /root/probe --n "$TS_PROBE_N" | tail -1
+  pip install -q wfdb 2>&1 | tail -1
+  for f in /root/probe/test/E0_*.png; do [ -f "$f" ] && cp "$f" "$W/in/probe_$(basename $f)"; done
+fi
 echo "$(ls $W/in | wc -l) pages"
 t0=$(date +%s)
 ( cd "$W/code" && python -m src.run.digitize -d "$W/in" -o "$W/out" -m models/M3/ -f > "$W/run.log" 2>&1 )
@@ -47,5 +66,6 @@ for h in sorted(src.glob("*.hea")):
 print(f"{n} pages converted")
 PY
 mkdir -p "$W/ext"; tar czf "$OUT_DIR/litfl_ecgdigitiser_npz.tgz" -C "$W/ext" . && echo "LITFL readings packed"
+grep "^MASK" "$W/run.log" | head -120 > "$OUT_DIR/masks.txt"; head -5 "$OUT_DIR/masks.txt"
 cp "$W/run.log" "$OUT_DIR/ecgdigitiser.log"
 echo done
