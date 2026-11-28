@@ -153,6 +153,7 @@ def _work(job):
                    pulses_left=r.get("pulses_found"), pulses_right=r.get("pulses_right"),
                    x0_rows=[float(v) for v in it.get("x0_rows", [])], scale_rows=[float(v) for v in it.get("scale_rows", [])],
                    image_shape=list(cv2.imread(str(img_p)).shape[:2]),
+                   restore=r.get("restore"),
                    # the reader's own score per lead (no ground truth), for abstention rules
                    lead_quality={l: round(float(v.get("score", 0.0)), 3)
                                  for l, v in (((r.get("quality") or {}).get("leads")) or {}).items() if isinstance(v, dict)})

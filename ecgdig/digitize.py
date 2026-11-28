@@ -89,6 +89,9 @@ class Config:
     # appearance restoration before reading (ecgdig/restore.py): "" off, "classical" (Wiener
     # deconvolution of blurred pages, upscale of tiny ones) or the path of an ONNX restorer
     restore: str = ""
+    # when the restorer changed the page, read the original too and keep the reading with the
+    # better internal quality (_reading_score); res["restore"]["chosen"] says which
+    restore_select: bool = True
     page_select_keep: bool = False   # page_select: also return both readings' features and the other reading
     page_selector: str = ""     # page_select: a fitted choice (benchmarks/selector/fit.py JSON) instead of the score margin
     start_model: str = ""       # row-start network (hybrid/startnet.py): sub-pixel time origin
@@ -1566,8 +1569,17 @@ def digitize(image, cfg: Config | None = None, return_debug: bool = False):
         if isinstance(image, (str, bytes)) or hasattr(image, "__fspath__"):
             image = cv2.imread(str(image), cv2.IMREAD_COLOR)
         from .restore import restore as _restore
-        image, ri = _restore(image, cfg.restore)
-        out = digitize(image, dataclasses.replace(cfg, restore=""), return_debug)
+        img_r, ri = _restore(image, cfg.restore)
+        changed = bool(ri.get("deconvolved") or ri.get("restored") or ri.get("upscale", 1.0) != 1.0)
+        c0 = dataclasses.replace(cfg, restore="")
+        out = digitize(img_r, c0, return_debug)
+        ri["chosen"] = "restored" if changed else "original"
+        if changed and cfg.restore_select:
+            o0 = digitize(image, c0, return_debug)
+            s_r, s_o = _reading_score(out), _reading_score(o0)
+            ri.update(score_restored=round(s_r, 4), score_original=round(s_o, 4))
+            if s_o >= s_r:
+                out, ri["chosen"] = o0, "original"
         out["restore"] = ri
         return out
     if cfg.photo_norm:

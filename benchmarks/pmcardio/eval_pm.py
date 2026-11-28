@@ -125,7 +125,8 @@ def _digitize(job):
                    seg={k: [np.nonzero(np.isfinite(m))[0][[0, -1]] if np.isfinite(m).any() else None for m in v]
                         for k, v in r.get("per_segment", {}).items()},
                    layout=r.get("layout"), quality=r.get("quality"), sec=time.time() - t0,
-                   diag=_diag(r, float(cfg_kw.get("R", 10.0))), select=r.get("page_select"), dewarp=r.get("dewarp_select"))
+                   diag=_diag(r, float(cfg_kw.get("R", 10.0))), select=r.get("page_select"), dewarp=r.get("dewarp_select"),
+                   restore=r.get("restore"))
     except Exception as e:  # noqa: BLE001
         out = dict(ok=False, err=f"{type(e).__name__}: {e}", sec=time.time() - t0)
     signal.alarm(0)
@@ -428,7 +429,8 @@ def main():
                          diag=[p.get("diag") for p in pages],
                          select=[p.get("select") for p in pages],
                          dewarp=[p.get("dewarp") for p in pages],
-                         lead_quality=[_lead_quality(p) for p in pages]))
+                         lead_quality=[_lead_quality(p) for p in pages],
+                         restore=[p.get("restore") for p in pages]))
     if missing:
         print(f"PARTIAL: {len(rows)} of {len(rows) + missing} ECGs evaluated (deadline); the rest are "
               f"left out, not counted as failures", flush=True)
