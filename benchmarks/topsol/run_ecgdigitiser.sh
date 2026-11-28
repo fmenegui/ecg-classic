@@ -10,8 +10,10 @@ git clone -q --depth 1 https://github.com/felixkrones/ECG-Digitiser "$W/code" ||
 (apt-get -qq update && apt-get -qq install -y git-lfs) > /dev/null 2>&1
 ( cd "$W/code" && git lfs install --local > /dev/null && git lfs pull --include "models/M3/**" ) || echo "git lfs pull failed"
 find "$W/code/models/M3" -name "*.pth" -exec ls -la {} \;
-pip install -q wfdb==4.1.2 opencv-python-headless scikit-image tqdm matplotlib pandas 2>&1 | tail -1
+pip install -q wfdb==4.1.2 opencv-python-headless scikit-image tqdm matplotlib "pandas==2.2.2" 2>&1 | tail -1   # its pins: pandas 3 breaks its code
 ( cd "$W/code/nnUNet" && pip install -q . ) 2>&1 | tail -1
+pip install -q "pandas==2.2.2" 2>&1 | tail -1   # nnU-Net may pull a newer one
+python -c "import pandas, numpy, torch; print('pandas', pandas.__version__, 'numpy', numpy.__version__, 'torch', torch.__version__)"
 mkdir -p "$W/in"
 python - "$W/in" <<'PY'
 import cv2, sys, pathlib
@@ -23,7 +25,7 @@ PY
 echo "$(ls $W/in | wc -l) pages"
 t0=$(date +%s)
 ( cd "$W/code" && python -m src.run.digitize -d "$W/in" -o "$W/out" -m models/M3/ -f True > "$W/run.log" 2>&1 )
-tail -5 "$W/run.log"; grep -cE "Error|Traceback" "$W/run.log"
+grep -E "Error|Traceback" "$W/run.log" | sort | uniq -c | sort -rn | head -8; grep -B8 -m1 "Error" "$W/run.log" | head -20; tail -3 "$W/run.log"
 echo "ECG-Digitiser ran in $(( $(date +%s) - t0 )) s; $(ls $W/out/*.hea 2>/dev/null | wc -l) outputs"
 python - "$W/out" "$W/ext" <<'PY'
 import sys, pathlib, numpy as np, wfdb
@@ -44,6 +46,6 @@ for h in sorted(src.glob("*.hea")):
     n += 1
 print(f"{n} pages converted")
 PY
-tar czf "$OUT_DIR/litfl_ecgdigitiser_npz.tgz" -C "$W/ext" . && echo "LITFL readings packed"
+mkdir -p "$W/ext"; tar czf "$OUT_DIR/litfl_ecgdigitiser_npz.tgz" -C "$W/ext" . && echo "LITFL readings packed"
 cp "$W/run.log" "$OUT_DIR/ecgdigitiser.log"
 echo done
