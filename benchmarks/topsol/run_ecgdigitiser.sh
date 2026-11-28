@@ -27,11 +27,21 @@ PY
 grep -c "float(rot_angle)\|'MASK'" "$W/code/src/run/digitize.py"
 mkdir -p "$W/in"
 python - "$W/in" <<'PY'
-import cv2, sys, pathlib
+import cv2, sys, os, pathlib
+# its weights saw 2200 x 1700 Challenge pages: LITFL pages ~1200 px wide come out as an empty
+# segmentation (97 of 102 on Nov 28), so each page is scaled to fit inside 2200 x 1700 (aspect
+# kept, no padding) unless TS_ECGD_FIT=0
+fit = os.environ.get("TS_ECGD_FIT", "1") == "1"
 for p in sorted(pathlib.Path("benchmarks/litfl/images").glob("img_*")):
     img = cv2.imread(str(p))
-    if img is not None:
-        cv2.imwrite(f"{sys.argv[1]}/{p.stem.replace('img_', '')}.png", img)
+    if img is None:
+        continue
+    if fit:
+        h, w = img.shape[:2]
+        tw, th = (2200, 1700) if w >= h else (1700, 2200)
+        k = min(tw / w, th / h)
+        img = cv2.resize(img, (round(w * k), round(h * k)), interpolation=cv2.INTER_CUBIC if k > 1 else cv2.INTER_AREA)
+    cv2.imwrite(f"{sys.argv[1]}/{p.stem.replace('img_', '')}.png", img)
 PY
 if [ "${TS_PROBE_N:-0}" != "0" ]; then
   pip install -q wfdb pandas==2.2.2 2>&1 | tail -1
