@@ -104,6 +104,33 @@ def analyse(ps, fs=FS):
                     j = None
                 out["bursts"].append(dict(trio=nm, t=round(s0 / fs, 2), res_mv=round(r, 2),
                                           lead=trio[j][0] if j is not None else "?"))
+    # lag: the time shift of each lead (others fixed) that best closes its trio; a row read
+    # early or late shows up as a biphasic residual at every QRS, removed by the shift
+    out["lag_ms"] = {}
+    for nm, trio in TRIOS.items():
+        X = [_seg(ps, l) for l, _ in trio]
+        if any(x is None for x in X):
+            continue
+        c = [s_ for _, s_ in trio]
+        base = sum(ci * x for ci, x in zip(c, X))
+        mb = np.isfinite(base)
+        if mb.sum() < fs:
+            continue
+        r0 = float(np.sqrt(np.mean(base[mb] ** 2)))
+        for j, (l, _) in enumerate(trio):
+            best = (r0, 0)
+            for L in range(-25, 26):          # +-50 ms
+                Y = list(X)
+                Y[j] = np.roll(X[j], L)
+                e = sum(ci * y for ci, y in zip(c, Y))
+                m = mb & np.isfinite(e)
+                m[:30] = m[-30:] = False
+                if m.sum() < fs:
+                    continue
+                rr = float(np.sqrt(np.mean(e[m] ** 2)))
+                if rr < best[0]:
+                    best = (rr, L)
+            out["lag_ms"][l] = dict(lag=best[1] * 1000 / fs, res=round(r0, 3), res_shifted=round(best[0], 3))
     # timing: every lead against the other leads printed over the same seconds and the rhythm strip
     beats = {}
     for l, lst in ps.items():
@@ -180,6 +207,9 @@ def flags(cl, lag_ms=30, closure=0.5):
             f.append(f"{l} beats {v['med_ms']:+.0f} ms vs the simultaneous leads")
         if v["lost"]:
             f.append(f"{l} lost the QRS at {', '.join(f'{u:g}' for u in v['lost_t'][:4])} s")
+    for l, v in cl.get("lag_ms", {}).items():
+        if 10 <= abs(v["lag"]) < 50 and v["res_shifted"] < 0.7 * v["res"]:   # 50: the search edge
+            f.append(f"{l} read {v['lag']:+.0f} ms off its column (closure {v['res']} -> {v['res_shifted']} mV shifted)")
     if cl.get("rhythm_lag_ms") and abs(cl["rhythm_lag_ms"]) > lag_ms:
         f.append(f"grid II vs rhythm II {cl['rhythm_lag_ms']:+.0f} ms")
     return f

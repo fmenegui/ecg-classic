@@ -142,6 +142,13 @@ def evaluate_one(args):
         cl = crosslead.analyse(ps)
         out["crosslead"] = cl
         out["flags"] = crosslead.flags(cl)
+        if img_dir is not None:   # the readings of these public pages, for offline analysis
+            sd = Path(img_dir).parent / "sig"
+            sd.mkdir(exist_ok=True)
+            np.savez_compressed(sd / f"{key}.npz", signals=r["signals"].astype(np.float32),
+                                **{f"seg_{l}_{k_}": np.asarray(x, np.float32) for l, v in ps.items() for k_, x in enumerate(v)},
+                                x0_rows=np.asarray((r.get("internals") or {}).get("x0_rows", []), float),
+                                scale_rows=np.asarray((r.get("internals") or {}).get("scale_rows", []), float))
         if img_dir is not None:
             crosslead.plot(ps, cl, Path(img_dir) / f"{key}_cl.png", title=f"{key} {r['layout']}")
             import cv2
