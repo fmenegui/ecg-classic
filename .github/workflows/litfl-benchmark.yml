@@ -47,7 +47,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install -e . onnxruntime
+      - run: python -m pip install -e . onnxruntime matplotlib   # matplotlib: per-image cross-lead plots
       - name: Models
         if: ${{ inputs.row_model_run != '' || inputs.page_model_run != '' }}
         env:
