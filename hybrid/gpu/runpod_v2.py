@@ -74,6 +74,8 @@ def volume():
             print(f"volume {v['id']} {v.get('size')} GB in {v.get('dataCenter') or v.get('dataCenterId')}", file=sys.stderr)
             out("volume_id", v["id"]); out("data_center", v.get("dataCenter") or v.get("dataCenterId"))
             return
+    if os.environ.get("VOLUME_NO_CREATE"):   # a name given by hand: a typo must not create a volume
+        sys.exit(f"no volume named {name}")
     size = int(os.environ.get("VOLUME_GB", "40"))
     for dc in DATA_CENTERS:
         s, d = call("POST", "/network-volumes", {"name": name, "size": size, "dataCenter": dc})

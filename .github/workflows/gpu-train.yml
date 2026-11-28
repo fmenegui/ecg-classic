@@ -6,6 +6,10 @@ name: GPU training on RunPod
 on:
   workflow_dispatch:
     inputs:
+      volume_name:
+        description: 'RunPod data volume by name (empty = ecgdig-data3; ecgdig-data2 is in EU-RO-1); never created when given'
+        required: false
+        default: ''
       kaggle:
         description: 'Pass the Kaggle token to the pod (real training pages for hybrid/realstrips_build.py)'
         required: false
@@ -92,6 +96,9 @@ jobs:
       - name: Data volume
         id: vol
         if: ${{ inputs.use_volume }}
+        env:
+          VOLUME_NAME: ${{ inputs.volume_name || 'ecgdig-data3' }}
+          VOLUME_NO_CREATE: ${{ inputs.volume_name && '1' || '' }}
         run: python hybrid/gpu/runpod_v2.py volume || true
       - name: Train on a pod (a pod whose CUDA fails is replaced)
         env:

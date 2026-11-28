@@ -7,6 +7,11 @@
 name: Environment check
 on:
   workflow_dispatch:
+    inputs:
+      volume_name:
+        description: 'RunPod data volume by name (empty = ecgdig-data3; ecgdig-data2 is in EU-RO-1); never created when given'
+        required: false
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -62,6 +67,9 @@ jobs:
           python-version: '3.11'
       - name: Volume
         id: vol
+        env:
+          VOLUME_NAME: ${{ inputs.volume_name || 'ecgdig-data3' }}
+          VOLUME_NO_CREATE: ${{ inputs.volume_name && '1' || '' }}
         run: |
           python hybrid/gpu/runpod_v2.py volume && echo "OK volume" >> "$GITHUB_STEP_SUMMARY" \
             || { echo "FAIL volume" >> "$GITHUB_STEP_SUMMARY"; exit 1; }
