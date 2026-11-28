@@ -109,6 +109,19 @@ jobs:
             for f in $(find dl_page -name page_best.onnx) $(find dl_page -name page.onnx); do
               python -c "import onnxruntime as o, sys; o.InferenceSession(sys.argv[1])" "$f" && cp "$f" model/page.onnx && break
             done
+          if [ ! -f model/page.onnx ] && p=$(find dl_page -name page_best.pt | head -1) && [ -n "$p" ]; then   # a run cut before its export (Nov 27)
+            python -m pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
+            python -m pip install -q segmentation-models-pytorch==0.3.4 timm onnx onnxscript
+            python -m pip install -q -e .   # pagegen (cv2, ecgdig) for train_page.build
+            python - "$p" <<'PY'
+          import sys, torch
+          sys.path.insert(0, "hybrid")
+          from train_page import build
+          m = build(weights="none"); m.load_state_dict(torch.load(sys.argv[1], map_location="cpu")); m.eval()
+          torch.onnx.export(m, torch.zeros(1, 3, 256, 256), "model/page.onnx", input_names=["x"], output_names=["y"],
+                            dynamic_axes={"x": {0: "n", 2: "h", 3: "w"}, "y": {0: "n", 2: "h", 3: "w"}}, opset_version=17, dynamo=False)
+          PY
+          fi
           fi
           if [ -n "${{ inputs.start_model_run }}" ]; then
             gh run download "${{ inputs.start_model_run }}" -D dl_st

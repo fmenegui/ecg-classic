@@ -75,3 +75,10 @@ def test_no_pod_listing_printed():
     for p in ("hybrid/gpu/runpod_ctl.py", "hybrid/gpu/runpod_v2.py", "hybrid/gpu/runpod_probe.py"):
         s = _src(p)
         assert not re.search(r"print\([^)\n]*(\[\"pods\"\]|get\(\"pods\"\)|json\.dumps\()", s), p
+
+
+def test_stall_detector_ignores_status():
+    """A pod whose status.txt reads empty but whose log stopped is still a stalled job (Nov 27)."""
+    src = (ROOT / "hybrid/gpu/runpod_ctl.py").read_text()
+    assert 'status == "running" and time.time() - last_grow' not in src
+    assert 'status not in ("done", "nogpu") and time.time() - last_grow > STALL_MIN' in src

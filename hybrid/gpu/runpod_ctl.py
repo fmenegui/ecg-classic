@@ -258,8 +258,12 @@ def follow(out: Path):
             print(f"pod unreachable for {LOST_MIN} min: giving up on it", flush=True)
             status = "lost"
             break
-        if seen and status == "running" and time.time() - last_grow > STALL_MIN * 60:
-            print(f"the pod log has not grown for {STALL_MIN} min: the job is stuck", flush=True)
+        # any status but done: on Nov 27 two pods on ecgdig-data3 kept answering through the proxy
+        # with status.txt empty and a log that had stopped (~23:20 UTC); `status == "running"`
+        # never matched, and both ran 3 more hours to their time limit (~3 USD for nothing)
+        if seen and status not in ("done", "nogpu") and time.time() - last_grow > STALL_MIN * 60:
+            print(f"the pod log has not grown for {STALL_MIN} min (status {status!r}): the job is stuck",
+                  flush=True)
             status = "stalled"
             break
         if seen and time.time() - last_ok < 120 and time.time() - last_ckpt > CKPT_MIN * 60:
