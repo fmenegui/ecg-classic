@@ -82,3 +82,8 @@ def test_stall_detector_ignores_status():
     src = (ROOT / "hybrid/gpu/runpod_ctl.py").read_text()
     assert 'status == "running" and time.time() - last_grow' not in src
     assert 'status not in ("done", "nogpu") and time.time() - last_grow > STALL_MIN' in src
+
+
+def test_follower_strips_nul_padding():
+    src = (ROOT / "hybrid/gpu/runpod_ctl.py").read_text()
+    assert '.replace("\\x00", "")' in src

@@ -236,7 +236,9 @@ def follow(out: Path):
     while time.time() < limit:
         try:
             status = _get(base + "/status.txt").decode().strip()
-            log = _get(base + "/log.txt", timeout=60).decode(errors="replace")
+            # NUL bytes out: a failing network volume served a log padded with NULs that kept
+            # "growing" while nothing was written (ecgdig-data3, Nov 27-28)
+            log = _get(base + "/log.txt", timeout=60).decode(errors="replace").replace("\x00", "")
             if len(log) > seen:
                 print(log[seen:], end="", flush=True)
                 seen = len(log)
