@@ -39,6 +39,7 @@ if [ "${TS_PROBE:-0}" = "1" ]; then
     python benchmarks/topsol/probe_eik.py --eik /root/eik --records /root/probe/.records --out /root/probe --n "${TS_PROBE_N:-20}" | tail -3
   PREP="$PREP --probe-dir /root/probe"
 fi
+if [ "${TS_LITFL:-0}" = "1" ]; then PREP="$PREP --litfl-dir benchmarks/litfl/images"; fi   # LITFL: no truth, signals kept
 RS="${TS_OED_SIZE:-none}"; [ "$RS" = none ] && RS=""      # none: the images as they are
 python benchmarks/topsol/prepare.py --out "$W/data" ${RS:+--resize $RS} $PREP
 
@@ -84,6 +85,9 @@ python benchmarks/topsol/to_npz_oed.py "$W/out" "$W/data/test.csv" "$W/ext"
 
 # nproc shows the host's cores (128 on some pods), not the pod's share: 128 evaluator processes
 # with OpenBLAS threads each hit the thread limit and crashed the Kaggle scoring (Nov 20, 44801832861)
+if [ "${TS_LITFL:-0}" = "1" ]; then   # public LITFL pages: the readings themselves leave the pod (no Kaggle data)
+  tar czf "$OUT_DIR/litfl_oed_npz.tgz" -C "$W/ext" . && echo "LITFL readings: $(ls $W/ext | wc -l) npz"
+fi
 JOBS=${TS_JOBS:-$(python -c "import os; print(min(16, len(os.sched_getaffinity(0))))")}
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 if [ "${TS_PROBE:-0}" = "1" ]; then

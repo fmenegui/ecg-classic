@@ -33,6 +33,7 @@ def main():
     ap.add_argument("--kaggle-dir", type=Path)
     ap.add_argument("--kaggle-ids", default="")
     ap.add_argument("--probe-dir", type=Path, help="probe pages (benchmarks/topsol/probe_pages.py): keys as they are")
+    ap.add_argument("--litfl-dir", type=Path, help="LITFL pages (benchmarks/litfl/images): key = image number")
     ap.add_argument("--resize", default="", help="WxH: fit every image inside it, aspect kept, white padding "
                                                   "(a method that expects the size of its training images)")
     a = ap.parse_args()
@@ -88,6 +89,14 @@ def main():
                 img = cv2.imread(str(a.probe_dir / "test" / f"{r['id']}.png"))
                 cv2.imwrite(str(a.out / "test" / f"{r['id']}.png"), fit(img))
             rows.append((r["id"], r["lead"], int(r["fs"]), int(r["number_of_rows"])))
+    if a.litfl_dir:   # no signal truth: rows only for the converter (5,000 samples, 12 leads)
+        for p in sorted(a.litfl_dir.glob("img_*")):
+            img = cv2.imread(str(p))
+            if img is None:
+                continue
+            key = p.stem.replace("img_", "")
+            cv2.imwrite(str(a.out / "test" / f"{key}.png"), fit(img))
+            rows += rows_for(key, 500)
     with open(a.out / "test.csv", "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["id", "lead", "fs", "number_of_rows"])
